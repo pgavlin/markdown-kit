@@ -482,11 +482,11 @@ func (mv *MarkdownView) Draw(screen tcell.Screen) {
 		style := cellStyle(defaultStyle, mv.theme.Get(chroma.Generic), mv.theme.Get(chroma.Comment))
 		col := 0
 		for _, r := range nameGraphemes {
-			screen.SetContent(x+col, height-1, r.runes[0], r.runes[1:], style)
+			screen.SetContent(x+col, y+height-1, r.runes[0], r.runes[1:], style)
 			col++
 		}
 		for ; col < width-len(" 100% "); col++ {
-			screen.SetContent(x+col, height-1, ' ', nil, style)
+			screen.SetContent(x+col, y+height-1, ' ', nil, style)
 		}
 
 		style = cellStyle(defaultStyle, mv.theme.Get(chroma.Generic), mv.theme.Get(chroma.Text))
