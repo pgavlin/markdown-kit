@@ -9,7 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/alecthomas/chroma"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"github.com/pgavlin/ansicsi"
 	"github.com/pgavlin/goldmark"
 	"github.com/pgavlin/goldmark/ast"

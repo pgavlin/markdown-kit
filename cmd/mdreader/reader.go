@@ -7,7 +7,7 @@ import (
 
 	"github.com/alecthomas/chroma"
 	"github.com/atotto/clipboard"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"github.com/pgavlin/goldmark/ast"
 	mdk "github.com/pgavlin/markdown-kit/tview"
 	"github.com/rivo/tview"
@@ -107,16 +107,16 @@ func (td *textDialog) InputHandler() func(event *tcell.EventKey, setFocus func(p
 	return td.textView.InputHandler()
 }
 
+func (td *textDialog) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
+	return td.textView.MouseHandler()
+}
+
 func (td *textDialog) Focus(delegate func(p tview.Primitive)) {
 	td.textView.Focus(delegate)
 }
 
 func (td *textDialog) Blur() {
 	td.textView.Blur()
-}
-
-func (td *textDialog) GetFocusable() tview.Focusable {
-	return td.textView.GetFocusable()
 }
 
 func (td *textDialog) HasFocus() bool {
@@ -231,6 +231,10 @@ func (r *markdownReader) InputHandler() func(event *tcell.EventKey, setFocus fun
 	}
 }
 
+func (r *markdownReader) MouseHandler() func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(p tview.Primitive)) (consumed bool, capture tview.Primitive) {
+	return r.rootPages.MouseHandler()
+}
+
 func (r *markdownReader) Focus(delegate func(p tview.Primitive)) {
 	r.hasFocus = true
 	if r.focused != nil {
@@ -243,10 +247,6 @@ func (r *markdownReader) Blur() {
 	if r.focused != nil {
 		r.focused.Blur()
 	}
-}
-
-func (r *markdownReader) GetFocusable() tview.Focusable {
-	return r
 }
 
 func (r *markdownReader) HasFocus() bool {

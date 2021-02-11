@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"github.com/pgavlin/markdown-kit/styles"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/require"
@@ -21,10 +21,15 @@ func TestMarkdownView_Basic(t *testing.T) {
 	stepsFile, err := ioutil.ReadFile(filepath.Join(testdataPath, "getting-started.view.json"))
 	require.NoError(t, err)
 
+	type style struct {
+		Foreground tcell.Color    `json:"fg,omitempty"`
+		Background tcell.Color    `json:"bg,omitempty"`
+		Attributes tcell.AttrMask `json:"attrs,omitempty"`
+	}
 	type cell struct {
-		Bytes string      `json:"bytes,omitempty"`
-		Style tcell.Style `json:"style,omitempty"`
-		Runes string      `json:"runes,omitempty"`
+		Bytes string `json:"bytes,omitempty"`
+		Style style  `json:"style,omitempty"`
+		Runes string `json:"runes,omitempty"`
 	}
 	type step struct {
 		Key   tcell.Key `json:"key,omitempty"`
@@ -59,8 +64,16 @@ func TestMarkdownView_Basic(t *testing.T) {
 		simCells := <-redraws
 
 		actual := make([]cell, len(simCells))
-		for i, c := range step.Cells {
-			actual[i] = cell{Bytes: string(c.Bytes), Style: c.Style, Runes: string(c.Runes)}
+		for i, c := range simCells {
+			fg, bg, attrs := c.Style.Decompose()
+			actual[i] = cell{
+				Bytes: string(c.Bytes),
+				Style: style{
+					Foreground: fg,
+					Background: bg,
+					Attributes: attrs,
+				},
+				Runes: string(c.Runes)}
 		}
 
 		require.Equal(t, step.Cells, actual)
