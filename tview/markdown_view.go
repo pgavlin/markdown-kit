@@ -492,7 +492,7 @@ func (mv *MarkdownView) Draw(screen tcell.Screen) {
 		style = cellStyle(defaultStyle, mv.theme.Get(chroma.Generic), mv.theme.Get(chroma.Text))
 		pct := fmt.Sprintf(" % 3d%% ", lastLine*100/len(mv.lines))
 		for _, c := range pct {
-			screen.SetContent(x+col, height-1, c, nil, style)
+			screen.SetContent(x+col, y+height-1, c, nil, style)
 			col++
 		}
 	}
