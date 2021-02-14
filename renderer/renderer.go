@@ -2,8 +2,15 @@ package renderer
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"path"
 	"strconv"
 	"strings"
 	"unicode"
@@ -11,6 +18,7 @@ import (
 
 	"github.com/alecthomas/chroma"
 	"github.com/alecthomas/chroma/lexers"
+	"github.com/nfnt/resize"
 	"github.com/pgavlin/ansicsi"
 	"github.com/pgavlin/goldmark/ast"
 	"github.com/pgavlin/goldmark/renderer"
@@ -61,9 +69,12 @@ func (s *NodeSpan) Contains(offset int) bool {
 // NodeRenderers that want to override rendering of particular node types should write through the Write* functions
 // provided by Renderer in order to retain proper indentation and prefices inside of lists and block quotes.
 type Renderer struct {
-	theme      *chroma.Style
-	wordWrap   int
-	hyperlinks bool
+	theme         *chroma.Style
+	wordWrap      int
+	hyperlinks    bool
+	images        bool
+	maxImageWidth int
+	contentRoot   string
 
 	listStack  []listState
 	openBlocks []blockState
@@ -80,6 +91,7 @@ type Renderer struct {
 	lineWidth   int
 	atNewline   bool
 	byteOffset  int
+	inImage     bool
 }
 
 // A RendererOption represents a configuration option for a Renderer.
@@ -106,6 +118,17 @@ func WithHyperlinks(on bool) RendererOption {
 func WithWordWrap(width int) RendererOption {
 	return func(r *Renderer) {
 		r.wordWrap = width
+	}
+}
+
+// WithImages enables or disables image rendering. When image rendering is enabled, image links will be omitted
+// and iamge data will be sent inline using the kitty graphics protocol. A line break will be inserted before
+// and after each image.
+func WithImages(on bool, maxWidth int, contentRoot string) RendererOption {
+	return func(r *Renderer) {
+		r.images = on
+		r.maxImageWidth = maxWidth
+		r.contentRoot = contentRoot
 	}
 }
 
@@ -1114,9 +1137,119 @@ func (r *Renderer) renderLinkOrImage(w util.BufWriter, node ast.Node, open strin
 	return nil
 }
 
+func (r *Renderer) openImage(location string) (io.ReadCloser, error) {
+	parsedLocation, err := url.Parse(location)
+	if err != nil {
+		return nil, err
+	}
+
+	// If this is a relative URL, append it to the content root and re-parse.
+	if !parsedLocation.IsAbs() {
+		parsedLocation, err = url.Parse(path.Join(r.contentRoot, location))
+		if err != nil {
+			return nil, err
+		}
+
+		// If we still have a relative URL, treat it as relative to the current directory.
+		if !parsedLocation.IsAbs() {
+			parsedLocation.Path = "./" + parsedLocation.Path
+			parsedLocation.RawPath = ""
+		}
+	}
+
+	switch parsedLocation.Scheme {
+	case "", "file":
+		return os.Open(parsedLocation.Path)
+	case "http", "https":
+		resp, err := http.DefaultClient.Do(&http.Request{URL: parsedLocation, Method: http.MethodGet})
+		if err != nil {
+			return nil, err
+		}
+		return resp.Body, nil
+	default:
+		return nil, fmt.Errorf("unsupported scheme %v", parsedLocation.Scheme)
+	}
+}
+
+func (r *Renderer) renderImage(w util.BufWriter, source []byte, img *ast.Image, enter bool) error {
+	reader, err := r.openImage(string(img.Destination))
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	image, _, err := image.Decode(reader)
+	if err != nil {
+		return err
+	}
+
+	image = resize.Thumbnail(uint(r.maxImageWidth), uint(image.Bounds().Dy()), image, resize.Bicubic)
+
+	var buf bytes.Buffer
+	enc := base64.NewEncoder(base64.StdEncoding, &buf)
+	if err := png.Encode(enc, image); err != nil {
+		return err
+	}
+	enc.Close()
+	data := buf.Bytes()
+
+	if _, err = fmt.Fprint(w, "\n"); err != nil {
+		return err
+	}
+
+	first := true
+	for len(data) > 0 {
+		if first {
+			if _, err = fmt.Fprintf(w, "\x1b_Gf=100,a=T,"); err != nil {
+				return err
+			}
+			first = false
+		} else {
+			if _, err = fmt.Fprint(w, "\x1b_G"); err != nil {
+				return err
+			}
+		}
+
+		more, b := 0, data
+		if len(data) > 4096 {
+			more, b = 1, data[:4096]
+		}
+		if _, err = fmt.Fprintf(w, "m=%d;", more); err != nil {
+			return err
+		}
+		if _, err := w.Write(b); err != nil {
+			return err
+		}
+		if _, err = fmt.Fprint(w, "\x1b\\"); err != nil {
+			return err
+		}
+
+		data = data[len(b):]
+	}
+
+	if _, err = fmt.Fprint(w, "\n"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // RenderImage renders an *ast.Image node to the given BufWriter.
 func (r *Renderer) RenderImage(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	img := node.(*ast.Image)
+
+	if r.images {
+		if enter {
+			if err := r.renderImage(w, source, img, enter); err == nil {
+				r.inImage = true
+				return ast.WalkSkipChildren, nil
+			}
+		} else if r.inImage {
+			r.inImage = false
+			return ast.WalkContinue, nil
+		}
+	}
+
 	if err := r.renderLinkOrImage(w, node, "![", img.ReferenceType, img.Label, img.Destination, img.Title, enter); err != nil {
 		return ast.WalkStop, err
 	}
