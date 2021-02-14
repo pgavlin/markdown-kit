@@ -56,6 +56,7 @@ func main() {
 	r := renderer.New(
 		renderer.WithTheme(theme),
 		renderer.WithWordWrap(int(*width)),
+		renderer.WithSoftBreak(*width != 0),
 		renderer.WithImages(*images, termWidth, filepath.Dir(path)))
 	renderer := goldmark_renderer.NewRenderer(goldmark_renderer.WithNodeRenderers(util.Prioritized(r, 100)))
 	if err := renderer.Render(os.Stdout, source, document); err != nil {

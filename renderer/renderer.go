@@ -75,6 +75,7 @@ type Renderer struct {
 	images        bool
 	maxImageWidth int
 	contentRoot   string
+	softBreak     bool
 
 	listStack  []listState
 	openBlocks []blockState
@@ -97,7 +98,8 @@ type Renderer struct {
 // A RendererOption represents a configuration option for a Renderer.
 type RendererOption func(r *Renderer)
 
-// WithTheme sets the theme used for colorization during rendering.
+// WithTheme sets the theme used for colorization during rendering. If the theme is nil, output will not be
+// colorized.
 func WithTheme(theme *chroma.Style) RendererOption {
 	return func(r *Renderer) {
 		r.theme = theme
@@ -106,7 +108,7 @@ func WithTheme(theme *chroma.Style) RendererOption {
 
 // WithHyperlinks enables or disables hyperlink rendering. When hyperlink rendering is enabled, links will be
 // underlined and link destinations will be omitted. The destination of a link can be accessed by looking up the
-// link's node in the span tree using the offset of the link text.
+// link's node in the span tree using the offset of the link text. Hyperlink rendering is disabled by default.
 func WithHyperlinks(on bool) RendererOption {
 	return func(r *Renderer) {
 		r.hyperlinks = on
@@ -114,7 +116,7 @@ func WithHyperlinks(on bool) RendererOption {
 }
 
 // WithWordWrap enables word wrapping at the desired width. A width of zero disables wrapping. Words inside code spans
-// or code blocks will not be subject to wrapping.
+// or code blocks will not be subject to wrapping. Word wrapping is disabled by default.
 func WithWordWrap(width int) RendererOption {
 	return func(r *Renderer) {
 		r.wordWrap = width
@@ -123,12 +125,22 @@ func WithWordWrap(width int) RendererOption {
 
 // WithImages enables or disables image rendering. When image rendering is enabled, image links will be omitted
 // and iamge data will be sent inline using the kitty graphics protocol. A line break will be inserted before
-// and after each image.
+// and after each image. Image rendering is disabled by default.
 func WithImages(on bool, maxWidth int, contentRoot string) RendererOption {
 	return func(r *Renderer) {
 		r.images = on
 		r.maxImageWidth = maxWidth
 		r.contentRoot = contentRoot
+	}
+}
+
+// WithSoftBreak enables or disables soft line breaks. When soft line breaks are enabled, a soft line break in the
+// input will _not_ be rendered as a newline in the output. When soft line breaks are disabled, a soft line break in
+// the input _will_ be rendered as a newline. In general, soft line breaks should be enabled if word wrapping is
+// enabled. Soft line breaks are dsiabled by default.
+func WithSoftBreak(on bool) RendererOption {
+	return func(r *Renderer) {
+		r.softBreak = on
 	}
 }
 
@@ -1317,7 +1329,12 @@ func (r *Renderer) RenderText(w util.BufWriter, source []byte, node ast.Node, en
 			return ast.WalkStop, err
 		}
 	case text.SoftLineBreak():
-		if err := r.WriteByte(w, '\n'); err != nil {
+		c := '\n'
+		if r.softBreak {
+			c = ' '
+		}
+
+		if err := r.WriteByte(w, byte(c)); err != nil {
 			return ast.WalkStop, err
 		}
 	}

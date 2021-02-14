@@ -340,7 +340,11 @@ func (mv *MarkdownView) render(width int) {
 		wrap = width
 	}
 
-	r := renderer.New(renderer.WithTheme(mv.theme), renderer.WithHyperlinks(true), renderer.WithWordWrap(wrap))
+	r := renderer.New(
+		renderer.WithTheme(mv.theme),
+		renderer.WithHyperlinks(true),
+		renderer.WithWordWrap(wrap),
+		renderer.WithSoftBreak(wrap != 0))
 
 	w := lineWriter{
 		style:        tcell.StyleDefault.Foreground(tview.Styles.PrimaryTextColor),
