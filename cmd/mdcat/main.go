@@ -16,6 +16,7 @@ import (
 	"github.com/pgavlin/goldmark/util"
 	"github.com/pgavlin/markdown-kit/renderer"
 	"github.com/pgavlin/markdown-kit/styles"
+	_ "github.com/pgavlin/svg2"
 	"golang.org/x/term"
 )
 

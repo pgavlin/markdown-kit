@@ -10,6 +10,7 @@ require (
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/pgavlin/ansicsi v0.0.0-20210128180815-facca45e1fdd
 	github.com/pgavlin/goldmark v1.1.33-0.20201111182858-dba88a1da006
+	github.com/pgavlin/svg2 v0.0.0-20210914185020-869702aee577
 	github.com/rivo/tview v0.0.0-20210125085121-dbc1f32bb1d0
 	github.com/rivo/uniseg v0.2.0
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
