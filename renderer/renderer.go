@@ -395,30 +395,51 @@ func (r *Renderer) measureText(buf []byte) int {
 func (r *Renderer) write(w io.Writer, buf []byte) (int, error) {
 	written := 0
 	for len(buf) > 0 {
-		atNewline := false
+		hasNewline := false
 		newline := bytes.IndexByte(buf, '\n')
 		if newline == -1 {
-			newline = len(buf) - 1
+			newline = len(buf)
 		} else {
-			atNewline = true
+			hasNewline = true
 		}
 
-		if r.atNewline && r.measureText(buf[:newline+1]) != 0 {
+		if r.atNewline && r.measureText(buf[:newline]) != 0 {
 			if err := r.beginLine(w); err != nil {
-				return 0, err
+				return written, err
 			}
-		} else {
-			atNewline = true
 		}
 
-		n, err := w.Write(buf[:newline+1])
+		// write up to the newline
+		n, err := w.Write(buf[:newline])
 		written += n
-		r.atNewline = n > 0 && atNewline && n == newline+1
+
+		// measure the text we just wrote
+		writtenWidth := r.measureText(buf[:n])
+
+		if err == nil && hasNewline && n == newline {
+			// pad out to the wrap width if necessary
+			remaining := r.wordWrap - (r.lineWidth + writtenWidth)
+			switch {
+			case remaining < 0:
+				_, err = w.Write(bytes.Repeat([]byte{' '}, r.wordWrap-(-remaining%r.wordWrap)))
+			case remaining > 0:
+				_, err = w.Write(bytes.Repeat([]byte{' '}, remaining))
+			}
+
+			if err == nil {
+				// write the newline
+				if _, err = w.Write([]byte{'\n'}); err == nil {
+					n++
+				}
+			}
+		}
+
+		r.atNewline = r.atNewline && writtenWidth == 0 || hasNewline && n == newline+1
 		if r.atNewline {
 			r.lineWidth = 0
 		} else {
 			// NOTE: the count will be off if we have a partial code point or control code at the end of the write.
-			r.lineWidth += r.measureText(buf[:n])
+			r.lineWidth += writtenWidth
 		}
 		if len(r.openBlocks) != 0 {
 			r.openBlocks[len(r.openBlocks)-1].fresh = false
