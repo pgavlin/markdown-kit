@@ -21,9 +21,11 @@ import (
 	"github.com/nfnt/resize"
 	"github.com/pgavlin/ansicsi"
 	"github.com/pgavlin/goldmark/ast"
+	xast "github.com/pgavlin/goldmark/extension/ast"
 	"github.com/pgavlin/goldmark/renderer"
 	"github.com/pgavlin/goldmark/text"
 	"github.com/pgavlin/goldmark/util"
+	"github.com/pgavlin/markdown-kit/styles"
 	"github.com/rivo/uniseg"
 )
 
@@ -36,6 +38,75 @@ type listState struct {
 	marker  byte
 	ordered bool
 	index   int
+}
+
+type tableBorders []rune
+
+func (b tableBorders) topLeft() rune {
+	return b[0]
+}
+
+func (b tableBorders) topJoin() rune {
+	return b[1]
+}
+
+func (b tableBorders) topRight() rune {
+	return b[2]
+}
+
+func (b tableBorders) middleLeft() rune {
+	return b[3]
+}
+
+func (b tableBorders) middleJoin() rune {
+	return b[4]
+}
+
+func (b tableBorders) middleRight() rune {
+	return b[5]
+}
+
+func (b tableBorders) bottomLeft() rune {
+	return b[6]
+}
+
+func (b tableBorders) bottomJoin() rune {
+	return b[7]
+}
+
+func (b tableBorders) bottomRight() rune {
+	return b[8]
+}
+
+func (b tableBorders) vertical() rune {
+	return b[9]
+}
+
+func (b tableBorders) horizontal() string {
+	return string(b[10:11])
+}
+
+var borders = tableBorders("╭┬╮├┼┤╰┴╯│─")
+
+type tableState struct {
+	columnWidths []int
+	cellWidths   []int
+	alignments   []xast.Alignment
+
+	rowIndex    int
+	columnIndex int
+	cellIndex   int
+
+	measuring bool
+}
+
+type countingWriter struct {
+	n int
+}
+
+func (w *countingWriter) Write(b []byte) (int, error) {
+	w.n += len(b)
+	return len(b), nil
 }
 
 // A NodeSpan maps from an AST node to its representative span in a rendered document. The NodeSpans for an AST form
@@ -78,6 +149,7 @@ type Renderer struct {
 	softBreak     bool
 
 	listStack  []listState
+	tableStack []tableState
 	openBlocks []blockState
 	wrapping   []bool
 	spanStack  []*NodeSpan
@@ -168,6 +240,12 @@ func (r *Renderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 	reg.Register(ast.KindParagraph, r.RenderParagraph)
 	reg.Register(ast.KindTextBlock, r.RenderTextBlock)
 	reg.Register(ast.KindThematicBreak, r.RenderThematicBreak)
+
+	// extension blocks
+	reg.Register(xast.KindTable, r.RenderTable)
+	reg.Register(xast.KindTableHeader, r.RenderTableHeader)
+	reg.Register(xast.KindTableRow, r.RenderTableRow)
+	reg.Register(xast.KindTableCell, r.RenderTableCell)
 
 	// inlines
 	reg.Register(ast.KindAutoLink, r.RenderAutoLink)
@@ -317,16 +395,18 @@ func (r *Renderer) measureText(buf []byte) int {
 func (r *Renderer) write(w io.Writer, buf []byte) (int, error) {
 	written := 0
 	for len(buf) > 0 {
-		if r.atNewline {
-			if err := r.beginLine(w); err != nil {
-				return 0, err
-			}
-		}
-
 		atNewline := false
 		newline := bytes.IndexByte(buf, '\n')
 		if newline == -1 {
 			newline = len(buf) - 1
+		} else {
+			atNewline = true
+		}
+
+		if r.atNewline && r.measureText(buf[:newline+1]) != 0 {
+			if err := r.beginLine(w); err != nil {
+				return 0, err
+			}
 		} else {
 			atNewline = true
 		}
@@ -1370,6 +1450,191 @@ func (r *Renderer) RenderWhitespace(w util.BufWriter, source []byte, node ast.No
 
 	if _, err := r.Write(w, node.(*ast.Whitespace).Segment.Value(source)); err != nil {
 		return ast.WalkStop, err
+	}
+
+	return ast.WalkContinue, nil
+}
+
+func (r *Renderer) renderTableBorder(w util.BufWriter, left, join, right rune) error {
+	state := &r.tableStack[len(r.tableStack)-1]
+	horizontal := borders.horizontal()
+
+	if _, err := r.WriteRune(w, left); err != nil {
+		return err
+	}
+	for i, width := range state.columnWidths {
+		if i > 0 {
+			if _, err := r.WriteRune(w, join); err != nil {
+				return err
+			}
+		}
+		if _, err := r.WriteString(w, strings.Repeat(horizontal, width)); err != nil {
+			return err
+		}
+	}
+	if _, err := r.WriteRune(w, right); err != nil {
+		return err
+	}
+	return r.WriteByte(w, '\n')
+}
+
+// RenderTable renders an *xast.Table to the given BufWriter.
+func (r *Renderer) RenderTable(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+	if !enter {
+		if err := r.renderTableBorder(w, borders.bottomLeft(), borders.bottomJoin(), borders.bottomRight()); err != nil {
+			return ast.WalkStop, err
+		}
+
+		r.tableStack = r.tableStack[:len(r.tableStack)-1]
+		if err := r.CloseBlock(w); err != nil {
+			return ast.WalkStop, err
+		}
+		return ast.WalkContinue, nil
+	}
+
+	if err := r.OpenBlock(w, source, node); err != nil {
+		return ast.WalkStop, err
+	}
+
+	// A table is structured like so:
+	// table/
+	//   TableHeader/
+	//     TableCell
+	//     ...
+	//     TableCell
+	//   TableRow/
+	//     TableCell
+	//     ...
+	//     TableCell
+	//   ...
+	//   TableRow/
+	//     TableCell
+	//     ...
+	//     TableCell
+	table := node.(*xast.Table)
+
+	// First, measure the width of each column by rendering each cell in each column's contents into an infinitely-wide
+	// buffer and finding the maximum. This also allows us to count the columns.
+	var columnWidths []int
+	var cellWidths []int
+	for row := table.FirstChild(); row != nil; row = row.NextSibling() {
+		for col, cell := 0, row.FirstChild(); cell != nil; col, cell = col+1, cell.NextSibling() {
+			cr := &Renderer{
+				theme:         r.theme,
+				wordWrap:      0,
+				hyperlinks:    r.hyperlinks,
+				images:        r.images,
+				maxImageWidth: r.maxImageWidth,
+				contentRoot:   r.contentRoot,
+				softBreak:     r.softBreak,
+				tableStack:    []tableState{{measuring: true}},
+			}
+			cellRenderer := renderer.NewRenderer(renderer.WithNodeRenderers(util.Prioritized(cr, 100)))
+			dest := &countingWriter{}
+			if err := cellRenderer.Render(dest, source, cell); err != nil {
+				return ast.WalkStop, err
+			}
+
+			for col >= len(columnWidths) {
+				columnWidths = append(columnWidths, 0)
+			}
+			if columnWidths[col] < dest.n {
+				columnWidths[col] = dest.n
+			}
+			cellWidths = append(cellWidths, dest.n)
+		}
+	}
+
+	r.tableStack = append(r.tableStack, tableState{
+		columnWidths: columnWidths,
+		cellWidths:   cellWidths,
+		alignments:   table.Alignments,
+	})
+
+	return ast.WalkContinue, nil
+}
+
+func (r *Renderer) RenderTableHeader(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+	if enter {
+		left, join, right := borders.topLeft(), borders.topJoin(), borders.topRight()
+		if err := r.renderTableBorder(w, left, join, right); err != nil {
+			return ast.WalkStop, err
+		}
+		if _, err := r.WriteRune(w, borders.vertical()); err != nil {
+			return ast.WalkStop, err
+		}
+	} else {
+		if err := r.WriteByte(w, '\n'); err != nil {
+			return ast.WalkStop, err
+		}
+
+		left, join, right := borders.middleLeft(), borders.middleJoin(), borders.middleRight()
+		if err := r.renderTableBorder(w, left, join, right); err != nil {
+			return ast.WalkStop, err
+		}
+
+		state := &r.tableStack[len(r.tableStack)-1]
+		state.columnIndex = 0
+		state.rowIndex++
+	}
+
+	return ast.WalkContinue, nil
+}
+
+func (r *Renderer) RenderTableRow(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+	state := &r.tableStack[len(r.tableStack)-1]
+
+	if enter {
+		if _, err := r.WriteRune(w, borders.vertical()); err != nil {
+			return ast.WalkStop, err
+		}
+	} else {
+		if _, err := r.WriteRune(w, '\n'); err != nil {
+			return ast.WalkStop, err
+		}
+
+		state.columnIndex = 0
+		state.rowIndex++
+	}
+
+	return ast.WalkContinue, nil
+}
+
+func (r *Renderer) RenderTableCell(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+	state := &r.tableStack[len(r.tableStack)-1]
+	if !state.measuring {
+		if enter {
+			var style chroma.TokenType
+			switch {
+			case state.rowIndex == 0:
+				style = styles.TableHeader
+			case state.rowIndex%2 == 0:
+				style = styles.TableRowAlt
+			default:
+				style = styles.TableRow
+			}
+			if err := r.PushStyle(w, style); err != nil {
+				return ast.WalkStop, err
+			}
+		} else {
+			columnWidth := state.columnWidths[state.columnIndex]
+			cellWidth := state.cellWidths[state.cellIndex]
+
+			if _, err := r.WriteString(w, strings.Repeat(" ", columnWidth-cellWidth)); err != nil {
+				return ast.WalkStop, err
+			}
+
+			if err := r.PopStyle(w); err != nil {
+				return ast.WalkStop, err
+			}
+
+			if _, err := r.WriteRune(w, borders.vertical()); err != nil {
+				return ast.WalkStop, err
+			}
+
+			state.columnIndex++
+			state.cellIndex++
+		}
 	}
 
 	return ast.WalkContinue, nil

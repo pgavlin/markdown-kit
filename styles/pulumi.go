@@ -34,4 +34,7 @@ var Pulumi = styles.Register(chroma.MustNewStyle("pulumi", chroma.StyleEntries{
 	chroma.GenericSubheading:   "#d787af",
 	chroma.GenericUnderline:    "underline",
 	chroma.Background:          "bg:#121212",
+	Table:                      "bg:#121212",
+	TableHeader:                "#d787af",
+	TableRowAlt:                "bg:#323232",
 }))

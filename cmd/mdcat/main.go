@@ -11,6 +11,8 @@ import (
 
 	"github.com/alecthomas/chroma"
 	"github.com/pgavlin/goldmark"
+	"github.com/pgavlin/goldmark/extension"
+	goldmark_parser "github.com/pgavlin/goldmark/parser"
 	goldmark_renderer "github.com/pgavlin/goldmark/renderer"
 	"github.com/pgavlin/goldmark/text"
 	"github.com/pgavlin/goldmark/util"
@@ -52,6 +54,9 @@ func main() {
 	}
 
 	parser := goldmark.DefaultParser()
+	parser.AddOptions(goldmark_parser.WithParagraphTransformers(
+		util.Prioritized(extension.NewTableParagraphTransformer(), 200),
+	))
 	document := parser.Parse(text.NewReader(source))
 
 	r := renderer.New(
