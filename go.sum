@@ -47,6 +47,8 @@ github.com/pgavlin/ansicsi v0.0.0-20210128180815-facca45e1fdd h1:zo3gi6FOEW0KnRM
 github.com/pgavlin/ansicsi v0.0.0-20210128180815-facca45e1fdd/go.mod h1:EgxeiakKhj1sKJPP8Vcj/6DjHWDTA+5WqdU61WgDyRM=
 github.com/pgavlin/goldmark v1.1.33-0.20201111182858-dba88a1da006 h1:04fWsQqENGxwmhORUOkXxrn0fnTqINpSK/vHaBdVmRA=
 github.com/pgavlin/goldmark v1.1.33-0.20201111182858-dba88a1da006/go.mod h1:MRxHTJrf9FhdfNQ8Hdeh9gmHevC9RJE/fu8M3JIGjoE=
+github.com/pgavlin/goldmark v1.1.33-0.20210916052350-16f491902b32 h1:6dWdvpLPcMW+FQ4k3K/mrPr+y3M8AgwvNL+jkC0i3iM=
+github.com/pgavlin/goldmark v1.1.33-0.20210916052350-16f491902b32/go.mod h1:MRxHTJrf9FhdfNQ8Hdeh9gmHevC9RJE/fu8M3JIGjoE=
 github.com/pgavlin/svg2 v0.0.0-20210914185020-869702aee577 h1:tnDZwsQo9RYoEkyS+ke2viHfXId+AlXVB6JajGuwPBc=
 github.com/pgavlin/svg2 v0.0.0-20210914185020-869702aee577/go.mod h1:/bl9WWdq/0JAXp6wvglMkCf9fcBPhT2SoxG7jP+hYqc=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=

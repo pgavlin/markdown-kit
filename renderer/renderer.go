@@ -1564,6 +1564,9 @@ func (r *Renderer) RenderTableHeader(w util.BufWriter, source []byte, node ast.N
 			return ast.WalkStop, err
 		}
 	} else {
+		if _, err := r.WriteRune(w, borders.vertical()); err != nil {
+			return ast.WalkStop, err
+		}
 		if err := r.WriteByte(w, '\n'); err != nil {
 			return ast.WalkStop, err
 		}
@@ -1584,11 +1587,10 @@ func (r *Renderer) RenderTableHeader(w util.BufWriter, source []byte, node ast.N
 func (r *Renderer) RenderTableRow(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	state := &r.tableStack[len(r.tableStack)-1]
 
-	if enter {
-		if _, err := r.WriteRune(w, borders.vertical()); err != nil {
-			return ast.WalkStop, err
-		}
-	} else {
+	if _, err := r.WriteRune(w, borders.vertical()); err != nil {
+		return ast.WalkStop, err
+	}
+	if !enter {
 		if _, err := r.WriteRune(w, '\n'); err != nil {
 			return ast.WalkStop, err
 		}
@@ -1604,6 +1606,12 @@ func (r *Renderer) RenderTableCell(w util.BufWriter, source []byte, node ast.Nod
 	state := &r.tableStack[len(r.tableStack)-1]
 	if !state.measuring {
 		if enter {
+			if state.rowIndex == 0 && state.columnIndex > 0 {
+				if _, err := r.WriteRune(w, borders.vertical()); err != nil {
+					return ast.WalkStop, err
+				}
+			}
+
 			var style chroma.TokenType
 			switch {
 			case state.rowIndex == 0:
@@ -1616,6 +1624,12 @@ func (r *Renderer) RenderTableCell(w util.BufWriter, source []byte, node ast.Nod
 			if err := r.PushStyle(w, style); err != nil {
 				return ast.WalkStop, err
 			}
+
+			if state.rowIndex != 0 && state.columnIndex > 0 {
+				if _, err := r.WriteRune(w, borders.vertical()); err != nil {
+					return ast.WalkStop, err
+				}
+			}
 		} else {
 			columnWidth := state.columnWidths[state.columnIndex]
 			cellWidth := state.cellWidths[state.cellIndex]
@@ -1625,10 +1639,6 @@ func (r *Renderer) RenderTableCell(w util.BufWriter, source []byte, node ast.Nod
 			}
 
 			if err := r.PopStyle(w); err != nil {
-				return ast.WalkStop, err
-			}
-
-			if _, err := r.WriteRune(w, borders.vertical()); err != nil {
 				return ast.WalkStop, err
 			}
 
