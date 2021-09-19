@@ -16,6 +16,7 @@ import (
 	goldmark_renderer "github.com/pgavlin/goldmark/renderer"
 	"github.com/pgavlin/goldmark/text"
 	"github.com/pgavlin/goldmark/util"
+	"github.com/pgavlin/markdown-kit/indexer"
 	"github.com/pgavlin/markdown-kit/renderer"
 	"github.com/rivo/tview"
 	"github.com/rivo/uniseg"
@@ -234,6 +235,9 @@ type MarkdownView struct {
 	// Node span tree.
 	spanTree *renderer.NodeSpan
 
+	// The document index.
+	index *indexer.DocumentIndex
+
 	// The selection, if any.
 	selection *renderer.NodeSpan
 
@@ -299,6 +303,9 @@ func (mv *MarkdownView) SetText(name, markdown string) *MarkdownView {
 	mv.markdown = []byte(markdown)
 	parser := goldmark.DefaultParser()
 	mv.document = parser.Parse(text.NewReader(mv.markdown))
+	if doc, ok := mv.document.(*ast.Document); ok {
+		mv.index = indexer.Index(doc, mv.markdown)
+	}
 	return mv
 }
 
@@ -581,6 +588,10 @@ func (mv *MarkdownView) HasFocus() bool {
 }
 
 func (mv *MarkdownView) scrollToOffset(offset int) {
+	// TODO(pdg): only scroll if the offset is not already in view? Maybe vertically
+	//            center the line containing the target offset? Whatever's easiest on the
+	//            reading experienace.
+
 	start, end := 0, len(mv.lines)
 	for start != end {
 		i := start + (end-start)/2
@@ -668,47 +679,77 @@ func (mv *MarkdownView) Selection() *renderer.NodeSpan {
 }
 
 // SelectPrevious selects the first node before the current selection that matches the given selector.
-func (mv *MarkdownView) SelectPrevious(selector Selector) {
+func (mv *MarkdownView) SelectPrevious(selector Selector) bool {
 	cursor := mv.selection
 	if cursor == nil {
 		cursor = mv.spanTree
 	}
 	cursor = cursor.Prev
 	if cursor == nil {
-		return
+		return false
 	}
 
 	for cursor = cursor.Prev; cursor != nil; cursor = cursor.Prev {
-		highlight, ok := selector(cursor.Node)
-		if ok {
-			mv.highlightSelection = highlight
-			mv.selection = cursor
-			mv.calculateSelectionSpan(cursor)
-			mv.scrollToOffset(cursor.Start)
-			return
+		if highlight, ok := selector(cursor.Node); ok {
+			mv.SelectSpan(cursor, highlight)
+			return true
 		}
 	}
+
+	return false
 }
 
 // SelectNext selects the first node after the current selection that matches the given selector.
-func (mv *MarkdownView) SelectNext(selector Selector) {
+func (mv *MarkdownView) SelectNext(selector Selector) bool {
 	cursor := mv.selection
 	if cursor == nil {
 		cursor = mv.spanTree
 	}
 	cursor = cursor.Next
 	if cursor == nil {
-		return
+		return false
 	}
 
 	for cursor = cursor.Next; cursor != nil; cursor = cursor.Next {
-		highlight, ok := selector(cursor.Node)
-		if ok {
-			mv.highlightSelection = highlight
-			mv.selection = cursor
-			mv.calculateSelectionSpan(cursor)
-			mv.scrollToOffset(cursor.Start)
-			return
+		if highlight, ok := selector(cursor.Node); ok {
+			mv.SelectSpan(cursor, highlight)
+			return true
 		}
 	}
+
+	return false
+}
+
+// SelectAnchor selects the next heading with the given anchor.
+func (mv *MarkdownView) SelectAnchor(anchor string) bool {
+	if mv.index == nil {
+		return false
+	}
+
+	sections, ok := mv.index.Lookup(anchor)
+	if !ok {
+		return false
+	}
+	selector := func(node ast.Node) (bool, bool) {
+		for _, s := range sections {
+			if s.Start == node {
+				return true, true
+			}
+		}
+		return false, false
+	}
+
+	if !mv.SelectNext(selector) {
+		mv.selection = nil
+		mv.SelectNext(selector)
+	}
+	return true
+}
+
+// SelectSpan selects the given node span.
+func (mv *MarkdownView) SelectSpan(span *renderer.NodeSpan, highlight bool) {
+	mv.highlightSelection = highlight
+	mv.selection = span
+	mv.calculateSelectionSpan(span)
+	mv.scrollToOffset(span.Start)
 }

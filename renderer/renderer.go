@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"image"
+	"image/color"
 	"image/png"
 	"io"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/alecthomas/chroma"
 	"github.com/alecthomas/chroma/lexers"
+	"github.com/eliukblau/pixterm/pkg/ansimage"
 	"github.com/nfnt/resize"
 	"github.com/pgavlin/ansicsi"
 	"github.com/pgavlin/goldmark/ast"
@@ -134,6 +136,70 @@ func (s *NodeSpan) Contains(offset int) bool {
 	return s.Start <= offset && offset < s.End
 }
 
+// An ImageEncoder converts an image to a binary representation that can be displayed by the target output device.
+type ImageEncoder func(w io.Writer, image image.Image, r *Renderer) error
+
+// A KittyGraphicsEncoder encodes image data to a Writer using the kitty graphics protocol.
+func KittyGraphicsEncoder() ImageEncoder {
+	return func(w io.Writer, image image.Image, _ *Renderer) error {
+		var buf bytes.Buffer
+		enc := base64.NewEncoder(base64.StdEncoding, &buf)
+		if err := png.Encode(enc, image); err != nil {
+			return err
+		}
+		defer enc.Close()
+		data := buf.Bytes()
+
+		first := true
+		for len(data) > 0 {
+			if first {
+				if _, err := fmt.Fprintf(w, "\x1b_Gf=100,a=T,"); err != nil {
+					return err
+				}
+				first = false
+			} else {
+				if _, err := fmt.Fprint(w, "\x1b_G"); err != nil {
+					return err
+				}
+			}
+
+			more, b := 0, data
+			if len(data) > 4096 {
+				more, b = 1, data[:4096]
+			}
+			if _, err := fmt.Fprintf(w, "m=%d;", more); err != nil {
+				return err
+			}
+			if _, err := w.Write(b); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprint(w, "\x1b\\"); err != nil {
+				return err
+			}
+
+			data = data[len(b):]
+		}
+
+		return nil
+	}
+}
+
+// An ANSIGraphicsEncoder encodes images to a Writer using ANSI or ASCII characters.
+func ANSIGraphicsEncoder(bg color.Color, ditherMode ansimage.DitheringMode) ImageEncoder {
+	return func(w io.Writer, image image.Image, r *Renderer) error {
+		if r.WordWrap() {
+			maxWidth := uint(r.wordWrap * ansimage.BlockSizeX)
+			image = resize.Thumbnail(maxWidth, uint(image.Bounds().Dy()), image, resize.Bicubic)
+		}
+		ansi, err := ansimage.NewFromImage(image, bg, ditherMode)
+		if err != nil {
+			return err
+		}
+		_, err = w.Write([]byte(ansi.Render()))
+		return err
+	}
+}
+
 // Renderer is a goldmark renderer that produces Markdown output. Due to information loss in goldmark, its output may
 // not be textually identical to the source that produced the AST to be rendered, but the structure should match.
 //
@@ -146,7 +212,9 @@ type Renderer struct {
 	images        bool
 	maxImageWidth int
 	contentRoot   string
+	imageEncoder  ImageEncoder
 	softBreak     bool
+	padToWrap     bool
 
 	listStack  []listState
 	tableStack []tableState
@@ -195,14 +263,31 @@ func WithWordWrap(width int) RendererOption {
 	}
 }
 
+// WithPad enables padding each line of output to the wrap width. This option has no effect when word wrapping is
+// disabled.
+func WithPad(enabled bool) RendererOption {
+	return func(r *Renderer) {
+		r.padToWrap = enabled
+	}
+}
+
 // WithImages enables or disables image rendering. When image rendering is enabled, image links will be omitted
-// and iamge data will be sent inline using the kitty graphics protocol. A line break will be inserted before
-// and after each image. Image rendering is disabled by default.
+// and image data will be sent inline using the renderer's image encoder. The default image encoder encodes
+// image data using the kitty graphics protocol; the image encoder can be changed using the WithImageEncoder
+// option. A line break will be inserted before and after each image. Image rendering is disabled by default.
 func WithImages(on bool, maxWidth int, contentRoot string) RendererOption {
 	return func(r *Renderer) {
 		r.images = on
 		r.maxImageWidth = maxWidth
 		r.contentRoot = contentRoot
+	}
+}
+
+// WithImageEncoder sets the image encoder used by the renderer. The default image encoder encodes image
+// data using the kitty graphics protocol.
+func WithImageEncoder(encoder ImageEncoder) RendererOption {
+	return func(r *Renderer) {
+		r.imageEncoder = encoder
 	}
 }
 
@@ -411,19 +496,21 @@ func (r *Renderer) write(w io.Writer, buf []byte) (int, error) {
 
 		// write up to the newline
 		n, err := w.Write(buf[:newline])
-		written += n
 
 		// measure the text we just wrote
 		writtenWidth := r.measureText(buf[:n])
 
 		if err == nil && hasNewline && n == newline {
-			// pad out to the wrap width if necessary
-			remaining := r.wordWrap - (r.lineWidth + writtenWidth)
-			switch {
-			case remaining < 0:
-				_, err = w.Write(bytes.Repeat([]byte{' '}, r.wordWrap-(-remaining%r.wordWrap)))
-			case remaining > 0:
-				_, err = w.Write(bytes.Repeat([]byte{' '}, remaining))
+			if r.padToWrap {
+				// pad out to the wrap width if necessary
+				remaining := r.wordWrap - (r.lineWidth + writtenWidth)
+				if remaining < 0 {
+					remaining = r.wordWrap - (-remaining % r.wordWrap)
+				}
+				if remaining > 0 {
+					remaining, err = w.Write(bytes.Repeat([]byte{' '}, remaining))
+				}
+				r.byteOffset += remaining
 			}
 
 			if err == nil {
@@ -433,6 +520,9 @@ func (r *Renderer) write(w io.Writer, buf []byte) (int, error) {
 				}
 			}
 		}
+
+		// Account for the written bytes
+		written += n
 
 		r.atNewline = r.atNewline && writtenWidth == 0 || hasNewline && n == newline+1
 		if r.atNewline {
@@ -458,8 +548,7 @@ func (r *Renderer) flushWordBuffer(w io.Writer) error {
 
 	// Flush the buffer. If the currently buffered word would exceed the wrap point, write a newline.
 	if r.lineWidth > 0 && r.lineWidth+wordWidth >= r.wordWrap {
-		_, err := r.write(w, []byte{'\n'})
-		if err != nil {
+		if _, err := r.write(w, []byte{'\n'}); err != nil {
 			return err
 		}
 		r.byteOffset++
@@ -1298,46 +1387,17 @@ func (r *Renderer) renderImage(w util.BufWriter, source []byte, img *ast.Image, 
 
 	image = resize.Thumbnail(uint(r.maxImageWidth), uint(image.Bounds().Dy()), image, resize.Bicubic)
 
-	var buf bytes.Buffer
-	enc := base64.NewEncoder(base64.StdEncoding, &buf)
-	if err := png.Encode(enc, image); err != nil {
-		return err
-	}
-	enc.Close()
-	data := buf.Bytes()
-
 	if _, err = fmt.Fprint(w, "\n"); err != nil {
 		return err
 	}
 
-	first := true
-	for len(data) > 0 {
-		if first {
-			if _, err = fmt.Fprintf(w, "\x1b_Gf=100,a=T,"); err != nil {
-				return err
-			}
-			first = false
-		} else {
-			if _, err = fmt.Fprint(w, "\x1b_G"); err != nil {
-				return err
-			}
-		}
-
-		more, b := 0, data
-		if len(data) > 4096 {
-			more, b = 1, data[:4096]
-		}
-		if _, err = fmt.Fprintf(w, "m=%d;", more); err != nil {
-			return err
-		}
-		if _, err := w.Write(b); err != nil {
-			return err
-		}
-		if _, err = fmt.Fprint(w, "\x1b\\"); err != nil {
-			return err
-		}
-
-		data = data[len(b):]
+	encoder := r.imageEncoder
+	if encoder == nil {
+		encoder = KittyGraphicsEncoder()
+		r.imageEncoder = encoder
+	}
+	if err = encoder(w, image, r); err != nil {
+		return err
 	}
 
 	if _, err = fmt.Fprint(w, "\n"); err != nil {

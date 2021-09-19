@@ -9,12 +9,13 @@ import (
 	"github.com/atotto/clipboard"
 	"github.com/gdamore/tcell/v2"
 	"github.com/pgavlin/goldmark/ast"
+	"github.com/pgavlin/markdown-kit/renderer"
 	mdk "github.com/pgavlin/markdown-kit/tview"
 	"github.com/rivo/tview"
 	"github.com/skratchdot/open-golang/open"
 )
 
-const helpText = `Enter: open the selected URL in the default browser
+const helpText = `Ctrl+o: open the selected URL in the default browser
 
 ]: select the next URL
 
@@ -22,7 +23,10 @@ const helpText = `Enter: open the selected URL in the default browser
 
 }: select the next heading
 
-{: select the previous heading`
+{: select the previous heading
+
+<: go back to the previous selection
+`
 
 func textDimensions(text string) (int, int) {
 	s, w, h := "", 0, 0
@@ -123,6 +127,13 @@ func (td *textDialog) HasFocus() bool {
 	return td.textView.HasFocus()
 }
 
+func getDocumentAnchor(url string) (string, bool) {
+	if !strings.HasPrefix(url, "#") {
+		return "", false
+	}
+	return url[1:], true
+}
+
 func openInBrowser(url string) error {
 	if url == "" {
 		return fmt.Errorf("missing URL")
@@ -150,7 +161,8 @@ type markdownReader struct {
 	helpDialog *textDialog
 	rootPages  *tview.Pages
 
-	query *regexp.Regexp
+	backstack []*renderer.NodeSpan
+	query     *regexp.Regexp
 }
 
 func newMarkdownReader(name, source string, theme *chroma.Style, app *tview.Application) *markdownReader {
@@ -210,11 +222,25 @@ func (r *markdownReader) InputHandler() func(event *tcell.EventKey, setFocus fun
 
 			switch event.Key() {
 			case tcell.KeyCtrlO:
-				if err := openInBrowser(r.focusedLink()); err != nil {
-					r.showErrorDialog("opening issue", err)
+				link := r.focusedLink()
+				if anchor, ok := getDocumentAnchor(link); ok {
+					selection := r.view.Selection()
+					if r.view.SelectAnchor(anchor) && selection != nil {
+						r.backstack = append(r.backstack, selection)
+					}
+				} else {
+					if err := openInBrowser(link); err != nil {
+						r.showErrorDialog("opening issue", err)
+					}
 				}
 			case tcell.KeyRune:
 				switch event.Rune() {
+				case '<':
+					if len(r.backstack) != 0 {
+						last := r.backstack[len(r.backstack)-1]
+						r.backstack = r.backstack[:len(r.backstack)-1]
+						r.view.SelectSpan(last, true)
+					}
 				case 'h':
 					// Show the help
 					r.showDialog(r.helpDialog)

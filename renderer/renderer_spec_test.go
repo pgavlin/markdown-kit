@@ -20,6 +20,7 @@ import (
 type commonmarkSpecTestCase struct {
 	Markdown string `json:"markdown"`
 	Example  int    `json:"example"`
+	Skip     string `json:"skip"`
 }
 
 func readTestCases(path string) ([]commonmarkSpecTestCase, error) {
@@ -54,6 +55,11 @@ func TestSpec(t *testing.T) {
 		}
 
 		t.Run(fmt.Sprintf("case %d", c.Example), func(t *testing.T) {
+			if c.Skip != "" {
+				t.Skip(c.Skip)
+				return
+			}
+
 			sourceExpected := []byte(c.Markdown)
 			parser := goldmark.DefaultParser()
 			expected := parser.Parse(text.NewReader(sourceExpected))

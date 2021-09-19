@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"image/color"
 	_ "image/gif"
 	_ "image/jpeg"
 	"io/ioutil"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/alecthomas/chroma"
+	"github.com/eliukblau/pixterm/pkg/ansimage"
 	"github.com/pgavlin/goldmark"
 	"github.com/pgavlin/goldmark/extension"
 	goldmark_parser "github.com/pgavlin/goldmark/parser"
@@ -23,10 +25,10 @@ import (
 )
 
 func main() {
-	showImages, termWidth, _ := canDisplayImages()
+	supportsImages, termWidth, _ := canDisplayImages()
 
 	width := flag.Uint("w", 0, "the maximum line width for wrappable content")
-	images := flag.Bool("i", showImages, "display images")
+	images := flag.Bool("i", true, "display images")
 	flag.Parse()
 
 	if flag.NArg() != 1 {
@@ -59,11 +61,18 @@ func main() {
 	))
 	document := parser.Parse(text.NewReader(source))
 
+	imageEncoder := renderer.KittyGraphicsEncoder()
+	if *images && !supportsImages {
+		imageEncoder = renderer.ANSIGraphicsEncoder(color.Transparent, ansimage.DitheringWithChars)
+	}
+
 	r := renderer.New(
 		renderer.WithTheme(theme),
 		renderer.WithWordWrap(int(*width)),
 		renderer.WithSoftBreak(*width != 0),
-		renderer.WithImages(*images, termWidth, filepath.Dir(path)))
+		renderer.WithPad(true),
+		renderer.WithImages(*images, termWidth, filepath.Dir(path)),
+		renderer.WithImageEncoder(imageEncoder))
 	renderer := goldmark_renderer.NewRenderer(goldmark_renderer.WithNodeRenderers(util.Prioritized(r, 100)))
 	if err := renderer.Render(os.Stdout, source, document); err != nil {
 		fmt.Fprintf(os.Stderr, "error rendering %v: %v\n", path, err)
