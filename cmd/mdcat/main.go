@@ -25,10 +25,12 @@ import (
 )
 
 func main() {
-	supportsImages, termWidth, _ := canDisplayImages()
+	supportsImages := canDisplayImages()
+	cols, rows, termWidth, termHeight, hasGeometry := terminalGeometry()
 
 	width := flag.Uint("w", 0, "the maximum line width for wrappable content")
 	images := flag.Bool("i", true, "display images")
+	hyperlinks := flag.Bool("h", false, "display hyperlinks instead of link text")
 	flag.Parse()
 
 	if flag.NArg() != 1 {
@@ -66,13 +68,18 @@ func main() {
 		imageEncoder = renderer.ANSIGraphicsEncoder(color.Transparent, ansimage.DitheringWithChars)
 	}
 
-	r := renderer.New(
-		renderer.WithTheme(theme),
+	options := []renderer.RendererOption{renderer.WithTheme(theme),
 		renderer.WithWordWrap(int(*width)),
 		renderer.WithSoftBreak(*width != 0),
 		renderer.WithPad(true),
+		renderer.WithHyperlinks(*hyperlinks),
 		renderer.WithImages(*images, termWidth, filepath.Dir(path)),
-		renderer.WithImageEncoder(imageEncoder))
+		renderer.WithImageEncoder(imageEncoder)}
+	if hasGeometry {
+		options = append(options, renderer.WithGeometry(cols, rows, termWidth, termHeight))
+	}
+
+	r := renderer.New(options...)
 	renderer := goldmark_renderer.NewRenderer(goldmark_renderer.WithNodeRenderers(util.Prioritized(r, 100)))
 	if err := renderer.Render(os.Stdout, source, document); err != nil {
 		fmt.Fprintf(os.Stderr, "error rendering %v: %v\n", path, err)

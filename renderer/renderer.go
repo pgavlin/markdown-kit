@@ -2,12 +2,11 @@ package renderer
 
 import (
 	"bytes"
-	"encoding/base64"
 	"fmt"
 	"image"
 	"image/color"
-	"image/png"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -27,7 +26,9 @@ import (
 	"github.com/pgavlin/goldmark/renderer"
 	"github.com/pgavlin/goldmark/text"
 	"github.com/pgavlin/goldmark/util"
+	"github.com/pgavlin/markdown-kit/internal/kitty"
 	"github.com/pgavlin/markdown-kit/styles"
+	"github.com/pgavlin/svg2"
 	"github.com/rivo/uniseg"
 )
 
@@ -137,66 +138,37 @@ func (s *NodeSpan) Contains(offset int) bool {
 }
 
 // An ImageEncoder converts an image to a binary representation that can be displayed by the target output device.
-type ImageEncoder func(w io.Writer, image image.Image, r *Renderer) error
+type ImageEncoder func(w io.Writer, image image.Image, r *Renderer) (int, error)
 
 // A KittyGraphicsEncoder encodes image data to a Writer using the kitty graphics protocol.
 func KittyGraphicsEncoder() ImageEncoder {
-	return func(w io.Writer, image image.Image, _ *Renderer) error {
-		var buf bytes.Buffer
-		enc := base64.NewEncoder(base64.StdEncoding, &buf)
-		if err := png.Encode(enc, image); err != nil {
-			return err
-		}
-		defer enc.Close()
-		data := buf.Bytes()
-
-		first := true
-		for len(data) > 0 {
-			if first {
-				if _, err := fmt.Fprintf(w, "\x1b_Gf=100,a=T,"); err != nil {
-					return err
-				}
-				first = false
-			} else {
-				if _, err := fmt.Fprint(w, "\x1b_G"); err != nil {
-					return err
-				}
-			}
-
-			more, b := 0, data
-			if len(data) > 4096 {
-				more, b = 1, data[:4096]
-			}
-			if _, err := fmt.Fprintf(w, "m=%d;", more); err != nil {
-				return err
-			}
-			if _, err := w.Write(b); err != nil {
-				return err
-			}
-			if _, err := fmt.Fprint(w, "\x1b\\"); err != nil {
-				return err
-			}
-
-			data = data[len(b):]
-		}
-
-		return nil
+	return func(w io.Writer, image image.Image, r *Renderer) (int, error) {
+		return kitty.Encode(w, image)
 	}
 }
 
 // An ANSIGraphicsEncoder encodes images to a Writer using ANSI or ASCII characters.
 func ANSIGraphicsEncoder(bg color.Color, ditherMode ansimage.DitheringMode) ImageEncoder {
-	return func(w io.Writer, image image.Image, r *Renderer) error {
-		if r.WordWrap() {
-			maxWidth := uint(r.wordWrap * ansimage.BlockSizeX)
-			image = resize.Thumbnail(maxWidth, uint(image.Bounds().Dy()), image, resize.Bicubic)
+	return func(w io.Writer, image image.Image, r *Renderer) (int, error) {
+		if r.WordWrap() && r.cols != 0 {
+			cellWidth := r.width / r.cols
+
+			// compute the image's width in cells
+			imageWidthInCells := int(math.Ceil(float64(image.Bounds().Dx()) / float64(cellWidth)))
+
+			// if the encoder will use more cells than expected, scale the image down
+			maxWidthInCells := r.wordWrap
+			if imageWidthInCells < maxWidthInCells {
+				maxWidthInCells = imageWidthInCells
+			}
+
+			image = resize.Thumbnail(uint(maxWidthInCells*ansimage.BlockSizeX), uint(image.Bounds().Dy()), image, resize.Bicubic)
 		}
 		ansi, err := ansimage.NewFromImage(image, bg, ditherMode)
 		if err != nil {
-			return err
+			return 0, err
 		}
-		_, err = w.Write([]byte(ansi.Render()))
-		return err
+		return w.Write([]byte(ansi.Render()))
 	}
 }
 
@@ -207,6 +179,10 @@ func ANSIGraphicsEncoder(bg color.Color, ditherMode ansimage.DitheringMode) Imag
 // provided by Renderer in order to retain proper indentation and prefices inside of lists and block quotes.
 type Renderer struct {
 	theme         *chroma.Style
+	cols          int
+	rows          int
+	width         int
+	height        int
 	wordWrap      int
 	hyperlinks    bool
 	images        bool
@@ -274,12 +250,22 @@ func WithPad(enabled bool) RendererOption {
 // WithImages enables or disables image rendering. When image rendering is enabled, image links will be omitted
 // and image data will be sent inline using the renderer's image encoder. The default image encoder encodes
 // image data using the kitty graphics protocol; the image encoder can be changed using the WithImageEncoder
-// option. A line break will be inserted before and after each image. Image rendering is disabled by default.
+// option. Image rendering is disabled by default.
 func WithImages(on bool, maxWidth int, contentRoot string) RendererOption {
 	return func(r *Renderer) {
 		r.images = on
 		r.maxImageWidth = maxWidth
 		r.contentRoot = contentRoot
+	}
+}
+
+// WithGeometry sets the geometry of the output.
+func WithGeometry(cols, rows, width, height int) RendererOption {
+	return func(r *Renderer) {
+		r.cols = cols
+		r.rows = rows
+		r.width = width
+		r.height = height
 	}
 }
 
@@ -501,7 +487,7 @@ func (r *Renderer) write(w io.Writer, buf []byte) (int, error) {
 		writtenWidth := r.measureText(buf[:n])
 
 		if err == nil && hasNewline && n == newline {
-			if r.padToWrap {
+			if r.padToWrap && r.wordWrap > 0 {
 				// pad out to the wrap width if necessary
 				remaining := r.wordWrap - (r.lineWidth + writtenWidth)
 				if remaining < 0 {
@@ -1385,23 +1371,59 @@ func (r *Renderer) renderImage(w util.BufWriter, source []byte, img *ast.Image, 
 		return err
 	}
 
-	image = resize.Thumbnail(uint(r.maxImageWidth), uint(image.Bounds().Dy()), image, resize.Bicubic)
-
-	if _, err = fmt.Fprint(w, "\n"); err != nil {
-		return err
+	if svgImage, ok := image.(*svg.SVGImage); ok && r.cols != 0 && r.rows != 0 {
+		cellHeight := r.height / r.rows
+		heightInCells := float64(image.Bounds().Dy()) / float64(cellHeight)
+		if heightInCells < 1 {
+			if image, err = svgImage.Scale(1.0 / heightInCells); err != nil {
+				return err
+			}
+		}
 	}
 
+	if r.maxImageWidth != 0 {
+		image = resize.Thumbnail(uint(r.maxImageWidth), uint(image.Bounds().Dy()), image, resize.Bicubic)
+	}
+
+	// Encoders write directly to the destination, so we need to do a little bit of extra accounting here.
+	//
+	// First, flush the current word and deal with line starts.
+	if err := r.flushWordBuffer(w); err != nil {
+		return err
+	}
+	if r.atNewline && image.Bounds().Dx() > 0 {
+		if err := r.beginLine(w); err != nil {
+			return err
+		}
+	}
+
+	// Next, write the image itself and account for its bytes.
 	encoder := r.imageEncoder
 	if encoder == nil {
 		encoder = KittyGraphicsEncoder()
 		r.imageEncoder = encoder
 	}
-	if err = encoder(w, image, r); err != nil {
+	written, err := encoder(w, image, r)
+	if err != nil {
 		return err
 	}
+	r.byteOffset += written
 
-	if _, err = fmt.Fprint(w, "\n"); err != nil {
-		return err
+	// Finally, adjust the line width per the image's width and height in cells.
+	if r.WordWrap() && r.cols != 0 && r.rows != 0 {
+		cellWidth, cellHeight := r.width/r.cols, r.height/r.rows
+
+		heightInCells := int(math.Ceil(float64(image.Bounds().Dy()) / float64(cellHeight)))
+		if heightInCells > 1 {
+			r.lineWidth = 0
+		}
+
+		widthInCells := int(math.Ceil(float64(image.Bounds().Dx()) / float64(cellWidth)))
+		r.lineWidth += widthInCells
+
+		if widthInCells > 0 {
+			r.atNewline = false
+		}
 	}
 
 	return nil
