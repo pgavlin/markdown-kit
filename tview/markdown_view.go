@@ -13,6 +13,8 @@ import (
 	"github.com/pgavlin/ansicsi"
 	"github.com/pgavlin/goldmark"
 	"github.com/pgavlin/goldmark/ast"
+	"github.com/pgavlin/goldmark/extension"
+	goldmark_parser "github.com/pgavlin/goldmark/parser"
 	goldmark_renderer "github.com/pgavlin/goldmark/renderer"
 	"github.com/pgavlin/goldmark/text"
 	"github.com/pgavlin/goldmark/util"
@@ -302,6 +304,9 @@ func (mv *MarkdownView) SetText(name, markdown string) *MarkdownView {
 	mv.name = name
 	mv.markdown = []byte(markdown)
 	parser := goldmark.DefaultParser()
+	parser.AddOptions(goldmark_parser.WithParagraphTransformers(
+		util.Prioritized(extension.NewTableParagraphTransformer(), 200),
+	))
 	mv.document = parser.Parse(text.NewReader(mv.markdown))
 	if doc, ok := mv.document.(*ast.Document); ok {
 		mv.index = indexer.Index(doc, mv.markdown)
