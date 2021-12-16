@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"io"
+	"io/ioutil"
 	"math"
 	"net/http"
 	"net/url"
@@ -28,7 +29,7 @@ import (
 	"github.com/pgavlin/goldmark/util"
 	"github.com/pgavlin/markdown-kit/internal/kitty"
 	"github.com/pgavlin/markdown-kit/styles"
-	"github.com/pgavlin/svg2"
+	svg "github.com/pgavlin/svg2"
 	"github.com/rivo/uniseg"
 )
 
@@ -101,15 +102,6 @@ type tableState struct {
 	cellIndex   int
 
 	measuring bool
-}
-
-type countingWriter struct {
-	n int
-}
-
-func (w *countingWriter) Write(b []byte) (int, error) {
-	w.n += len(b)
-	return len(b), nil
 }
 
 // A NodeSpan maps from an AST node to its representative span in a rendered document. The NodeSpans for an AST form
@@ -1631,20 +1623,20 @@ func (r *Renderer) RenderTable(w util.BufWriter, source []byte, node ast.Node, e
 				contentRoot:   r.contentRoot,
 				softBreak:     r.softBreak,
 				tableStack:    []tableState{{measuring: true}},
+				styles:        r.styles,
 			}
 			cellRenderer := renderer.NewRenderer(renderer.WithNodeRenderers(util.Prioritized(cr, 100)))
-			dest := &countingWriter{}
-			if err := cellRenderer.Render(dest, source, cell); err != nil {
+			if err := cellRenderer.Render(ioutil.Discard, source, cell); err != nil {
 				return ast.WalkStop, err
 			}
 
 			for col >= len(columnWidths) {
 				columnWidths = append(columnWidths, 0)
 			}
-			if columnWidths[col] < dest.n {
-				columnWidths[col] = dest.n
+			if columnWidths[col] < cr.lineWidth {
+				columnWidths[col] = cr.lineWidth
 			}
-			cellWidths = append(cellWidths, dest.n)
+			cellWidths = append(cellWidths, cr.lineWidth)
 		}
 	}
 

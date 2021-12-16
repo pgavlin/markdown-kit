@@ -30,7 +30,7 @@ func main() {
 
 	width := flag.Uint("w", 0, "the maximum line width for wrappable content")
 	images := flag.Bool("i", true, "display images")
-	hyperlinks := flag.Bool("h", false, "display hyperlinks instead of link text")
+	hyperlinks := flag.Bool("l", false, "display hyperlinks instead of link text")
 	flag.Parse()
 
 	if flag.NArg() != 1 {
