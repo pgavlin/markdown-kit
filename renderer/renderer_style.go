@@ -34,9 +34,17 @@ func (r *Renderer) writeDelta(w io.Writer, base, new chroma.StyleEntry) error {
 		if err := r.writeColorSGR(w, "48", new.Background); err != nil {
 			return err
 		}
+	} else if !new.Background.IsSet() && !base.IsZero() && base.Background.IsSet() {
+		if err := r.writeSGR(w, "49"); err != nil {
+			return err
+		}
 	}
 	if new.Colour.IsSet() && (base.IsZero() || new.Colour != base.Colour) {
 		if err := r.writeColorSGR(w, "38", new.Colour); err != nil {
+			return err
+		}
+	} else if !new.Colour.IsSet() && !base.IsZero() && base.Colour.IsSet() {
+		if err := r.writeSGR(w, "39"); err != nil {
 			return err
 		}
 	}
@@ -58,19 +66,29 @@ func (r *Renderer) writeDelta(w io.Writer, base, new chroma.StyleEntry) error {
 	return nil
 }
 
-func (r *Renderer) PushStyle(w io.Writer, token chroma.TokenType) error {
+// resolveStyle looks up the token's style in the theme and applies inheritance
+// from the current top of the style stack. Returns the resolved style entry and
+// true, or a zero entry and false if the theme is nil or has no style for the token.
+func (r *Renderer) resolveStyle(token chroma.TokenType) (chroma.StyleEntry, bool) {
 	if r.theme == nil {
-		return nil
+		return chroma.StyleEntry{}, false
 	}
 
 	tokenStyle := r.theme.Get(token)
 	if tokenStyle.IsZero() {
-		return nil
+		return chroma.StyleEntry{}, false
 	}
 
 	var base chroma.StyleEntry
 	if len(r.styles) != 0 {
 		base = r.styles[len(r.styles)-1]
+	}
+	// Inherit colors from parent when unset.
+	if !tokenStyle.Background.IsSet() && base.Background.IsSet() {
+		tokenStyle.Background = base.Background
+	}
+	if !tokenStyle.Colour.IsSet() && base.Colour.IsSet() {
+		tokenStyle.Colour = base.Colour
 	}
 	if tokenStyle.Bold == chroma.Pass {
 		tokenStyle.Bold = base.Bold
@@ -81,10 +99,23 @@ func (r *Renderer) PushStyle(w io.Writer, token chroma.TokenType) error {
 	if tokenStyle.Italic == chroma.Pass {
 		tokenStyle.Italic = base.Italic
 	}
-	if err := r.writeDelta(w, base, tokenStyle); err != nil {
+	return tokenStyle, true
+}
+
+func (r *Renderer) PushStyle(w io.Writer, token chroma.TokenType) error {
+	resolved, ok := r.resolveStyle(token)
+	if !ok {
+		return nil
+	}
+
+	var base chroma.StyleEntry
+	if len(r.styles) != 0 {
+		base = r.styles[len(r.styles)-1]
+	}
+	if err := r.writeDelta(w, base, resolved); err != nil {
 		return err
 	}
-	r.styles = append(r.styles, tokenStyle)
+	r.styles = append(r.styles, resolved)
 	return nil
 }
 

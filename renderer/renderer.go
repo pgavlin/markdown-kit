@@ -6,7 +6,6 @@ import (
 	"image"
 	"image/color"
 	"io"
-	"io/ioutil"
 	"math"
 	"net/http"
 	"net/url"
@@ -19,9 +18,9 @@ import (
 
 	"github.com/alecthomas/chroma"
 	"github.com/alecthomas/chroma/lexers"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/eliukblau/pixterm/pkg/ansimage"
 	"github.com/nfnt/resize"
-	"github.com/pgavlin/ansicsi"
 	"github.com/pgavlin/goldmark/ast"
 	xast "github.com/pgavlin/goldmark/extension/ast"
 	"github.com/pgavlin/goldmark/renderer"
@@ -30,7 +29,6 @@ import (
 	"github.com/pgavlin/markdown-kit/internal/kitty"
 	"github.com/pgavlin/markdown-kit/styles"
 	svg "github.com/pgavlin/svg2"
-	"github.com/rivo/uniseg"
 )
 
 type blockState struct {
@@ -439,18 +437,7 @@ func (r *Renderer) Writer(w io.Writer) io.Writer {
 }
 
 func (r *Renderer) measureText(buf []byte) int {
-	// Measure each segment of the word that is bounded by control codes.
-	width := 0
-	for start, end := 0, 0; start < len(buf); {
-		if _, sz := ansicsi.Decode(buf[end:]); sz != 0 || end == len(buf) {
-			width += uniseg.GraphemeClusterCount(string(buf[start:end]))
-			start = end + sz
-			end = start
-		} else {
-			end++
-		}
-	}
-	return width
+	return ansi.StringWidth(string(buf))
 }
 
 // write writes a slice of bytes to an io.Writer, ensuring that appropriate indentation and prefices
@@ -1151,6 +1138,9 @@ func (r *Renderer) shouldPadCodeSpan(source []byte, node *ast.CodeSpan) bool {
 // RenderCodeSpan renders an *ast.CodeSpan node to the given BufWriter.
 func (r *Renderer) RenderCodeSpan(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if !enter {
+		if err := r.PopStyle(w); err != nil {
+			return ast.WalkStop, err
+		}
 		r.PopWordWrap()
 		r.CloseSpan()
 		return ast.WalkContinue, nil
@@ -1158,6 +1148,9 @@ func (r *Renderer) RenderCodeSpan(w util.BufWriter, source []byte, node ast.Node
 
 	r.OpenSpan(node)
 	r.PushWordWrap(false)
+	if err := r.PushStyle(w, styles.CodeSpan); err != nil {
+		return ast.WalkStop, err
+	}
 
 	// TODO:
 	// - case 330, 331, single space stripping -> contents need an additional leading and trailing space
@@ -1199,16 +1192,42 @@ func (r *Renderer) RenderCodeSpan(w util.BufWriter, source []byte, node ast.Node
 
 // RenderEmphasis renders an *ast.Emphasis node to the given BufWriter.
 func (r *Renderer) RenderEmphasis(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+	em := node.(*ast.Emphasis)
+
+	if r.theme == nil {
+		// No theme: write raw markers for round-tripping.
+		if enter {
+			r.OpenSpan(node)
+		} else {
+			r.CloseSpan()
+		}
+		if _, err := r.WriteString(w, strings.Repeat(string([]byte{em.Marker}), em.Level)); err != nil {
+			return ast.WalkStop, err
+		}
+		return ast.WalkContinue, nil
+	}
+
 	if enter {
 		r.OpenSpan(node)
+		var token chroma.TokenType
+		switch {
+		case em.Level >= 3:
+			token = styles.StrongEmph
+		case em.Level >= 2:
+			token = chroma.GenericStrong
+		default:
+			token = chroma.GenericEmph
+		}
+		if err := r.PushStyle(w, token); err != nil {
+			return ast.WalkStop, err
+		}
 	} else {
+		if err := r.PopStyle(w); err != nil {
+			return ast.WalkStop, err
+		}
 		r.CloseSpan()
 	}
 
-	em := node.(*ast.Emphasis)
-	if _, err := r.WriteString(w, strings.Repeat(string([]byte{em.Marker}), em.Level)); err != nil {
-		return ast.WalkStop, err
-	}
 	return ast.WalkContinue, nil
 }
 
@@ -1626,7 +1645,7 @@ func (r *Renderer) RenderTable(w util.BufWriter, source []byte, node ast.Node, e
 				styles:        r.styles,
 			}
 			cellRenderer := renderer.NewRenderer(renderer.WithNodeRenderers(util.Prioritized(cr, 100)))
-			if err := cellRenderer.Render(ioutil.Discard, source, cell); err != nil {
+			if err := cellRenderer.Render(io.Discard, source, cell); err != nil {
 				return ast.WalkStop, err
 			}
 
@@ -1638,6 +1657,203 @@ func (r *Renderer) RenderTable(w util.BufWriter, source []byte, node ast.Node, e
 			}
 			cellWidths = append(cellWidths, cr.lineWidth)
 		}
+	}
+
+	// Check if the table exceeds the available width and needs constraining.
+	borderWidth := len(columnWidths) + 1 // one │ per column + trailing │
+	naturalTotal := 0
+	for _, w := range columnWidths {
+		naturalTotal += w
+	}
+	totalTableWidth := borderWidth + naturalTotal
+
+	if r.wordWrap > 0 && totalTableWidth > r.wordWrap {
+		// Proportionally shrink columns to fit within the wrap width.
+		available := r.wordWrap - borderWidth
+		if available < len(columnWidths) {
+			available = len(columnWidths) // minimum 1 char per column
+		}
+
+		constrainedWidths := make([]int, len(columnWidths))
+		remaining := available
+		for i, w := range columnWidths {
+			constrainedWidths[i] = w * available / naturalTotal
+			if constrainedWidths[i] < 1 {
+				constrainedWidths[i] = 1
+			}
+			remaining -= constrainedWidths[i]
+		}
+		// Distribute rounding remainder to the naturally widest columns.
+		for remaining > 0 {
+			widest := 0
+			for i := 1; i < len(columnWidths); i++ {
+				if columnWidths[i] > columnWidths[widest] {
+					widest = i
+				}
+			}
+			constrainedWidths[widest]++
+			remaining--
+			// Mark as used so next iteration picks another column if needed.
+			columnWidths[widest] = 0
+		}
+
+		// Pre-render all cells with word wrapping applied at the constrained widths.
+		numCols := len(constrainedWidths)
+		type cellData struct {
+			lines []string // rendered lines for this cell
+		}
+		var rows [][]cellData // rows[rowIdx][colIdx]
+
+		for rowIdx, row := 0, table.FirstChild(); row != nil; rowIdx, row = rowIdx+1, row.NextSibling() {
+			// Determine the row style so we can seed the cell renderer's
+			// style stack. This ensures that nested PopStyle calls (e.g.
+			// after an inline code span) restore to the row's background
+			// color rather than resetting it.
+			var rowStyleToken chroma.TokenType
+			switch {
+			case rowIdx == 0:
+				rowStyleToken = styles.TableHeader
+			case rowIdx%2 == 0:
+				rowStyleToken = styles.TableRowAlt
+			default:
+				rowStyleToken = styles.TableRow
+			}
+
+			var rowCells []cellData
+			for col, cell := 0, row.FirstChild(); cell != nil; col, cell = col+1, cell.NextSibling() {
+				colWidth := constrainedWidths[col]
+
+				// Render cell content with no word wrap (same as measurement), then
+				// use ansi.Wrap to word-wrap + hard-wrap to the column width.
+				cr := &Renderer{
+					theme:         r.theme,
+					wordWrap:      0,
+					hyperlinks:    r.hyperlinks,
+					images:        r.images,
+					maxImageWidth: r.maxImageWidth,
+					contentRoot:   r.contentRoot,
+					softBreak:     r.softBreak,
+					tableStack:    []tableState{{measuring: true}},
+					styles:        r.styles,
+				}
+				// Silently push the row style so that style pops during
+				// pre-rendering restore to the row background, not the
+				// terminal default.
+				if resolved, ok := cr.resolveStyle(rowStyleToken); ok {
+					cr.styles = append(cr.styles[:len(cr.styles):len(cr.styles)], resolved)
+				}
+				var buf bytes.Buffer
+				cellRenderer := renderer.NewRenderer(renderer.WithNodeRenderers(util.Prioritized(cr, 100)))
+				if err := cellRenderer.Render(&buf, source, cell); err != nil {
+					return ast.WalkStop, err
+				}
+
+				content := strings.TrimRight(buf.String(), "\n")
+				// Word-wrap and hard-wrap the cell content to the column width.
+				content = ansi.Wrap(content, colWidth, "")
+				var lines []string
+				if content == "" {
+					lines = []string{""}
+				} else {
+					lines = strings.Split(content, "\n")
+				}
+				rowCells = append(rowCells, cellData{lines: lines})
+			}
+			// Pad with empty cells if row has fewer columns.
+			for len(rowCells) < numCols {
+				rowCells = append(rowCells, cellData{lines: []string{""}})
+			}
+			rows = append(rows, rowCells)
+		}
+
+		// Push a table state so renderTableBorder works.
+		r.tableStack = append(r.tableStack, tableState{
+			columnWidths: constrainedWidths,
+			alignments:   table.Alignments,
+		})
+
+		// Disable word wrapping while assembling the table — the cell content
+		// has already been wrapped to fit within the constrained column widths.
+		r.PushWordWrap(false)
+
+		// Assemble the table output.
+		// Top border.
+		if err := r.renderTableBorder(w, borders.topLeft(), borders.topJoin(), borders.topRight()); err != nil {
+			return ast.WalkStop, err
+		}
+
+		for rowIdx, rowCells := range rows {
+			// Determine the max number of sub-lines in this row.
+			maxLines := 0
+			for _, cell := range rowCells {
+				if len(cell.lines) > maxLines {
+					maxLines = len(cell.lines)
+				}
+			}
+
+			// Determine the style for this row.
+			var style chroma.TokenType
+			switch {
+			case rowIdx == 0:
+				style = styles.TableHeader
+			case rowIdx%2 == 0:
+				style = styles.TableRowAlt
+			default:
+				style = styles.TableRow
+			}
+
+			// Write each sub-line of the row.
+			for lineIdx := 0; lineIdx < maxLines; lineIdx++ {
+				if _, err := r.WriteRune(w, borders.vertical()); err != nil {
+					return ast.WalkStop, err
+				}
+				for colIdx, cell := range rowCells {
+					if err := r.PushStyle(w, style); err != nil {
+						return ast.WalkStop, err
+					}
+
+					var cellLine string
+					if lineIdx < len(cell.lines) {
+						cellLine = cell.lines[lineIdx]
+					}
+					lineWidth := ansi.StringWidth(cellLine)
+					if _, err := r.WriteString(w, cellLine); err != nil {
+						return ast.WalkStop, err
+					}
+					// Pad to column width.
+					pad := constrainedWidths[colIdx] - lineWidth
+					if pad > 0 {
+						if _, err := r.WriteString(w, strings.Repeat(" ", pad)); err != nil {
+							return ast.WalkStop, err
+						}
+					}
+
+					if err := r.PopStyle(w); err != nil {
+						return ast.WalkStop, err
+					}
+					if _, err := r.WriteRune(w, borders.vertical()); err != nil {
+						return ast.WalkStop, err
+					}
+				}
+				if err := r.WriteByte(w, '\n'); err != nil {
+					return ast.WalkStop, err
+				}
+			}
+
+			// After header row, emit middle border.
+			if rowIdx == 0 {
+				if err := r.renderTableBorder(w, borders.middleLeft(), borders.middleJoin(), borders.middleRight()); err != nil {
+					return ast.WalkStop, err
+				}
+			}
+		}
+
+		r.PopWordWrap()
+
+		// Bottom border and cleanup are handled by the !enter path of RenderTable,
+		// which runs even with WalkSkipChildren. The tableStack entry remains pushed
+		// so renderTableBorder can access constrainedWidths.
+		return ast.WalkSkipChildren, nil
 	}
 
 	r.tableStack = append(r.tableStack, tableState{

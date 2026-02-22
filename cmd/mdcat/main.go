@@ -6,7 +6,6 @@ import (
 	"image/color"
 	_ "image/gif"
 	_ "image/jpeg"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -39,7 +38,7 @@ func main() {
 	}
 	path := flag.Arg(0)
 
-	source, err := ioutil.ReadFile(path)
+	source, err := os.ReadFile(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error opening %v: %v\n", path, err)
 		os.Exit(-1)
@@ -68,13 +67,15 @@ func main() {
 		imageEncoder = renderer.ANSIGraphicsEncoder(color.Transparent, ansimage.DitheringWithChars)
 	}
 
-	options := []renderer.RendererOption{renderer.WithTheme(theme),
+	options := []renderer.RendererOption{
+		renderer.WithTheme(theme),
 		renderer.WithWordWrap(int(*width)),
 		renderer.WithSoftBreak(*width != 0),
 		renderer.WithPad(true),
 		renderer.WithHyperlinks(*hyperlinks),
 		renderer.WithImages(*images, termWidth, filepath.Dir(path)),
-		renderer.WithImageEncoder(imageEncoder)}
+		renderer.WithImageEncoder(imageEncoder),
+	}
 	if hasGeometry {
 		options = append(options, renderer.WithGeometry(cols, rows, termWidth, termHeight))
 	}

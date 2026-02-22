@@ -9,4 +9,7 @@ const (
 	TableHeader
 	TableRow
 	TableRowAlt
+
+	StrongEmph
+	CodeSpan
 )

@@ -44,6 +44,10 @@ type indexer struct {
 }
 
 func (i *indexer) walk(n ast.Node, enter bool) (ast.WalkStatus, error) {
+	if !enter {
+		return ast.WalkContinue, nil
+	}
+
 	heading, ok := n.(*ast.Heading)
 	if !ok {
 		return ast.WalkContinue, nil

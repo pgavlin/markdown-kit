@@ -3,7 +3,7 @@ package renderer
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -18,7 +18,7 @@ import (
 var testdataPath = filepath.Join("..", "internal", "testdata")
 
 func TestWordWrap(t *testing.T) {
-	input, err := ioutil.ReadFile(filepath.Join(testdataPath, "getting-started.md"))
+	input, err := os.ReadFile(filepath.Join(testdataPath, "getting-started.md"))
 	require.NoError(t, err)
 
 	source := input
@@ -29,7 +29,7 @@ func TestWordWrap(t *testing.T) {
 	for _, wrap := range cases {
 		filename := fmt.Sprintf("getting-started.wrapped.%d.md", wrap)
 		t.Run(filename, func(t *testing.T) {
-			expected, err := ioutil.ReadFile(filepath.Join(testdataPath, filename))
+			expected, err := os.ReadFile(filepath.Join(testdataPath, filename))
 			require.NoError(t, err)
 
 			var buf bytes.Buffer

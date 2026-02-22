@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -15,7 +14,7 @@ func main() {
 		os.Exit(-1)
 	}
 
-	doc, err := ioutil.ReadFile(os.Args[1])
+	doc, err := os.ReadFile(os.Args[1])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to read %v: %v\n", os.Args[1], err)
 		os.Exit(-1)

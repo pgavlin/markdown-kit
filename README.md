@@ -12,7 +12,7 @@ as well as a selection of CLI tools built atop these packages.
   document navigation. The `mdcat` tool uses this package to render colorized Markdown to the 
   terminal.
 - Package `tview` provides a [`tview`](https://github.com/rivo/tview) component for displaying and 
-  navigating Markdown documents. The `mdreader` tool uses this package to implement a 
+  navigating Markdown documents. The `md` tool uses this package to implement a
   terminal-based reader for Markdown documents.
 - Package `odt` provides a converter from Markdown to OpenDocument text. The `md2odt` tool provides 
   a CLI wrapper over this package.

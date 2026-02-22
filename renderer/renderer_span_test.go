@@ -61,5 +61,4 @@ Here's a [link](http://google.com).
 	assert.True(t, ok)
 	assert.Equal(t, 42, tree.Children[3].Start)
 	assert.Equal(t, len(input), tree.Children[3].End)
-
 }
