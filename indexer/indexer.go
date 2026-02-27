@@ -39,13 +39,20 @@ func WithAnchors(anchors AnchorFunc) IndexOption {
 	}
 }
 
+// pendingAnchor stores an HTML anchor ID along with the AST node it was found in.
+type pendingAnchor struct {
+	id   string
+	node ast.Node
+}
+
 type indexer struct {
 	anchorFunc AnchorFunc
 	source     []byte
 
 	sectionStack   []*Section
 	anchors        map[string][]*Section
-	pendingAnchors []string // anchors from <a id="..."> tags awaiting the next heading
+	nodeAnchors    map[string][]ast.Node
+	pendingAnchors []pendingAnchor
 }
 
 func (i *indexer) walk(n ast.Node, enter bool) (ast.WalkStatus, error) {
@@ -59,7 +66,10 @@ func (i *indexer) walk(n ast.Node, enter bool) (ast.WalkStatus, error) {
 		for j := 0; j < segs.Len(); j++ {
 			seg := segs.At(j)
 			if m := anchorIDRegexp.FindSubmatch(seg.Value(i.source)); m != nil {
-				i.pendingAnchors = append(i.pendingAnchors, string(m[1]))
+				i.pendingAnchors = append(i.pendingAnchors, pendingAnchor{
+					id:   string(m[1]),
+					node: raw,
+				})
 			}
 		}
 		return ast.WalkContinue, nil
@@ -78,8 +88,9 @@ func (i *indexer) walk(n ast.Node, enter bool) (ast.WalkStatus, error) {
 	i.anchors[newSection.Anchor] = append(i.anchors[newSection.Anchor], newSection)
 
 	// Also register any pending anchors from preceding <a id="..."> tags.
-	for _, anchor := range i.pendingAnchors {
-		i.anchors[anchor] = append(i.anchors[anchor], newSection)
+	for _, pa := range i.pendingAnchors {
+		i.anchors[pa.id] = append(i.anchors[pa.id], newSection)
+		i.nodeAnchors[pa.id] = append(i.nodeAnchors[pa.id], pa.node)
 	}
 	i.pendingAnchors = i.pendingAnchors[:0]
 
@@ -106,6 +117,7 @@ func Index(document *ast.Document, source []byte, options ...IndexOption) *Docum
 		anchorFunc:   GitHubFlavoredMarkdown,
 		sectionStack: []*Section{{Start: document}},
 		anchors:      map[string][]*Section{},
+		nodeAnchors:  map[string][]ast.Node{},
 	}
 	for _, o := range options {
 		o(indexer)
@@ -117,14 +129,16 @@ func Index(document *ast.Document, source []byte, options ...IndexOption) *Docum
 	// to the current (innermost) section.
 	if len(indexer.pendingAnchors) > 0 {
 		current := indexer.sectionStack[len(indexer.sectionStack)-1]
-		for _, anchor := range indexer.pendingAnchors {
-			indexer.anchors[anchor] = append(indexer.anchors[anchor], current)
+		for _, pa := range indexer.pendingAnchors {
+			indexer.anchors[pa.id] = append(indexer.anchors[pa.id], current)
+			indexer.nodeAnchors[pa.id] = append(indexer.nodeAnchors[pa.id], pa.node)
 		}
 	}
 
 	return &DocumentIndex{
-		toc:     indexer.sectionStack[0],
-		anchors: indexer.anchors,
+		toc:         indexer.sectionStack[0],
+		anchors:     indexer.anchors,
+		nodeAnchors: indexer.nodeAnchors,
 	}
 }
 
@@ -152,8 +166,9 @@ func (s *Section) Walk(walker ast.Walker) error {
 
 // A DocumentIndex maps from anchors to Sections.
 type DocumentIndex struct {
-	toc     *Section
-	anchors map[string][]*Section
+	toc         *Section
+	anchors     map[string][]*Section
+	nodeAnchors map[string][]ast.Node
 }
 
 // TableOfContents returns the root fo the document's section tree.
@@ -166,4 +181,25 @@ func (index *DocumentIndex) TableOfContents() *Section {
 func (index *DocumentIndex) Lookup(anchor string) ([]*Section, bool) {
 	sections, ok := index.anchors[anchor]
 	return sections, ok
+}
+
+// LookupNode returns the AST nodes for HTML anchors (<a id="..."> or <a name="...">)
+// with the given anchor ID. Returns nil, false if no HTML anchor defines this ID.
+func (index *DocumentIndex) LookupNode(anchor string) ([]ast.Node, bool) {
+	nodes, ok := index.nodeAnchors[anchor]
+	return nodes, ok
+}
+
+// AnchorNodes returns the set of all AST nodes that define HTML anchors.
+func (index *DocumentIndex) AnchorNodes() map[ast.Node]bool {
+	if len(index.nodeAnchors) == 0 {
+		return nil
+	}
+	nodes := make(map[ast.Node]bool)
+	for _, ns := range index.nodeAnchors {
+		for _, n := range ns {
+			nodes[n] = true
+		}
+	}
+	return nodes
 }

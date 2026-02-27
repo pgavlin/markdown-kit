@@ -267,6 +267,17 @@ func isHeading(n ast.Node) (bool, bool) {
 	return n.Kind() == ast.KindHeading, n.Kind() == ast.KindHeading
 }
 
+// isHeadingOrAnchor matches headings and HTML anchor nodes for navigation.
+func (m *Model) isHeadingOrAnchor(n ast.Node) (bool, bool) {
+	if n.Kind() == ast.KindHeading {
+		return true, true
+	}
+	if m.anchorNodes[n] {
+		return false, true // selectable but not highlighted
+	}
+	return false, false
+}
+
 // Selector is a function that determines whether a node should be selected.
 type Selector func(n ast.Node) (highlight, ok bool)
 
@@ -293,6 +304,10 @@ type Model struct {
 
 	// The document index.
 	index *indexer.DocumentIndex
+
+	// Set of AST nodes that are HTML anchor targets (<a id="...">).
+	// Used by heading navigation to include anchor nodes.
+	anchorNodes map[ast.Node]bool
 
 	// The selection, if any.
 	selection *renderer.NodeSpan
@@ -365,6 +380,7 @@ func (m *Model) Clear() {
 	m.document = nil
 	m.spanTree = nil
 	m.index = nil
+	m.anchorNodes = nil
 	m.selection = nil
 	m.backstack = nil
 	m.selectionStart = 0
@@ -394,6 +410,7 @@ func (m *Model) SetText(name, markdown string) {
 	m.document = parser.Parse(text.NewReader(m.markdown))
 	if doc, ok := m.document.(*ast.Document); ok {
 		m.index = indexer.Index(doc, m.markdown)
+		m.anchorNodes = m.index.AnchorNodes()
 	}
 	m.ensureRendered()
 }
@@ -751,9 +768,9 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.SelectNext(isCodeBlock)
 		}
 	case key.Matches(msg, m.KeyMap.PrevHeading):
-		m.SelectPrevious(isHeading)
+		m.SelectPrevious(m.isHeadingOrAnchor)
 	case key.Matches(msg, m.KeyMap.NextHeading):
-		m.SelectNext(isHeading)
+		m.SelectNext(m.isHeadingOrAnchor)
 	case key.Matches(msg, m.KeyMap.Home):
 		m.GotoTop()
 	case key.Matches(msg, m.KeyMap.End):
@@ -1252,12 +1269,32 @@ func (m *Model) SelectNext(selector Selector) bool {
 	return false
 }
 
-// SelectAnchor selects the next heading with the given anchor.
+// SelectAnchor selects the next node with the given anchor.
+// For anchors defined by HTML anchor tags (<a id="...">), this navigates to
+// the anchor node itself. For heading-derived anchors, it navigates to the heading.
 func (m *Model) SelectAnchor(anchor string) bool {
 	if m.index == nil {
 		return false
 	}
 
+	// Prefer navigating to the HTML anchor node if one exists.
+	if nodes, ok := m.index.LookupNode(anchor); ok {
+		selector := func(node ast.Node) (bool, bool) {
+			for _, n := range nodes {
+				if n == node {
+					return false, true // selectable but not highlighted
+				}
+			}
+			return false, false
+		}
+		if !m.SelectNext(selector) {
+			m.selection = nil
+			m.SelectNext(selector)
+		}
+		return true
+	}
+
+	// Fall back to section-based navigation for heading anchors.
 	sections, ok := m.index.Lookup(anchor)
 	if !ok {
 		return false
