@@ -20,10 +20,12 @@ import (
 type readerKeyMap struct {
 	mdk.KeyMap // embed the view KeyMap
 
-	ToggleRaw   key.Binding
-	OpenBrowser key.Binding
-	Help        key.Binding
-	Quit        key.Binding
+	ToggleRaw            key.Binding
+	ToggleOriginalHTML   key.Binding
+	ToggleReadabilityHTML key.Binding
+	OpenBrowser          key.Binding
+	Help                 key.Binding
+	Quit                 key.Binding
 }
 
 func defaultReaderKeyMap() readerKeyMap {
@@ -37,6 +39,16 @@ func defaultReaderKeyMap() readerKeyMap {
 		ToggleRaw: key.NewBinding(
 			key.WithKeys("ctrl+r"),
 			key.WithHelp("ctrl+r", "toggle raw"),
+		),
+		ToggleOriginalHTML: key.NewBinding(
+			key.WithKeys("ctrl+e"),
+			key.WithHelp("ctrl+e", "view original HTML"),
+			key.WithDisabled(),
+		),
+		ToggleReadabilityHTML: key.NewBinding(
+			key.WithKeys("ctrl+t"),
+			key.WithHelp("ctrl+t", "view readability HTML"),
+			key.WithDisabled(),
 		),
 		OpenBrowser: key.NewBinding(
 			key.WithKeys("ctrl+o"),
@@ -61,7 +73,10 @@ func (km readerKeyMap) ShortHelp() []key.Binding {
 // FullHelp returns the full set of key bindings for the expanded help view.
 func (km readerKeyMap) FullHelp() [][]key.Binding {
 	groups := km.KeyMap.FullHelp()
-	groups = append(groups, []key.Binding{km.ToggleRaw, km.OpenBrowser, km.Help, km.Quit})
+	groups = append(groups, []key.Binding{
+		km.ToggleRaw, km.ToggleOriginalHTML, km.ToggleReadabilityHTML,
+		km.OpenBrowser, km.Help, km.Quit,
+	})
 	return groups
 }
 
@@ -80,11 +95,13 @@ func sendToClipboard(value string) {
 
 // page stores the state of a viewed page for the back stack.
 type page struct {
-	name         string
-	markdown     string
-	source       string
-	lineOffset   int
-	columnOffset int
+	name            string
+	markdown        string
+	source          string
+	originalHTML    string
+	readabilityHTML string
+	lineOffset      int
+	columnOffset    int
 }
 
 type markdownReader struct {
@@ -94,6 +111,10 @@ type markdownReader struct {
 
 	// The source path or URL of the current document.
 	currentSource string
+
+	// HTML content for pages that originated from HTML.
+	currentOriginalHTML    string
+	currentReadabilityHTML string
 
 	// Page navigation back stack.
 	pageStack []page
@@ -161,6 +182,9 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.pushCurrentPage()
 		r.view.SetText(msg.name, msg.markdown)
 		r.currentSource = msg.source
+		r.currentOriginalHTML = msg.originalHTML
+		r.currentReadabilityHTML = msg.readabilityHTML
+		r.updateHTMLKeyBindings()
 		r.loading = false
 		r.loadingURL = ""
 		return r, nil
@@ -219,9 +243,34 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.view.SetText(r.rawOrigName, r.rawOrigMarkdown)
 				r.showRaw = false
 			} else {
-				r.rawOrigName = r.view.GetName()
-				r.rawOrigMarkdown = string(r.view.GetMarkdown())
+				r.saveRawState()
 				r.view.SetText(r.rawOrigName, fenceRaw(r.rawOrigMarkdown))
+				r.showRaw = true
+			}
+			return r, nil
+		case "ctrl+e":
+			if r.currentOriginalHTML == "" {
+				return r, nil
+			}
+			if r.showRaw {
+				r.view.SetText(r.rawOrigName, r.rawOrigMarkdown)
+				r.showRaw = false
+			} else {
+				r.saveRawState()
+				r.view.SetText(r.rawOrigName, fenceHTML(r.currentOriginalHTML))
+				r.showRaw = true
+			}
+			return r, nil
+		case "ctrl+t":
+			if r.currentReadabilityHTML == "" {
+				return r, nil
+			}
+			if r.showRaw {
+				r.view.SetText(r.rawOrigName, r.rawOrigMarkdown)
+				r.showRaw = false
+			} else {
+				r.saveRawState()
+				r.view.SetText(r.rawOrigName, fenceHTML(r.currentReadabilityHTML))
 				r.showRaw = true
 			}
 			return r, nil
@@ -272,11 +321,13 @@ func (r *markdownReader) handleLinkNavigation(rawURL string) tea.Cmd {
 // pushCurrentPage saves the current page state onto the back stack.
 func (r *markdownReader) pushCurrentPage() {
 	r.pageStack = append(r.pageStack, page{
-		name:         r.view.GetName(),
-		markdown:     string(r.view.GetMarkdown()),
-		source:       r.currentSource,
-		lineOffset:   r.view.LineOffset(),
-		columnOffset: r.view.ColumnOffset(),
+		name:            r.view.GetName(),
+		markdown:        string(r.view.GetMarkdown()),
+		source:          r.currentSource,
+		originalHTML:    r.currentOriginalHTML,
+		readabilityHTML: r.currentReadabilityHTML,
+		lineOffset:      r.view.LineOffset(),
+		columnOffset:    r.view.ColumnOffset(),
 	})
 }
 
@@ -289,8 +340,19 @@ func (r *markdownReader) popPage() {
 	r.pageStack = r.pageStack[:len(r.pageStack)-1]
 	r.view.SetText(prev.name, prev.markdown)
 	r.currentSource = prev.source
+	r.currentOriginalHTML = prev.originalHTML
+	r.currentReadabilityHTML = prev.readabilityHTML
+	r.updateHTMLKeyBindings()
 	r.view.SetLineOffset(prev.lineOffset)
 	r.view.SetColumnOffset(prev.columnOffset)
+}
+
+// updateHTMLKeyBindings enables or disables the HTML view key bindings
+// based on whether the current page has HTML content.
+func (r *markdownReader) updateHTMLKeyBindings() {
+	hasHTML := r.currentOriginalHTML != ""
+	r.keys.ToggleOriginalHTML.SetEnabled(hasHTML)
+	r.keys.ToggleReadabilityHTML.SetEnabled(hasHTML)
 }
 
 func (r markdownReader) View() tea.View {
@@ -462,6 +524,30 @@ func wordWrap(text string, width int) string {
 		}
 	}
 	return result.String()
+}
+
+// saveRawState saves the current view state for toggling back from a raw view.
+func (r *markdownReader) saveRawState() {
+	r.rawOrigName = r.view.GetName()
+	r.rawOrigMarkdown = string(r.view.GetMarkdown())
+}
+
+// fenceHTML wraps HTML in a fenced code block with html syntax highlighting.
+func fenceHTML(html string) string {
+	maxRun := 0
+	run := 0
+	for _, c := range html {
+		if c == '`' {
+			run++
+			if run > maxRun {
+				maxRun = run
+			}
+		} else {
+			run = 0
+		}
+	}
+	fence := strings.Repeat("`", max(maxRun+1, 3))
+	return fence + "html\n" + html + "\n" + fence
 }
 
 // fenceRaw wraps markdown in a fenced code block for raw display.
