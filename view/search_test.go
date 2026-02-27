@@ -12,43 +12,34 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// fuzzyMatch
+// exactMatchLine
 // ---------------------------------------------------------------------------
 
-func TestFuzzyMatch_Basic(t *testing.T) {
-	start, end, ok := fuzzyMatch("hello world", "wor")
+func TestExactMatchLine_Basic(t *testing.T) {
+	span, ok := exactMatchLine("hello world", "world")
 	assert.True(t, ok)
-	assert.Equal(t, 6, start)
-	assert.Equal(t, 9, end)
+	assert.Equal(t, 6, span.startCol)
+	assert.Equal(t, 11, span.endCol)
 }
 
-func TestFuzzyMatch_CaseInsensitive(t *testing.T) {
-	start, end, ok := fuzzyMatch("Hello World", "hello")
+func TestExactMatchLine_CaseInsensitive(t *testing.T) {
+	span, ok := exactMatchLine("Hello World", "hello")
 	assert.True(t, ok)
-	assert.Equal(t, 0, start)
-	assert.Equal(t, 5, end)
+	assert.Equal(t, 0, span.startCol)
+	assert.Equal(t, 5, span.endCol)
 }
 
-func TestFuzzyMatch_Fuzzy(t *testing.T) {
-	start, end, ok := fuzzyMatch("abcdef", "ace")
-	assert.True(t, ok)
-	assert.Equal(t, 0, start) // 'a' at col 0
-	assert.Equal(t, 5, end)   // 'e' at col 4, width 1 -> end 5
-}
-
-func TestFuzzyMatch_NoMatch(t *testing.T) {
-	_, _, ok := fuzzyMatch("hello", "xyz")
+func TestExactMatchLine_NoMatch(t *testing.T) {
+	_, ok := exactMatchLine("hello", "xyz")
 	assert.False(t, ok)
 }
 
-func TestFuzzyMatch_EmptyQuery(t *testing.T) {
-	_, _, ok := fuzzyMatch("hello", "")
-	assert.False(t, ok)
-}
-
-func TestFuzzyMatch_EmptyText(t *testing.T) {
-	_, _, ok := fuzzyMatch("", "hello")
-	assert.False(t, ok)
+func TestExactMatchLine_EmptyQuery(t *testing.T) {
+	// Empty query matches at position 0 with zero width.
+	span, ok := exactMatchLine("hello", "")
+	assert.True(t, ok)
+	assert.Equal(t, 0, span.startCol)
+	assert.Equal(t, 0, span.endCol)
 }
 
 // ---------------------------------------------------------------------------
@@ -57,22 +48,22 @@ func TestFuzzyMatch_EmptyText(t *testing.T) {
 
 func TestRegexMatchLine_Basic(t *testing.T) {
 	re := regexp.MustCompile("(?i)world")
-	matches := regexMatchLine("hello world", re)
-	require.Len(t, matches, 1)
-	assert.Equal(t, 6, matches[0].startCol)
-	assert.Equal(t, 11, matches[0].endCol)
+	spans := regexMatchLine("hello world", re)
+	require.Len(t, spans, 1)
+	assert.Equal(t, 6, spans[0].startCol)
+	assert.Equal(t, 11, spans[0].endCol)
 }
 
 func TestRegexMatchLine_Multiple(t *testing.T) {
 	re := regexp.MustCompile("o")
-	matches := regexMatchLine("foo boo", re)
-	require.Len(t, matches, 4) // two o's in foo, two in boo
+	spans := regexMatchLine("foo boo", re)
+	require.Len(t, spans, 4) // two o's in foo, two in boo
 }
 
 func TestRegexMatchLine_NoMatch(t *testing.T) {
 	re := regexp.MustCompile("xyz")
-	matches := regexMatchLine("hello", re)
-	assert.Empty(t, matches)
+	spans := regexMatchLine("hello", re)
+	assert.Empty(t, spans)
 }
 
 // ---------------------------------------------------------------------------
@@ -90,11 +81,11 @@ func newTestModelWithSearch(markdown string) *Model {
 	return &m
 }
 
-func TestSearch_FuzzyExecute(t *testing.T) {
+func TestSearch_ExactExecute(t *testing.T) {
 	m := newTestModelWithSearch("Hello world\n\nThis is a test\n\nHello again")
 
 	m.search.active = true
-	m.search.mode = searchModeFuzzy
+	m.search.mode = searchModeExact
 	m.search.query = "hello"
 	m.executeSearch()
 
@@ -129,7 +120,7 @@ func TestSearch_RegexInvalid(t *testing.T) {
 func TestSearch_Navigation(t *testing.T) {
 	m := newTestModelWithSearch("aaa\n\nbbb\n\naaa\n\nbbb\n\naaa")
 
-	m.search.mode = searchModeFuzzy
+	m.search.mode = searchModeExact
 	m.search.query = "aaa"
 	m.executeSearch()
 
@@ -160,7 +151,7 @@ func TestSearch_ClearSearch(t *testing.T) {
 	m := newTestModelWithSearch("Hello world")
 
 	m.search.active = true
-	m.search.mode = searchModeFuzzy
+	m.search.mode = searchModeExact
 	m.search.query = "hello"
 	m.search.confirmed = true
 	m.executeSearch()
@@ -204,7 +195,7 @@ func TestSearch_HandleSearchKey_Tab(t *testing.T) {
 	m := newTestModelWithSearch("Hello world")
 
 	m.search.active = true
-	m.search.mode = searchModeFuzzy
+	m.search.mode = searchModeExact
 
 	m.handleSearchKey(tea.KeyPressMsg{Code: tea.KeyTab})
 
@@ -212,7 +203,7 @@ func TestSearch_HandleSearchKey_Tab(t *testing.T) {
 
 	m.handleSearchKey(tea.KeyPressMsg{Code: tea.KeyTab})
 
-	assert.Equal(t, searchModeFuzzy, m.search.mode)
+	assert.Equal(t, searchModeExact, m.search.mode)
 }
 
 func TestSearch_Searching(t *testing.T) {
@@ -227,7 +218,7 @@ func TestSearch_Searching(t *testing.T) {
 func TestSearch_HighlightInView(t *testing.T) {
 	m := newTestModelWithSearch("Hello world")
 
-	m.search.mode = searchModeFuzzy
+	m.search.mode = searchModeExact
 	m.search.query = "world"
 	m.search.confirmed = true
 	m.executeSearch()
@@ -242,7 +233,7 @@ func TestSearch_HighlightInView(t *testing.T) {
 func TestSearch_GutterShowsMatchCount(t *testing.T) {
 	m := newTestModelWithSearch("Hello world\n\nHello again")
 
-	m.search.mode = searchModeFuzzy
+	m.search.mode = searchModeExact
 	m.search.query = "hello"
 	m.search.confirmed = true
 	m.executeSearch()
@@ -260,7 +251,7 @@ func TestSearch_SearchGutterDuringInput(t *testing.T) {
 	m := newTestModelWithSearch("Hello world")
 
 	m.search.active = true
-	m.search.mode = searchModeFuzzy
+	m.search.mode = searchModeExact
 	m.search.query = "hel"
 	m.executeSearch()
 
@@ -270,13 +261,13 @@ func TestSearch_SearchGutterDuringInput(t *testing.T) {
 
 	// The last line should show the search prompt.
 	gutter := ansi.Strip(lines[len(lines)-1])
-	assert.Contains(t, gutter, "/fuzzy: hel")
+	assert.Contains(t, gutter, "/exact: hel")
 }
 
 func TestSearch_StaleReexecute(t *testing.T) {
 	m := newTestModelWithSearch("Hello world")
 
-	m.search.mode = searchModeFuzzy
+	m.search.mode = searchModeExact
 	m.search.query = "hello"
 	m.search.confirmed = true
 	m.executeSearch()

@@ -8,20 +8,24 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/mattn/go-runewidth"
 )
 
 type searchMode int
 
 const (
-	searchModeFuzzy searchMode = iota
+	searchModeExact searchMode = iota
 	searchModeRegex
 )
 
+// colSpan represents a contiguous span of visible columns.
+type colSpan struct {
+	startCol int // visible column start (0-based)
+	endCol   int // visible column end (exclusive)
+}
+
 type searchMatch struct {
-	lineIndex int // index into m.lines
-	startCol  int // visible character start (0-based)
-	endCol    int // visible character end (exclusive)
+	lineIndex int       // index into m.lines
+	spans     []colSpan // disjoint highlighted spans
 }
 
 type searchState struct {
@@ -40,70 +44,38 @@ func (m *Model) Searching() bool {
 	return m.search.active
 }
 
-// fuzzyMatch finds a case-insensitive fuzzy match of query in text.
-// It returns the column span (startCol, endCol) of the match, where columns
-// are measured in display width. ok is false if no match is found.
-func fuzzyMatch(text, query string) (startCol, endCol int, ok bool) {
-	if query == "" {
-		return 0, 0, false
+// exactMatchLine finds a case-insensitive exact substring match in text,
+// returning a single colSpan measured in display-width columns.
+func exactMatchLine(text, query string) (colSpan, bool) {
+	idx := strings.Index(strings.ToLower(text), strings.ToLower(query))
+	if idx < 0 {
+		return colSpan{}, false
 	}
-
-	lowerText := strings.ToLower(text)
-	lowerQuery := strings.ToLower(query)
-
-	firstCol := -1
-	lastCol := 0
-	lastWidth := 0
-	col := 0
-	qi := 0 // byte index into lowerQuery
-
-	qr, qSize := utf8.DecodeRuneInString(lowerQuery[qi:])
-
-	for i := 0; i < len(lowerText); {
-		tr, tSize := utf8.DecodeRuneInString(lowerText[i:])
-		w := runewidth.RuneWidth(tr)
-
-		if tr == qr {
-			if firstCol == -1 {
-				firstCol = col
-			}
-			lastCol = col
-			lastWidth = w
-			qi += qSize
-			if qi >= len(lowerQuery) {
-				// All query runes matched.
-				return firstCol, lastCol + lastWidth, true
-			}
-			qr, qSize = utf8.DecodeRuneInString(lowerQuery[qi:])
-		}
-
-		col += w
-		i += tSize
-	}
-
-	return 0, 0, false
+	startCol := ansi.StringWidth(text[:idx])
+	endCol := ansi.StringWidth(text[:idx+len(query)])
+	return colSpan{startCol: startCol, endCol: endCol}, true
 }
 
-// regexMatchLine finds all regex matches in a stripped line.
-func regexMatchLine(stripped string, re *regexp.Regexp) []searchMatch {
+// regexMatchLine finds all regex matches in a stripped line, returning column spans.
+func regexMatchLine(stripped string, re *regexp.Regexp) []colSpan {
 	locs := re.FindAllStringIndex(stripped, -1)
 	if len(locs) == 0 {
 		return nil
 	}
 
-	matches := make([]searchMatch, 0, len(locs))
+	spans := make([]colSpan, 0, len(locs))
 	for _, loc := range locs {
 		if loc[0] == loc[1] {
 			continue // skip zero-width matches
 		}
 		startCol := ansi.StringWidth(stripped[:loc[0]])
 		endCol := ansi.StringWidth(stripped[:loc[1]])
-		matches = append(matches, searchMatch{
+		spans = append(spans, colSpan{
 			startCol: startCol,
 			endCol:   endCol,
 		})
 	}
-	return matches
+	return spans
 }
 
 // executeSearch runs the current search query against all lines.
@@ -135,20 +107,17 @@ func (m *Model) executeSearch() {
 	for i, ln := range m.lines {
 		stripped := ansi.Strip(expandTabs(ln.content, 8))
 
-		if m.search.mode == searchModeFuzzy {
-			startCol, endCol, ok := fuzzyMatch(stripped, m.search.query)
-			if ok {
-				m.search.matches = append(m.search.matches, searchMatch{
-					lineIndex: i,
-					startCol:  startCol,
-					endCol:    endCol,
-				})
+		if m.search.mode == searchModeExact {
+			if span, ok := exactMatchLine(stripped, m.search.query); ok {
+				m.search.matches = append(m.search.matches, searchMatch{lineIndex: i, spans: []colSpan{span}})
 			}
 		} else {
-			lineMatches := regexMatchLine(stripped, re)
-			for _, match := range lineMatches {
-				match.lineIndex = i
-				m.search.matches = append(m.search.matches, match)
+			spans := regexMatchLine(stripped, re)
+			for _, span := range spans {
+				m.search.matches = append(m.search.matches, searchMatch{
+					lineIndex: i,
+					spans:     []colSpan{span},
+				})
 			}
 		}
 	}
@@ -215,10 +184,10 @@ func (m *Model) handleSearchKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	case "tab":
 		// Toggle mode.
-		if m.search.mode == searchModeFuzzy {
+		if m.search.mode == searchModeExact {
 			m.search.mode = searchModeRegex
 		} else {
-			m.search.mode = searchModeFuzzy
+			m.search.mode = searchModeExact
 		}
 		m.executeSearch()
 		return nil
@@ -240,34 +209,37 @@ func (m *Model) handleSearchKey(msg tea.KeyPressMsg) tea.Cmd {
 
 // applySearchHighlights applies search match highlighting to a line's content.
 func (m *Model) applySearchHighlights(lineIdx int, content string) string {
-	// Collect matches for this line.
-	type matchInfo struct {
+	// Collect all spans for this line, tagged with whether they belong to the current match.
+	type spanInfo struct {
 		startCol int
 		endCol   int
 		current  bool
 	}
-	var lineMatches []matchInfo
+	var lineSpans []spanInfo
 	for i, match := range m.search.matches {
 		if match.lineIndex == lineIdx {
-			lineMatches = append(lineMatches, matchInfo{
-				startCol: match.startCol,
-				endCol:   match.endCol,
-				current:  i == m.search.currentMatch,
-			})
+			isCurrent := i == m.search.currentMatch
+			for _, s := range match.spans {
+				lineSpans = append(lineSpans, spanInfo{
+					startCol: s.startCol,
+					endCol:   s.endCol,
+					current:  isCurrent,
+				})
+			}
 		}
 	}
-	if len(lineMatches) == 0 {
+	if len(lineSpans) == 0 {
 		return content
 	}
 
 	lineWidth := ansi.StringWidth(content)
 
-	// Build result by processing matches from left to right.
+	// Build result by processing spans from left to right.
 	var result strings.Builder
 	pos := 0
-	for _, match := range lineMatches {
-		sc := match.startCol
-		ec := match.endCol
+	for _, span := range lineSpans {
+		sc := span.startCol
+		ec := span.endCol
 		if ec > lineWidth {
 			ec = lineWidth
 		}
@@ -275,27 +247,27 @@ func (m *Model) applySearchHighlights(lineIdx int, content string) string {
 			continue
 		}
 
-		// Content before this match.
+		// Content before this span.
 		if sc > pos {
 			result.WriteString(ansiCut(content, pos, sc))
 		}
 
-		// The match itself.
-		matchContent := ansiCut(content, sc, ec)
-		if match.current {
+		// The highlighted span.
+		spanContent := ansiCut(content, sc, ec)
+		if span.current {
 			result.WriteString("\033[7m")
-			result.WriteString(matchContent)
+			result.WriteString(spanContent)
 			result.WriteString("\033[27m")
 		} else {
 			result.WriteString("\033[43m")
-			result.WriteString(matchContent)
+			result.WriteString(spanContent)
 			result.WriteString("\033[49m")
 		}
 
 		pos = ec
 	}
 
-	// Remaining content after last match.
+	// Remaining content after last span.
 	if pos < lineWidth {
 		result.WriteString(ansiCut(content, pos, lineWidth))
 	}
@@ -306,8 +278,8 @@ func (m *Model) applySearchHighlights(lineIdx int, content string) string {
 // renderSearchGutter renders the gutter line during search input.
 func (m *Model) renderSearchGutter(width int) string {
 	var modeStr string
-	if m.search.mode == searchModeFuzzy {
-		modeStr = "fuzzy"
+	if m.search.mode == searchModeExact {
+		modeStr = "exact"
 	} else {
 		modeStr = "regex"
 	}
