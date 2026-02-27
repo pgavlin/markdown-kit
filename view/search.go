@@ -259,9 +259,9 @@ func (m *Model) applySearchHighlights(lineIdx int, content string) string {
 			result.WriteString(spanContent)
 			result.WriteString("\033[27m")
 		} else {
-			result.WriteString("\033[43m")
+			result.WriteString("\033[30;43m")
 			result.WriteString(spanContent)
-			result.WriteString("\033[49m")
+			result.WriteString("\033[39;49m")
 		}
 
 		pos = ec
