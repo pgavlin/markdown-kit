@@ -350,6 +350,9 @@ type Model struct {
 
 	// The desired content width. 0 means use full viewport width.
 	contentWidth int
+
+	// Search state.
+	search searchState
 }
 
 // effectiveWidth returns the width to use for rendering content.
@@ -386,6 +389,7 @@ func (m *Model) Clear() {
 	m.selectionStart = 0
 	m.selectionEnd = 0
 	m.highlightSelection = false
+	m.search = searchState{}
 }
 
 // GetName returns the document name.
@@ -419,6 +423,7 @@ func (m *Model) SetText(name, markdown string) {
 func (m *Model) SetWrap(wrap bool) {
 	if m.wrap != wrap {
 		m.lines = nil
+		m.search.stale = true
 	}
 	m.wrap = wrap
 }
@@ -427,6 +432,7 @@ func (m *Model) SetWrap(wrap bool) {
 func (m *Model) SetContentWidth(width int) {
 	m.contentWidth = width
 	m.lines = nil
+	m.search.stale = true
 }
 
 // SetGutter sets whether to show the gutter with document name and position.
@@ -441,6 +447,7 @@ func (m *Model) SetSize(width, height int) {
 	// Re-render if width changed and wrapping
 	if m.wrap {
 		m.lines = nil
+		m.search.stale = true
 	}
 	m.ensureRendered()
 }
@@ -480,6 +487,11 @@ func (m *Model) render(width int) {
 	m.spanTree, m.lines, m.longestLine = r.SpanTree(), w.lines, w.longestLine
 	if m.lines == nil {
 		m.lines = []line{}
+	}
+
+	// Re-execute search after re-render if stale.
+	if m.search.stale && m.search.query != "" {
+		m.executeSearch()
 	}
 }
 
@@ -603,6 +615,7 @@ func (m *Model) DecreaseContentWidth() {
 		m.contentWidth = 40
 	}
 	m.lines = nil
+	m.search.stale = true
 }
 
 // IncreaseContentWidth increases the content width by 10 columns.
@@ -615,6 +628,7 @@ func (m *Model) IncreaseContentWidth() {
 		}
 	}
 	m.lines = nil
+	m.search.stale = true
 }
 
 // AtTop reports whether the viewport is scrolled to the top.
@@ -700,6 +714,7 @@ func (m *Model) SetWidth(width int) {
 	// Re-render if width changed and wrapping
 	if m.wrap {
 		m.lines = nil
+		m.search.stale = true
 	}
 	m.ensureRendered()
 }
@@ -719,6 +734,7 @@ func (m *Model) ensureRendered() {
 	ew := m.effectiveWidth()
 	if ew != m.lastWidth && m.wrap {
 		m.lines = nil
+		m.search.stale = true
 	}
 	m.lastWidth = ew
 
@@ -738,7 +754,30 @@ type OpenLinkMsg struct {
 type GoBackMsg struct{}
 
 func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
+	if m.search.active {
+		return m.handleSearchKey(msg)
+	}
+
+	// Handle search-related keys when search is confirmed.
+	if m.search.confirmed {
+		switch {
+		case key.Matches(msg, m.KeyMap.NextMatch):
+			m.nextMatch()
+			return nil
+		case key.Matches(msg, m.KeyMap.PrevMatch):
+			m.prevMatch()
+			return nil
+		case key.Matches(msg, m.KeyMap.ClearSearch):
+			m.search = searchState{}
+			return nil
+		}
+	}
+
 	switch {
+	case key.Matches(msg, m.KeyMap.Search):
+		m.search = searchState{active: true}
+		return nil
+
 	case key.Matches(msg, m.KeyMap.GotoTop):
 		m.GotoTop()
 	case key.Matches(msg, m.KeyMap.GotoEnd):
@@ -865,6 +904,11 @@ func (m Model) View() string {
 			content = m.applySelection(ln, content)
 		}
 
+		// Apply search match highlighting.
+		if len(m.search.matches) > 0 {
+			content = m.applySearchHighlights(lineOffset+i, content)
+		}
+
 		// Handle horizontal scrolling and width truncation.
 		if columnOffset > 0 {
 			content = ansiCut(content, columnOffset, columnOffset+ew)
@@ -905,7 +949,11 @@ func (m Model) View() string {
 	// Draw gutter.
 	if m.showGutter && m.theme != nil {
 		buf.WriteByte('\n')
-		buf.WriteString(m.renderGutter(width, lineOffset, lastLine))
+		if m.search.active {
+			buf.WriteString(m.renderSearchGutter(width))
+		} else {
+			buf.WriteString(m.renderGutter(width, lineOffset, lastLine))
+		}
 	}
 
 	return buf.String()
@@ -1078,6 +1126,16 @@ func (m *Model) renderGutter(width, lineOffset, lastLine int) string {
 					nameVisWidth += 3 + ansi.StringWidth(linkTarget)
 				}
 			}
+		}
+	}
+
+	// Append search match info when search is confirmed with results.
+	if searchInfo := m.searchGutterInfo(); searchInfo != "" {
+		siAvail := nameWidth - nameVisWidth - 1
+		siWidth := ansi.StringWidth(searchInfo)
+		if siWidth <= siAvail {
+			name = name + " " + searchInfo
+			nameVisWidth += 1 + siWidth
 		}
 	}
 

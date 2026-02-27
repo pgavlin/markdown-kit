@@ -235,6 +235,13 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return r, nil
 		}
 
+		// Defer to view during search input.
+		if r.view.Searching() {
+			var cmd tea.Cmd
+			r.view, cmd = r.view.Update(msg)
+			return r, cmd
+		}
+
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return r, tea.Quit

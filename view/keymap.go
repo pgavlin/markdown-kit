@@ -33,6 +33,11 @@ type KeyMap struct {
 	GoBack     key.Binding
 
 	CopySelection key.Binding
+
+	Search      key.Binding
+	NextMatch   key.Binding
+	PrevMatch   key.Binding
+	ClearSearch key.Binding
 }
 
 // DefaultKeyMap returns a KeyMap with the default key bindings matching the
@@ -128,6 +133,22 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("y"),
 			key.WithHelp("y", "copy current selection"),
 		),
+		Search: key.NewBinding(
+			key.WithKeys("/"),
+			key.WithHelp("/", "search"),
+		),
+		NextMatch: key.NewBinding(
+			key.WithKeys("n"),
+			key.WithHelp("n", "next match"),
+		),
+		PrevMatch: key.NewBinding(
+			key.WithKeys("N"),
+			key.WithHelp("N", "previous match"),
+		),
+		ClearSearch: key.NewBinding(
+			key.WithKeys("esc"),
+			key.WithHelp("esc", "clear search"),
+		),
 	}
 }
 
@@ -146,6 +167,7 @@ func (km KeyMap) FullHelp() [][]key.Binding {
 		{km.NextLink, km.PrevLink, km.NextHeading, km.PrevHeading},
 		{km.DecreaseWidth, km.IncreaseWidth},
 		{km.FollowLink, km.GoBack},
+		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch},
 	}
 }
 
@@ -161,6 +183,7 @@ func (km *KeyMap) SetEnabled(enabled bool) {
 		&km.NextHeading, &km.PrevHeading,
 		&km.DecreaseWidth, &km.IncreaseWidth,
 		&km.FollowLink, &km.GoBack,
+		&km.Search, &km.NextMatch, &km.PrevMatch, &km.ClearSearch,
 	}
 	for _, b := range bindings {
 		b.SetEnabled(enabled)
