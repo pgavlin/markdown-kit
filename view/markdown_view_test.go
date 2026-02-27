@@ -21,7 +21,7 @@ func TestModel_Render(t *testing.T) {
 	source, err := os.ReadFile(filepath.Join(testdataPath, "getting-started.md"))
 	require.NoError(t, err)
 
-	m := NewModel(styles.Pulumi)
+	m := NewModel(WithTheme(styles.Pulumi))
 	m.SetText("getting-started.md", string(source))
 	m.SetGutter(true)
 	m.SetSize(80, 24)
@@ -50,7 +50,7 @@ func TestModel_Navigation(t *testing.T) {
 	source, err := os.ReadFile(filepath.Join(testdataPath, "getting-started.md"))
 	require.NoError(t, err)
 
-	m := NewModel(styles.Pulumi)
+	m := NewModel(WithTheme(styles.Pulumi))
 	m.SetText("getting-started.md", string(source))
 	m.SetSize(80, 24)
 
@@ -105,7 +105,7 @@ func TestModel_ANSIPrefixAfterScroll(t *testing.T) {
 	source, err := os.ReadFile(filepath.Join(testdataPath, "getting-started.md"))
 	require.NoError(t, err)
 
-	m := NewModel(styles.Pulumi)
+	m := NewModel(WithTheme(styles.Pulumi))
 	m.SetText("getting-started.md", string(source))
 	m.SetSize(80, 24)
 
@@ -146,7 +146,7 @@ func TestView_NoLineExceedsTerminalWidth(t *testing.T) {
 		{"120x40 cw100", 120, 40, 100},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			m := NewModel(styles.Pulumi)
+			m := NewModel(WithTheme(styles.Pulumi))
 			m.SetText("test.md", md)
 			m.SetGutter(true)
 			if tc.contentWidth > 0 {
@@ -171,7 +171,7 @@ func TestModel_WrapToggle(t *testing.T) {
 	source, err := os.ReadFile(filepath.Join(testdataPath, "getting-started.md"))
 	require.NoError(t, err)
 
-	m := NewModel(styles.Pulumi)
+	m := NewModel(WithTheme(styles.Pulumi))
 	m.SetText("getting-started.md", string(source))
 	m.SetSize(80, 24)
 
@@ -215,7 +215,7 @@ func TestView_CodeBlockTabWidth(t *testing.T) {
 	// Markdown with a fenced code block containing tab-indented lines.
 	md := "# Test\n\n```go\nfunc main() {\n\tfmt.Println(\"hello\")\n}\n```\n"
 
-	m := NewModel(styles.Pulumi)
+	m := NewModel(WithTheme(styles.Pulumi))
 	m.SetText("test.md", string(md))
 	m.SetGutter(true)
 	m.SetContentWidth(160)
@@ -259,7 +259,7 @@ func TestView_CodeBlockNoExtraBlanks(t *testing.T) {
 	// consecutive tab-indented lines (no blank lines between them).
 	md := "```go\nimport (\n\t\"context\"\n\t\"fmt\"\n\t\"log\"\n)\n```\n"
 
-	m := NewModel(styles.Pulumi)
+	m := NewModel(WithTheme(styles.Pulumi))
 	m.SetText("test.md", string(md))
 	m.SetGutter(true)
 	m.SetContentWidth(160)
@@ -306,7 +306,7 @@ func setupScrollDoc(t *testing.T) Model {
 		sb.WriteString("A line of text.\n\n")
 	}
 
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", sb.String())
 	m.SetSize(80, 24)
 	require.NotNil(t, m.lines)
@@ -372,7 +372,7 @@ func TestPageUp(t *testing.T) {
 }
 
 func TestScrollLeft(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetWrap(false)
 	m.SetText("test.md", strings.Repeat("x", 200)+"\n")
 	m.SetSize(80, 24)
@@ -384,7 +384,7 @@ func TestScrollLeft(t *testing.T) {
 }
 
 func TestScrollRight(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetWrap(false)
 	m.SetText("test.md", strings.Repeat("x", 200)+"\n")
 	m.SetSize(80, 24)
@@ -419,7 +419,7 @@ func TestScrollPercent(t *testing.T) {
 }
 
 func TestScrollPercent_ShortDoc(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "Short.\n")
 	m.SetSize(80, 24)
 	assert.Equal(t, 1.0, m.ScrollPercent())
@@ -442,7 +442,7 @@ func TestSetLineOffset(t *testing.T) {
 }
 
 func TestColumnOffset(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetWrap(false)
 	m.SetText("test.md", strings.Repeat("x", 200)+"\n")
 	m.SetSize(80, 24)
@@ -453,7 +453,7 @@ func TestColumnOffset(t *testing.T) {
 }
 
 func TestSetColumnOffset(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetWrap(false)
 	m.SetText("test.md", strings.Repeat("x", 200)+"\n")
 	m.SetSize(80, 24)
@@ -473,7 +473,7 @@ func TestVisibleLineCount(t *testing.T) {
 }
 
 func TestVisibleLineCount_ShortDoc(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "Short.\n")
 	m.SetSize(80, 24)
 	assert.LessOrEqual(t, m.VisibleLineCount(), m.TotalLineCount())
@@ -484,21 +484,21 @@ func TestVisibleLineCount_ShortDoc(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestWidthHeight(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetSize(120, 40)
 	assert.Equal(t, 120, m.Width())
 	assert.Equal(t, 40, m.Height())
 }
 
 func TestContentWidthAccessor(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	assert.Equal(t, 0, m.ContentWidth())
 	m.SetContentWidth(100)
 	assert.Equal(t, 100, m.ContentWidth())
 }
 
 func TestEffectiveWidth(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetSize(120, 40)
 	assert.Equal(t, 120, m.EffectiveWidth())
 	m.SetContentWidth(80)
@@ -506,7 +506,7 @@ func TestEffectiveWidth(t *testing.T) {
 }
 
 func TestDecreaseContentWidth(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetSize(120, 40)
 	m.SetText("test.md", "Hello.\n")
 
@@ -516,7 +516,7 @@ func TestDecreaseContentWidth(t *testing.T) {
 }
 
 func TestDecreaseContentWidth_Min(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetSize(120, 40)
 	m.SetContentWidth(45)
 	m.SetText("test.md", "Hello.\n")
@@ -526,7 +526,7 @@ func TestDecreaseContentWidth_Min(t *testing.T) {
 }
 
 func TestIncreaseContentWidth(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetSize(120, 40)
 	m.SetContentWidth(80)
 	m.SetText("test.md", "Hello.\n")
@@ -537,7 +537,7 @@ func TestIncreaseContentWidth(t *testing.T) {
 }
 
 func TestIncreaseContentWidth_FullWidth(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetSize(120, 40)
 	m.SetContentWidth(115)
 	m.SetText("test.md", "Hello.\n")

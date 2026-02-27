@@ -93,10 +93,12 @@ const defaultContentWidth = 160
 func newMarkdownReader(name, source string, theme *chroma.Style) markdownReader {
 	keys := defaultReaderKeyMap()
 
-	view := mdk.NewModel(theme)
+	view := mdk.NewModel(
+		mdk.WithTheme(theme),
+		mdk.WithGutter(true),
+		mdk.WithContentWidth(defaultContentWidth),
+	)
 	view.SetText(name, source)
-	view.SetGutter(true)
-	view.SetContentWidth(defaultContentWidth)
 	view.KeyMap = keys.KeyMap
 
 	helpModel := help.New()

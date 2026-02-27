@@ -98,7 +98,7 @@ func TestAnsiTruncate_WidthExceedsContent(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestApplySelection_Highlighted(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "# Hello\n\nSome text here.\n")
 	m.SetSize(80, 24)
 
@@ -116,7 +116,7 @@ func TestApplySelection_Highlighted(t *testing.T) {
 }
 
 func TestApplySelection_NoOverlap(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "# Hello\n\nSome text here.\n")
 	m.SetSize(80, 24)
 
@@ -138,7 +138,7 @@ func TestApplySelection_NoOverlap(t *testing.T) {
 }
 
 func TestApplySelection_PartialLine(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "Hello world here.\n")
 	m.SetSize(80, 24)
 
@@ -167,7 +167,7 @@ func TestApplySelection_PartialLine(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestSelectAnchor_FindsHeading(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "# First\n\nText\n\n## Second\n\nMore text\n")
 	m.SetSize(80, 24)
 
@@ -177,7 +177,7 @@ func TestSelectAnchor_FindsHeading(t *testing.T) {
 }
 
 func TestSelectAnchor_NotFound(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "# First\n\nText\n")
 	m.SetSize(80, 24)
 
@@ -186,14 +186,14 @@ func TestSelectAnchor_NotFound(t *testing.T) {
 }
 
 func TestSelectAnchor_NoIndex(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	// Don't set any text, so index is nil.
 	found := m.SelectAnchor("anything")
 	assert.False(t, found, "should return false when no index exists")
 }
 
 func TestSelectAnchor_FirstHeading(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "# First\n\nText\n\n## Second\n\nMore text\n")
 	m.SetSize(80, 24)
 
@@ -207,7 +207,7 @@ func TestSelectAnchor_FirstHeading(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestView_ZeroWidthHeight(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "# Hello\n\nSome text.\n")
 	// Don't set size (width=0, height=0).
 	assert.Equal(t, "", m.View())
@@ -222,7 +222,7 @@ func TestView_ZeroWidthHeight(t *testing.T) {
 }
 
 func TestView_NoContent(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetSize(80, 24)
 	// No text set, so lines are nil.
 	assert.Equal(t, "", m.View())
@@ -235,7 +235,7 @@ func TestView_LongDocumentScrolling(t *testing.T) {
 		sb.WriteString("Line of text number.\n\n")
 	}
 
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", sb.String())
 	m.SetSize(80, 10)
 
@@ -322,7 +322,7 @@ func TestHandleKey_PgUpCtrlB(t *testing.T) {
 
 func TestHandleKey_HLColumnScroll(t *testing.T) {
 	// Create model with wrap disabled so horizontal scrolling is meaningful.
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetWrap(false)
 	longLine := strings.Repeat("x", 200)
 	m.SetText("test.md", longLine+"\n")
@@ -344,7 +344,7 @@ func TestHandleKey_HLColumnScroll(t *testing.T) {
 func TestHandleKey_BraceHeadingNavigation(t *testing.T) {
 	md := "# First\n\nText.\n\n## Second\n\nMore text.\n\n### Third\n\nFinal.\n"
 
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", md)
 	m.SetSize(80, 24)
 
@@ -402,7 +402,7 @@ func setupLongDoc(t *testing.T) Model {
 		sb.WriteString("A line of text.\n\n")
 	}
 
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", sb.String())
 	m.SetSize(80, 24)
 	require.NotNil(t, m.lines)
@@ -415,7 +415,7 @@ func setupLongDoc(t *testing.T) Model {
 // ---------------------------------------------------------------------------
 
 func TestCalculateSelectionSpan_TrimsWhitespace(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "# Heading\n\nSome text.\n")
 	m.SetSize(80, 24)
 
@@ -439,7 +439,7 @@ func TestCalculateSelectionSpan_TrimsWhitespace(t *testing.T) {
 }
 
 func TestCalculateSelectionSpan_AllWhitespace(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "# Hello\n\nSome text.\n")
 	m.SetSize(80, 24)
 
@@ -496,7 +496,7 @@ func TestFindLineForOffset_StartOfLine(t *testing.T) {
 }
 
 func TestFindLineForOffset_MiddleOfLine(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "Hello world.\n\nAnother line.\n")
 	m.SetSize(80, 24)
 
@@ -510,7 +510,7 @@ func TestFindLineForOffset_MiddleOfLine(t *testing.T) {
 }
 
 func TestFindLineForOffset_GapBetweenLines(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "First line.\n\nSecond line.\n")
 	m.SetSize(80, 24)
 
@@ -530,7 +530,7 @@ func TestFindLineForOffset_GapBetweenLines(t *testing.T) {
 }
 
 func TestFindLineForOffset_BeyondEnd(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "Hello.\n")
 	m.SetSize(80, 24)
 
@@ -546,7 +546,7 @@ func TestFindLineForOffset_BeyondEnd(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestIsOffsetWhitespace_Space(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "Hello world.\n")
 	m.SetSize(80, 24)
 
@@ -571,7 +571,7 @@ func TestIsOffsetWhitespace_Space(t *testing.T) {
 }
 
 func TestIsOffsetWhitespace_NonWhitespace(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "Hello world.\n")
 	m.SetSize(80, 24)
 
@@ -592,7 +592,7 @@ func TestIsOffsetWhitespace_NonWhitespace(t *testing.T) {
 }
 
 func TestIsOffsetWhitespace_OutOfBounds(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "Hello.\n")
 	m.SetSize(80, 24)
 
@@ -736,7 +736,7 @@ func TestUpdateANSIState_IncompleteEscape(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestModel_Clear(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "# Hello\n")
 	m.SetSize(80, 24)
 
@@ -748,7 +748,7 @@ func TestModel_Clear(t *testing.T) {
 }
 
 func TestModel_GetMarkdown(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	md := "# Hello\n\nWorld.\n"
 	m.SetText("test.md", md)
 	assert.Equal(t, []byte(md), m.GetMarkdown())
@@ -759,7 +759,7 @@ func TestModel_GetMarkdown(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestModel_SetWrapClearsLines(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "# Hello\n\nSome text.\n")
 	m.SetSize(80, 24)
 
@@ -780,7 +780,7 @@ func TestModel_SetWrapClearsLines(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestModel_SelectionNil(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	assert.Nil(t, m.Selection())
 }
 
@@ -789,7 +789,7 @@ func TestModel_SelectionNil(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestSelectNext_NilSpanTree(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	// No text set, spanTree is nil.
 	assert.False(t, m.SelectNext(isHeading))
 	assert.False(t, m.SelectPrevious(isHeading))
@@ -800,7 +800,7 @@ func TestSelectNext_NilSpanTree(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestView_WithGutter(t *testing.T) {
-	m := NewModel(styles.Pulumi)
+	m := NewModel(WithTheme(styles.Pulumi))
 	m.SetText("test.md", "# Hello\n\nSome text.\n")
 	m.SetGutter(true)
 	m.SetSize(80, 24)
@@ -823,7 +823,7 @@ func TestView_WithGutter(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestModel_Init(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	cmd := m.Init()
 	assert.Nil(t, cmd)
 }
@@ -833,7 +833,7 @@ func TestModel_Init(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestClampOffsets_NilLines(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.lineOffset = 100
 	m.columnOffset = 50
 	m.clampOffsets()
@@ -912,7 +912,7 @@ func TestScrollToOffset(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestSelected(t *testing.T) {
-	m := NewModel(nil)
+	m := NewModel()
 	m.SetText("test.md", "# Hello\n\nWorld.\n")
 	m.SetSize(80, 24)
 

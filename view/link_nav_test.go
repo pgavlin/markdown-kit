@@ -17,7 +17,7 @@ func TestBracketNavigation_PrefersLinks(t *testing.T) {
 	source, err := os.ReadFile(filepath.Join(testdataPath, "getting-started.md"))
 	require.NoError(t, err)
 
-	m := NewModel(styles.Pulumi)
+	m := NewModel(WithTheme(styles.Pulumi))
 	m.SetText("getting-started.md", string(source))
 	m.SetSize(80, 24)
 
@@ -39,7 +39,7 @@ func TestBracketNavigation_SkipsNestedImages(t *testing.T) {
 	// Image-wrapped links like [![badge](img)](url) should not cause double-steps.
 	md := "# Title\n\n[![Badge1](https://img1)](https://link1) [![Badge2](https://img2)](https://link2)\n\nSome [text link](https://example.com).\n"
 
-	m := NewModel(styles.Pulumi)
+	m := NewModel(WithTheme(styles.Pulumi))
 	m.SetText("test.md", md)
 	m.SetSize(80, 24)
 

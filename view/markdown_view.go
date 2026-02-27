@@ -345,13 +345,16 @@ func (m *Model) effectiveWidth() int {
 	return m.width
 }
 
-// NewModel creates a new Model with the given theme.
-func NewModel(theme *chroma.Style) Model {
-	return Model{
+// NewModel creates a new Model with the given options.
+func NewModel(opts ...Option) Model {
+	m := Model{
 		KeyMap: DefaultKeyMap(),
-		theme:  theme,
 		wrap:   true,
 	}
+	for _, opt := range opts {
+		opt(&m)
+	}
+	return m
 }
 
 // Clear removes all text from the buffer.

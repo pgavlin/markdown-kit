@@ -15,7 +15,7 @@ func TestHeadingNavigation(t *testing.T) {
 	source, err := os.ReadFile(filepath.Join(testdataPath, "getting-started.md"))
 	require.NoError(t, err)
 
-	m := NewModel(styles.Pulumi)
+	m := NewModel(WithTheme(styles.Pulumi))
 	m.SetText("getting-started.md", string(source))
 	m.SetSize(80, 24)
 
