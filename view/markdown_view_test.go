@@ -109,7 +109,6 @@ func TestModel_ANSIPrefixAfterScroll(t *testing.T) {
 	m.SetText("getting-started.md", string(source))
 	m.SetSize(80, 24)
 
-
 	// Get the initial output (not scrolled).
 	initial := m.View()
 

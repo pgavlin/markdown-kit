@@ -387,6 +387,7 @@ func (m *Model) SetText(name, markdown string) {
 	if doc, ok := m.document.(*ast.Document); ok {
 		m.index = indexer.Index(doc, m.markdown)
 	}
+	m.ensureRendered()
 }
 
 // SetWrap sets whether long lines should be wrapped.
@@ -426,6 +427,7 @@ func (m *Model) render(width int) {
 	}
 
 	if m.document == nil {
+		m.lines = []line{}
 		return
 	}
 
@@ -451,6 +453,9 @@ func (m *Model) render(width int) {
 	}
 
 	m.spanTree, m.lines, m.longestLine = r.SpanTree(), w.lines, w.longestLine
+	if m.lines == nil {
+		m.lines = []line{}
+	}
 }
 
 // Init implements tea.Model.

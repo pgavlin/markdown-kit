@@ -224,8 +224,14 @@ func TestView_ZeroWidthHeight(t *testing.T) {
 func TestView_NoContent(t *testing.T) {
 	m := NewModel()
 	m.SetSize(80, 24)
-	// No text set, so lines are nil.
-	assert.Equal(t, "", m.View())
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	assert.Equal(t, 24, len(lines), "viewport should have exactly 24 lines")
+	for i, ln := range lines {
+		w := ansi.StringWidth(ln)
+		assert.Equal(t, 80, w, "line %d should have width 80, got %d", i, w)
+	}
 }
 
 func TestView_LongDocumentScrolling(t *testing.T) {
