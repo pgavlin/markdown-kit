@@ -164,7 +164,7 @@ func (km KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{km.Up, km.Down, km.PageUp, km.PageDown, km.GotoTop, km.GotoEnd},
 		{km.Left, km.Right, km.Home, km.End},
-		{km.NextLink, km.PrevLink, km.NextHeading, km.PrevHeading},
+		{km.NextLink, km.PrevLink, km.NextHeading, km.PrevHeading, km.NextCodeBlock, km.PrevCodeBlock},
 		{km.DecreaseWidth, km.IncreaseWidth},
 		{km.FollowLink, km.GoBack},
 		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch},
