@@ -20,6 +20,7 @@ import (
 type readerKeyMap struct {
 	mdk.KeyMap // embed the view KeyMap
 
+	ToggleRaw   key.Binding
 	OpenBrowser key.Binding
 	Help        key.Binding
 	Quit        key.Binding
@@ -33,6 +34,10 @@ func defaultReaderKeyMap() readerKeyMap {
 	km.GoBack.SetEnabled(true)
 	return readerKeyMap{
 		KeyMap: km,
+		ToggleRaw: key.NewBinding(
+			key.WithKeys("ctrl+r"),
+			key.WithHelp("ctrl+r", "toggle raw"),
+		),
 		OpenBrowser: key.NewBinding(
 			key.WithKeys("ctrl+o"),
 			key.WithHelp("ctrl+o", "open in browser"),
@@ -50,13 +55,13 @@ func defaultReaderKeyMap() readerKeyMap {
 
 // ShortHelp returns a short list of key bindings for the compact help view.
 func (km readerKeyMap) ShortHelp() []key.Binding {
-	return append(km.KeyMap.ShortHelp(), km.Help, km.Quit)
+	return append(km.KeyMap.ShortHelp(), km.ToggleRaw, km.Help, km.Quit)
 }
 
 // FullHelp returns the full set of key bindings for the expanded help view.
 func (km readerKeyMap) FullHelp() [][]key.Binding {
 	groups := km.KeyMap.FullHelp()
-	groups = append(groups, []key.Binding{km.OpenBrowser, km.Help, km.Quit})
+	groups = append(groups, []key.Binding{km.ToggleRaw, km.OpenBrowser, km.Help, km.Quit})
 	return groups
 }
 
@@ -102,6 +107,11 @@ type markdownReader struct {
 	helpModel help.Model
 	showHelp  bool
 
+	// Raw markdown toggle.
+	showRaw         bool
+	rawOrigName     string
+	rawOrigMarkdown string
+
 	// Error dialog state.
 	showError bool
 	errorText string
@@ -142,10 +152,12 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, r.handleLinkNavigation(msg.URL)
 
 	case mdk.GoBackMsg:
+		r.showRaw = false
 		r.popPage()
 		return r, nil
 
 	case pageLoadedMsg:
+		r.showRaw = false
 		r.pushCurrentPage()
 		r.view.SetText(msg.name, msg.markdown)
 		r.currentSource = msg.source
@@ -202,6 +214,17 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return r, tea.Quit
+		case "ctrl+r":
+			if r.showRaw {
+				r.view.SetText(r.rawOrigName, r.rawOrigMarkdown)
+				r.showRaw = false
+			} else {
+				r.rawOrigName = r.view.GetName()
+				r.rawOrigMarkdown = string(r.view.GetMarkdown())
+				r.view.SetText(r.rawOrigName, fenceRaw(r.rawOrigMarkdown))
+				r.showRaw = true
+			}
+			return r, nil
 		case "ctrl+o":
 			link := r.view.FocusedLinkDestination()
 			if err := openInBrowser(link); err != nil {
@@ -439,4 +462,24 @@ func wordWrap(text string, width int) string {
 		}
 	}
 	return result.String()
+}
+
+// fenceRaw wraps markdown in a fenced code block for raw display.
+// It scans the content for the longest run of consecutive backticks
+// and uses one more to avoid conflicts.
+func fenceRaw(markdown string) string {
+	maxRun := 0
+	run := 0
+	for _, c := range markdown {
+		if c == '`' {
+			run++
+			if run > maxRun {
+				maxRun = run
+			}
+		} else {
+			run = 0
+		}
+	}
+	fence := strings.Repeat("`", max(maxRun+1, 3))
+	return fence + "\n" + markdown + "\n" + fence
 }
