@@ -21,7 +21,11 @@ func main() {
 		os.Exit(-1)
 	}
 
-	model := newMarkdownReader(filepath.Base(os.Args[1]), string(source), styles.GlamourDark)
+	absPath, err := filepath.Abs(os.Args[1])
+	if err != nil {
+		absPath = os.Args[1]
+	}
+	model := newMarkdownReader(filepath.Base(absPath), string(source), absPath, styles.GlamourDark)
 	p := tea.NewProgram(model)
 
 	if _, err := p.Run(); err != nil {

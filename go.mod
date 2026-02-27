@@ -1,6 +1,6 @@
 module github.com/pgavlin/markdown-kit
 
-go 1.24.2
+go 1.25.1
 
 require (
 	charm.land/bubbles/v2 v2.0.0
@@ -10,15 +10,16 @@ require (
 	github.com/atotto/clipboard v0.1.4
 	github.com/charmbracelet/x/ansi v0.11.6
 	github.com/eliukblau/pixterm v1.3.1
-	github.com/gdamore/tcell/v2 v2.13.8
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/pgavlin/goldmark v1.1.33-0.20210916052350-16f491902b32
+	github.com/pgavlin/readability-go v0.0.0
 	github.com/pgavlin/svg2 v0.0.0-20210919231505-4ace7308edc1
-	github.com/rivo/tview v0.42.0
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	github.com/stretchr/testify v1.7.0
-	golang.org/x/term v0.37.0
+	golang.org/x/term v0.40.0
 )
+
+replace github.com/pgavlin/readability-go => /Users/pgavlin/dev/sandbox/readability-go
 
 require (
 	github.com/charmbracelet/colorprofile v0.4.2 // indirect
@@ -34,7 +35,6 @@ require (
 	github.com/dlclark/regexp2 v1.2.0 // indirect
 	github.com/flopp/go-findfont v0.0.0-20201114153133-e7393a00c15b // indirect
 	github.com/fogleman/gg v1.3.0 // indirect
-	github.com/gdamore/encoding v1.0.1 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -45,8 +45,9 @@ require (
 	github.com/tdewolff/parse/v2 v2.5.10 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/image v0.0.0-20210216034530-4410531fe030 // indirect
+	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/text v0.31.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c // indirect
 )

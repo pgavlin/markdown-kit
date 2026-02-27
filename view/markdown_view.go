@@ -707,6 +707,11 @@ type OpenLinkMsg struct {
 	URL string
 }
 
+// GoBackMsg is sent when the user presses the back key and the internal
+// backstack is empty. Embedders should handle this message to navigate
+// to the previous page.
+type GoBackMsg struct{}
+
 func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, m.KeyMap.GotoTop):
@@ -760,7 +765,9 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 		}
 	case key.Matches(msg, m.KeyMap.GoBack):
-		m.GoBack()
+		if !m.GoBack() {
+			return func() tea.Msg { return GoBackMsg{} }
+		}
 	case key.Matches(msg, m.KeyMap.CopySelection):
 		if content := m.focusedContent(); content != "" {
 			return tea.SetClipboard(content)

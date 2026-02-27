@@ -73,10 +73,29 @@ func sendToClipboard(value string) {
 	}
 }
 
+// page stores the state of a viewed page for the back stack.
+type page struct {
+	name         string
+	markdown     string
+	source       string
+	lineOffset   int
+	columnOffset int
+}
+
 type markdownReader struct {
 	view mdk.Model
 
 	width, height int
+
+	// The source path or URL of the current document.
+	currentSource string
+
+	// Page navigation back stack.
+	pageStack []page
+
+	// Loading state for async page fetches.
+	loading    bool
+	loadingURL string
 
 	// Help overlay.
 	keys      readerKeyMap
@@ -86,11 +105,12 @@ type markdownReader struct {
 	// Error dialog state.
 	showError bool
 	errorText string
+	errorURL  string // URL that failed, for "open in browser" fallback
 }
 
 const defaultContentWidth = 160
 
-func newMarkdownReader(name, source string, theme *chroma.Style) markdownReader {
+func newMarkdownReader(name, markdown, source string, theme *chroma.Style) markdownReader {
 	keys := defaultReaderKeyMap()
 
 	view := mdk.NewModel(
@@ -98,16 +118,17 @@ func newMarkdownReader(name, source string, theme *chroma.Style) markdownReader 
 		mdk.WithGutter(true),
 		mdk.WithContentWidth(defaultContentWidth),
 	)
-	view.SetText(name, source)
+	view.SetText(name, markdown)
 	view.KeyMap = keys.KeyMap
 
 	helpModel := help.New()
 	helpModel.ShowAll = true
 
 	return markdownReader{
-		view:      view,
-		keys:      keys,
-		helpModel: helpModel,
+		view:          view,
+		currentSource: source,
+		keys:          keys,
+		helpModel:     helpModel,
 	}
 }
 
@@ -118,10 +139,26 @@ func (r markdownReader) Init() tea.Cmd {
 func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case mdk.OpenLinkMsg:
-		if err := openInBrowser(msg.URL); err != nil {
-			r.showError = true
-			r.errorText = fmt.Sprintf("Error opening URL: %v", err)
-		}
+		return r, r.handleLinkNavigation(msg.URL)
+
+	case mdk.GoBackMsg:
+		r.popPage()
+		return r, nil
+
+	case pageLoadedMsg:
+		r.pushCurrentPage()
+		r.view.SetText(msg.name, msg.markdown)
+		r.currentSource = msg.source
+		r.loading = false
+		r.loadingURL = ""
+		return r, nil
+
+	case pageLoadErrorMsg:
+		r.loading = false
+		r.loadingURL = ""
+		r.showError = true
+		r.errorURL = msg.url
+		r.errorText = fmt.Sprintf("Error loading %s: %v\n\nPress 'o' to open in browser", msg.url, msg.err)
 		return r, nil
 
 	case tea.WindowSizeMsg:
@@ -141,10 +178,24 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return r, nil
 		}
 		if r.showError {
-			if msg.String() == "esc" || msg.String() == "enter" || msg.String() == "q" {
+			if msg.String() == "o" && r.errorURL != "" {
+				url := r.errorURL
 				r.showError = false
+				r.errorURL = ""
+				r.errorText = ""
+				openInBrowser(url)
 				return r, nil
 			}
+			if msg.String() == "esc" || msg.String() == "enter" || msg.String() == "q" {
+				r.showError = false
+				r.errorURL = ""
+				r.errorText = ""
+				return r, nil
+			}
+			return r, nil
+		}
+		if r.loading {
+			// Ignore input while loading.
 			return r, nil
 		}
 
@@ -172,6 +223,53 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return r, nil
 }
 
+// handleLinkNavigation resolves and navigates to a link.
+func (r *markdownReader) handleLinkNavigation(rawURL string) tea.Cmd {
+	resolved := resolveLink(rawURL, r.currentSource)
+
+	// HTTP/HTTPS URLs: fetch and convert (markdown or HTML via readability).
+	if strings.HasPrefix(resolved, "http://") || strings.HasPrefix(resolved, "https://") {
+		r.loading = true
+		r.loadingURL = resolved
+		return fetchURLPage(resolved)
+	}
+
+	// Local markdown files.
+	if isMarkdownFile(resolved) {
+		r.loading = true
+		r.loadingURL = resolved
+		return loadFilePage(resolved)
+	}
+
+	// Non-markdown files, mailto:, etc. — open in browser.
+	openInBrowser(resolved)
+	return nil
+}
+
+// pushCurrentPage saves the current page state onto the back stack.
+func (r *markdownReader) pushCurrentPage() {
+	r.pageStack = append(r.pageStack, page{
+		name:         r.view.GetName(),
+		markdown:     string(r.view.GetMarkdown()),
+		source:       r.currentSource,
+		lineOffset:   r.view.LineOffset(),
+		columnOffset: r.view.ColumnOffset(),
+	})
+}
+
+// popPage restores the previous page from the back stack.
+func (r *markdownReader) popPage() {
+	if len(r.pageStack) == 0 {
+		return
+	}
+	prev := r.pageStack[len(r.pageStack)-1]
+	r.pageStack = r.pageStack[:len(r.pageStack)-1]
+	r.view.SetText(prev.name, prev.markdown)
+	r.currentSource = prev.source
+	r.view.SetLineOffset(prev.lineOffset)
+	r.view.SetColumnOffset(prev.columnOffset)
+}
+
 func (r markdownReader) View() tea.View {
 	if r.width == 0 || r.height == 0 {
 		return tea.View{}
@@ -180,7 +278,13 @@ func (r markdownReader) View() tea.View {
 	base := r.view.View()
 
 	var result string
-	if r.showHelp {
+	if r.loading {
+		loadingText := "Loading..."
+		if r.loadingURL != "" {
+			loadingText = fmt.Sprintf("Loading %s...", r.loadingURL)
+		}
+		result = r.overlayDialog(base, "Loading", loadingText)
+	} else if r.showHelp {
 		// Use a wider overlay for the columnar help layout.
 		maxW := r.width * 3 / 4
 		if maxW < 40 {
