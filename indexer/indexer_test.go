@@ -501,6 +501,77 @@ func TestSection_Walk_ReturnsError(t *testing.T) {
 	assert.Equal(t, expectedErr, err, "Walk should propagate the walker error")
 }
 
+// ---------------------------------------------------------------------------
+// HTML anchor tags — <a id="..."> and <a name="...">
+// ---------------------------------------------------------------------------
+
+func TestIndex_HTMLAnchorID(t *testing.T) {
+	source := []byte("<a id=\"custom-section\"></a>\n\n# Hello\n\nSome text.\n")
+	doc := parseMarkdown(t, source)
+	idx := Index(doc, source)
+
+	// The custom anchor should resolve to the same section as the heading.
+	sections, ok := idx.Lookup("custom-section")
+	require.True(t, ok, "custom anchor should be found")
+	require.Len(t, sections, 1)
+	assert.Equal(t, 1, sections[0].Level)
+	assert.Equal(t, "hello", sections[0].Anchor)
+
+	// The heading's own GFM anchor should also work.
+	sections2, ok := idx.Lookup("hello")
+	require.True(t, ok)
+	require.Len(t, sections2, 1)
+	assert.Same(t, sections[0], sections2[0], "both anchors should point to the same section")
+}
+
+func TestIndex_HTMLAnchorName(t *testing.T) {
+	source := []byte("<a name=\"my-anchor\"></a>\n\n## Section\n\nText.\n")
+	doc := parseMarkdown(t, source)
+	idx := Index(doc, source)
+
+	sections, ok := idx.Lookup("my-anchor")
+	require.True(t, ok, "name-based anchor should be found")
+	require.Len(t, sections, 1)
+	assert.Equal(t, 2, sections[0].Level)
+}
+
+func TestIndex_HTMLAnchorSingleQuotes(t *testing.T) {
+	source := []byte("<a id='single-quoted'></a>\n\n# Heading\n")
+	doc := parseMarkdown(t, source)
+	idx := Index(doc, source)
+
+	sections, ok := idx.Lookup("single-quoted")
+	require.True(t, ok, "single-quoted anchor should be found")
+	require.Len(t, sections, 1)
+}
+
+func TestIndex_HTMLAnchorNoFollowingHeading(t *testing.T) {
+	// An anchor at the end of a document with no following heading
+	// should be associated with the current section.
+	source := []byte("# Hello\n\nText.\n\n<a id=\"end-anchor\"></a>\n")
+	doc := parseMarkdown(t, source)
+	idx := Index(doc, source)
+
+	sections, ok := idx.Lookup("end-anchor")
+	require.True(t, ok, "anchor without following heading should still be found")
+	require.Len(t, sections, 1)
+	// Should be associated with the "Hello" section (the current one).
+	assert.Equal(t, "hello", sections[0].Anchor)
+}
+
+func TestIndex_HTMLAnchorMultipleBeforeHeading(t *testing.T) {
+	source := []byte("<a id=\"alias1\"></a>\n<a id=\"alias2\"></a>\n\n# Target\n")
+	doc := parseMarkdown(t, source)
+	idx := Index(doc, source)
+
+	for _, anchor := range []string{"alias1", "alias2", "target"} {
+		sections, ok := idx.Lookup(anchor)
+		require.True(t, ok, "anchor %q should be found", anchor)
+		require.Len(t, sections, 1)
+		assert.Equal(t, 1, sections[0].Level)
+	}
+}
+
 func TestIndex_DeeplyNested(t *testing.T) {
 	source := []byte("# L1\n\n## L2\n\n### L3\n\n#### L4\n\n##### L5\n\n###### L6\n")
 	doc := parseMarkdown(t, source)

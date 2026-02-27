@@ -9,6 +9,10 @@ import (
 
 var gfmPunctuationRegexp = regexp.MustCompile(`[^\w\- ]`)
 
+// anchorIDRegexp matches <a id="..." > or <a name="..." > (with optional self-close)
+// and captures the attribute value. Both single and double quotes are supported.
+var anchorIDRegexp = regexp.MustCompile(`(?i)<a\s+(?:id|name)\s*=\s*["']([^"']+)["'][^>]*>`)
+
 // GitHubFlavoredMarkdown is an AnchorFunc that transforms heading text into GitHub Flavored
 // Markdown anchors. Heading text is converted to a GFM anchor by first converting all text
 // to lowercase, removing all non-word, non-hyphen, and non-space characters, and then
@@ -39,12 +43,25 @@ type indexer struct {
 	anchorFunc AnchorFunc
 	source     []byte
 
-	sectionStack []*Section
-	anchors      map[string][]*Section
+	sectionStack   []*Section
+	anchors        map[string][]*Section
+	pendingAnchors []string // anchors from <a id="..."> tags awaiting the next heading
 }
 
 func (i *indexer) walk(n ast.Node, enter bool) (ast.WalkStatus, error) {
 	if !enter {
+		return ast.WalkContinue, nil
+	}
+
+	// Collect anchors from <a id="..."> or <a name="..."> raw HTML tags.
+	if raw, ok := n.(*ast.RawHTML); ok {
+		segs := raw.Segments
+		for j := 0; j < segs.Len(); j++ {
+			seg := segs.At(j)
+			if m := anchorIDRegexp.FindSubmatch(seg.Value(i.source)); m != nil {
+				i.pendingAnchors = append(i.pendingAnchors, string(m[1]))
+			}
+		}
 		return ast.WalkContinue, nil
 	}
 
@@ -59,6 +76,12 @@ func (i *indexer) walk(n ast.Node, enter bool) (ast.WalkStatus, error) {
 		Start:  heading,
 	}
 	i.anchors[newSection.Anchor] = append(i.anchors[newSection.Anchor], newSection)
+
+	// Also register any pending anchors from preceding <a id="..."> tags.
+	for _, anchor := range i.pendingAnchors {
+		i.anchors[anchor] = append(i.anchors[anchor], newSection)
+	}
+	i.pendingAnchors = i.pendingAnchors[:0]
 
 	currentSection := i.sectionStack[len(i.sectionStack)-1]
 	for heading.Level <= currentSection.Level {
@@ -89,6 +112,15 @@ func Index(document *ast.Document, source []byte, options ...IndexOption) *Docum
 	}
 
 	ast.Walk(document, indexer.walk)
+
+	// Flush any remaining pending anchors (not followed by a heading)
+	// to the current (innermost) section.
+	if len(indexer.pendingAnchors) > 0 {
+		current := indexer.sectionStack[len(indexer.sectionStack)-1]
+		for _, anchor := range indexer.pendingAnchors {
+			indexer.anchors[anchor] = append(indexer.anchors[anchor], current)
+		}
+	}
 
 	return &DocumentIndex{
 		toc:     indexer.sectionStack[0],
