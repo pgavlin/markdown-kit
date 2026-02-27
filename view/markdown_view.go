@@ -357,11 +357,19 @@ func NewModel(opts ...Option) Model {
 	return m
 }
 
-// Clear removes all text from the buffer.
+// Clear removes all text from the buffer and resets all document-dependent
+// state including selections, the navigation backstack, and the span tree.
 func (m *Model) Clear() {
 	m.lines = nil
 	m.markdown = nil
 	m.document = nil
+	m.spanTree = nil
+	m.index = nil
+	m.selection = nil
+	m.backstack = nil
+	m.selectionStart = 0
+	m.selectionEnd = 0
+	m.highlightSelection = false
 }
 
 // GetName returns the document name.
