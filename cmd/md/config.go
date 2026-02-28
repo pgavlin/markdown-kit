@@ -16,8 +16,8 @@ import (
 )
 
 type converterConfig struct {
-	Method  string   `toml:"method"`  // "builtin" (default) or "external"
-	Command []string `toml:"command"` // required when method = "external"; [program, args...]
+	Method  string `toml:"method"`  // "builtin" (default) or "external"
+	Command string `toml:"command"` // required when method = "external"; run via system shell
 }
 
 func (c converterConfig) validate() error {
@@ -25,7 +25,7 @@ func (c converterConfig) validate() error {
 	case "", "builtin":
 		return nil
 	case "external":
-		if len(c.Command) == 0 {
+		if c.Command == "" {
 			return fmt.Errorf("converter: method \"external\" requires a non-empty command")
 		}
 		return nil
@@ -85,7 +85,7 @@ const defaultConfig = `# md configuration file
 # Content converter for HTML-to-Markdown when opening URLs.
 # [converter]
 # method = "builtin"              # "builtin" (default) or "external"
-# command = ["pandoc", "-f", "html", "-t", "markdown"]  # required when method = "external"
+# command = "pandoc -f html -t markdown"  # required when method = "external"; run via system shell
 
 # Custom key bindings. Each key accepts a string or array of strings.
 # [keys]

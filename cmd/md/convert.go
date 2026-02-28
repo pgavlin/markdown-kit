@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/pgavlin/readability-go"
@@ -48,11 +49,11 @@ func (c *builtinConverter) convert(content []byte, sourceURL *url.URL) (convertR
 	}, nil
 }
 
-// externalConverter runs an external command to convert content to markdown.
-// The command receives the input via the MD_INPUT env var (path to a temp file)
-// and writes output to the path in MD_OUTPUT.
+// externalConverter runs an external command via the system shell to convert
+// content to markdown. The command receives the input via the MD_INPUT env var
+// (path to a temp file) and writes output to the path in MD_OUTPUT.
 type externalConverter struct {
-	command []string
+	command string
 }
 
 func (c *externalConverter) convert(content []byte, sourceURL *url.URL) (convertResult, error) {
@@ -77,8 +78,13 @@ func (c *externalConverter) convert(content []byte, sourceURL *url.URL) (convert
 	outputFile.Close()
 	defer os.Remove(outputFile.Name())
 
-	// Run the external command.
-	cmd := exec.Command(c.command[0], c.command[1:]...)
+	// Run the command via the system shell.
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", c.command)
+	} else {
+		cmd = exec.Command("sh", "-c", c.command)
+	}
 	cmd.Env = append(os.Environ(),
 		"MD_INPUT="+inputFile.Name(),
 		"MD_OUTPUT="+outputFile.Name(),
