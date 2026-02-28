@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,14 +29,14 @@ func main() {
 				Name:  "config",
 				Usage: "show the current configuration",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					path, err := configPath()
+					cfgPath, err := configPath()
 					if err != nil {
 						fmt.Println("# config file path unknown")
 					} else {
-						fmt.Printf("# %s\n", path)
+						fmt.Printf("# %s\n", cfgPath)
 					}
 
-					cfg, err := loadConfig(logger)
+					cfg, err := loadConfig(cfgPath, osFileSystem{}, logger)
 					if err != nil {
 						return err
 					}
@@ -50,7 +51,13 @@ func main() {
 				return fmt.Errorf("expected exactly one argument")
 			}
 
-			cfg, err := loadConfig(logger)
+			cfgPath, err := configPath()
+			if err != nil {
+				return fmt.Errorf("error determining config path: %w", err)
+			}
+
+			fsys := osFileSystem{}
+			cfg, err := loadConfig(cfgPath, fsys, logger)
 			if err != nil {
 				return fmt.Errorf("error loading config: %w", err)
 			}
@@ -63,19 +70,20 @@ func main() {
 			theme := cfg.theme()
 			conv := cfg.Converter.newConverter()
 			cache := openCache()
+			httpCl := http.DefaultClient
 
 			var model markdownReader
 			if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
-				result, err := fetchURL(arg, conv, cache, logger)
+				result, err := fetchURL(arg, conv, cache, httpCl, logger)
 				if err != nil {
 					return fmt.Errorf("error fetching %v: %w", arg, err)
 				}
-				model = newMarkdownReader(result.name, result.markdown, result.source, theme, conv, cache, logger)
+				model = newMarkdownReader(result.name, result.markdown, result.source, theme, conv, cache, httpCl, fsys, logger)
 				model.currentOriginalHTML = result.originalHTML
 				model.currentReadabilityHTML = result.readabilityHTML
 				model.updateHTMLKeyBindings()
 			} else {
-				source, err := os.ReadFile(arg)
+				source, err := fsys.ReadFile(arg)
 				if err != nil {
 					return fmt.Errorf("error opening %v: %w", arg, err)
 				}
@@ -83,7 +91,7 @@ func main() {
 				if err != nil {
 					absPath = arg
 				}
-				model = newMarkdownReader(filepath.Base(absPath), string(source), absPath, theme, conv, cache, logger)
+				model = newMarkdownReader(filepath.Base(absPath), string(source), absPath, theme, conv, cache, httpCl, fsys, logger)
 			}
 
 			cfg.applyKeys(&model.keys)

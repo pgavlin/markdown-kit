@@ -36,6 +36,7 @@ type cacheEntry struct {
 // conversionCache stores cached conversion results on disk.
 type conversionCache struct {
 	dir string
+	fs  fileSystem
 }
 
 // openCache creates a conversionCache using the user's cache directory.
@@ -50,7 +51,7 @@ func openCache() *conversionCache {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil
 	}
-	return &conversionCache{dir: dir}
+	return &conversionCache{dir: dir, fs: osFileSystem{}}
 }
 
 // cacheKeyHash returns the SHA-256 hex digest of a cache key.
@@ -67,7 +68,7 @@ func (c *conversionCache) entryPath(key string) string {
 // load reads and decodes a cache entry from disk. Returns nil if the entry
 // does not exist or cannot be decoded.
 func (c *conversionCache) load(key string) *cacheEntry {
-	data, err := os.ReadFile(c.entryPath(key))
+	data, err := c.fs.ReadFile(c.entryPath(key))
 	if err != nil {
 		return nil
 	}
@@ -85,7 +86,7 @@ func (c *conversionCache) store(key string, entry cacheEntry, logger *slog.Logge
 		logger.Error("cache_write_error", "key", key, "error", err)
 		return
 	}
-	if err := os.WriteFile(c.entryPath(key), data, 0o644); err != nil {
+	if err := c.fs.WriteFile(c.entryPath(key), data, 0o644); err != nil {
 		logger.Error("cache_write_error", "key", key, "error", err)
 	}
 }

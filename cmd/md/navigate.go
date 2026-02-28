@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -88,9 +87,9 @@ func isMarkdownContentType(ct string) bool {
 }
 
 // loadFilePage reads a local markdown file and returns a pageLoadedMsg.
-func loadFilePage(path string, logger *slog.Logger) tea.Cmd {
+func loadFilePage(path string, fsys fileSystem, logger *slog.Logger) tea.Cmd {
 	return func() tea.Msg {
-		data, err := os.ReadFile(path)
+		data, err := fsys.ReadFile(path)
 		if err != nil {
 			logger.Error("file_read_error", "path", path, "error", err)
 			return pageLoadErrorMsg{url: path, err: err}
@@ -116,7 +115,7 @@ type fetchResult struct {
 // fetchURL fetches a URL and returns a fetchResult. If the content is markdown,
 // it's used directly. Otherwise, the provided converter is used to convert the
 // content to markdown. Results are cached to disk when a cache is provided.
-func fetchURL(rawURL string, conv converter, cache *conversionCache, logger *slog.Logger) (fetchResult, error) {
+func fetchURL(rawURL string, conv converter, cache *conversionCache, client httpClient, logger *slog.Logger) (fetchResult, error) {
 	// Check the cache for a fresh or stale entry.
 	cached, fresh := cache.lookupHTTP(rawURL, logger)
 	if cached != nil && fresh {
@@ -152,7 +151,7 @@ func fetchURL(rawURL string, conv converter, cache *conversionCache, logger *slo
 	logger.Info("http_request", "method", "GET", "url", rawURL)
 	start := time.Now()
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fetchResult{}, err
 	}
@@ -244,9 +243,9 @@ func fetchURL(rawURL string, conv converter, cache *conversionCache, logger *slo
 }
 
 // fetchURLPage fetches a URL asynchronously as a tea.Cmd.
-func fetchURLPage(rawURL string, conv converter, cache *conversionCache, logger *slog.Logger) tea.Cmd {
+func fetchURLPage(rawURL string, conv converter, cache *conversionCache, client httpClient, logger *slog.Logger) tea.Cmd {
 	return func() tea.Msg {
-		result, err := fetchURL(rawURL, conv, cache, logger)
+		result, err := fetchURL(rawURL, conv, cache, client, logger)
 		if err != nil {
 			return pageLoadErrorMsg{url: rawURL, err: err}
 		}

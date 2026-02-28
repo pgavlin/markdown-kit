@@ -37,7 +37,7 @@ func (c converterConfig) validate() error {
 
 func (c converterConfig) newConverter() converter {
 	if c.Method == "external" {
-		return &externalConverter{command: c.Command}
+		return &externalConverter{command: c.Command, shell: osShellRunner{}}
 	}
 	return &builtinConverter{}
 }
@@ -56,23 +56,23 @@ func configPath() (string, error) {
 	return filepath.Join(dir, "md", "config.toml"), nil
 }
 
-func loadConfig(logger *slog.Logger) (config, error) {
-	path, err := configPath()
-	if err != nil {
-		return config{}, nil
-	}
-
-	var cfg config
-	_, err = toml.DecodeFile(path, &cfg)
+func loadConfig(path string, fsys fileSystem, logger *slog.Logger) (config, error) {
+	data, err := fsys.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			if err := createDefaultConfig(path); err != nil {
+			if err := createDefaultConfig(path, fsys); err != nil {
 				logger.Error("config_load_error", "path", path, "error", err)
 				return config{}, fmt.Errorf("creating default config: %w", err)
 			}
 			logger.Info("config_created", "path", path)
 			return config{}, nil
 		}
+		logger.Error("config_load_error", "path", path, "error", err)
+		return config{}, fmt.Errorf("reading %s: %w", path, err)
+	}
+
+	var cfg config
+	if _, err := toml.Decode(string(data), &cfg); err != nil {
 		logger.Error("config_load_error", "path", path, "error", err)
 		return config{}, fmt.Errorf("parsing %s: %w", path, err)
 	}
@@ -98,11 +98,11 @@ const defaultConfig = `# md configuration file
 # help = "?"
 `
 
-func createDefaultConfig(path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+func createDefaultConfig(path string, fsys fileSystem) error {
+	if err := fsys.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(defaultConfig), 0o644)
+	return fsys.WriteFile(path, []byte(defaultConfig), 0o644)
 }
 
 func (c config) theme() *chroma.Style {

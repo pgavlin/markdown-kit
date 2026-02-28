@@ -122,6 +122,12 @@ type markdownReader struct {
 	// Disk cache for conversion results.
 	cache *conversionCache
 
+	// HTTP client for fetching URLs.
+	client httpClient
+
+	// Filesystem abstraction.
+	fsys fileSystem
+
 	// The source path or URL of the current document.
 	currentSource string
 
@@ -155,7 +161,7 @@ type markdownReader struct {
 
 const defaultContentWidth = 160
 
-func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv converter, cache *conversionCache, logger *slog.Logger) markdownReader {
+func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv converter, cache *conversionCache, client httpClient, fsys fileSystem, logger *slog.Logger) markdownReader {
 	keys := defaultReaderKeyMap()
 
 	view := mdk.NewModel(
@@ -174,6 +180,8 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv 
 		logger:        logger,
 		converter:     conv,
 		cache:         cache,
+		client:        client,
+		fsys:          fsys,
 		currentSource: source,
 		keys:          keys,
 		helpModel:     helpModel,
@@ -336,14 +344,14 @@ func (r *markdownReader) handleLinkNavigation(rawURL string) tea.Cmd {
 	if strings.HasPrefix(resolved, "http://") || strings.HasPrefix(resolved, "https://") {
 		r.loading = true
 		r.loadingURL = resolved
-		return tea.Batch(fetchURLPage(resolved, r.converter, r.cache, r.logger), r.spinner.Tick)
+		return tea.Batch(fetchURLPage(resolved, r.converter, r.cache, r.client, r.logger), r.spinner.Tick)
 	}
 
 	// Local markdown files.
 	if isMarkdownFile(resolved) {
 		r.loading = true
 		r.loadingURL = resolved
-		return tea.Batch(loadFilePage(resolved, r.logger), r.spinner.Tick)
+		return tea.Batch(loadFilePage(resolved, r.fsys, r.logger), r.spinner.Tick)
 	}
 
 	// Non-markdown files, mailto:, etc. — open in browser.
