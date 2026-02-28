@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -297,6 +298,132 @@ func TestFetchURL_ConditionalHeaders(t *testing.T) {
 	}
 	if got := capturedReq.Header.Get("If-Modified-Since"); got != "Mon, 01 Jan 2024 00:00:00 GMT" {
 		t.Errorf("If-Modified-Since = %q, want %q", got, "Mon, 01 Jan 2024 00:00:00 GMT")
+	}
+}
+
+func TestFetchURL_Redirect(t *testing.T) {
+	// Simulate a redirect: the response's Request.URL differs from the original.
+	redirectedURL, _ := url.Parse("https://example.com/final-page")
+	client := &fakeHTTPClient{
+		handler: func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": {"text/markdown"}},
+				Body:       io.NopCloser(strings.NewReader("# Redirected")),
+				Request:    &http.Request{URL: redirectedURL},
+			}, nil
+		},
+	}
+
+	result, err := fetchURL("http://example.com/old-page", &builtinConverter{}, nil, client, discardLogger())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.source != "https://example.com/final-page" {
+		t.Errorf("source = %q, want final redirect URL", result.source)
+	}
+	if result.markdown != "# Redirected" {
+		t.Errorf("markdown = %q", result.markdown)
+	}
+}
+
+func TestFetchURL_ConverterError(t *testing.T) {
+	client := &fakeHTTPClient{
+		handler: func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": {"text/html"}},
+				Body:       io.NopCloser(strings.NewReader("<html>test</html>")),
+				Request:    req,
+			}, nil
+		},
+	}
+	conv := &fakeConverter{err: errors.New("conversion failed")}
+
+	_, err := fetchURL("http://example.com", conv, nil, client, discardLogger())
+	if err == nil {
+		t.Fatal("expected error from failed converter")
+	}
+}
+
+func TestFetchURLPage_Success(t *testing.T) {
+	client := &fakeHTTPClient{
+		handler: func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": {"text/markdown"}},
+				Body:       io.NopCloser(strings.NewReader("# Page")),
+				Request:    req,
+			}, nil
+		},
+	}
+
+	cmd := fetchURLPage("http://example.com/doc.md", &builtinConverter{}, nil, client, discardLogger())
+	msg := cmd()
+
+	loaded, ok := msg.(pageLoadedMsg)
+	if !ok {
+		t.Fatalf("expected pageLoadedMsg, got %T", msg)
+	}
+	if loaded.markdown != "# Page" {
+		t.Errorf("markdown = %q", loaded.markdown)
+	}
+	if loaded.source != "http://example.com/doc.md" {
+		t.Errorf("source = %q", loaded.source)
+	}
+}
+
+func TestFetchURLPage_Error(t *testing.T) {
+	client := &fakeHTTPClient{
+		handler: func(req *http.Request) (*http.Response, error) {
+			return nil, errors.New("network error")
+		},
+	}
+
+	cmd := fetchURLPage("http://example.com", &builtinConverter{}, nil, client, discardLogger())
+	msg := cmd()
+
+	errMsg, ok := msg.(pageLoadErrorMsg)
+	if !ok {
+		t.Fatalf("expected pageLoadErrorMsg, got %T", msg)
+	}
+	if errMsg.url != "http://example.com" {
+		t.Errorf("url = %q", errMsg.url)
+	}
+}
+
+func TestFetchURLPage_HTMLContent(t *testing.T) {
+	client := &fakeHTTPClient{
+		handler: func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": {"text/html"}},
+				Body:       io.NopCloser(strings.NewReader("<html>body</html>")),
+				Request:    req,
+			}, nil
+		},
+	}
+	conv := &fakeConverter{
+		result: convertResult{
+			name:            "Converted",
+			markdown:        "# Converted",
+			originalHTML:    "<html>body</html>",
+			readabilityHTML: "<article>body</article>",
+		},
+	}
+
+	cmd := fetchURLPage("http://example.com", conv, nil, client, discardLogger())
+	msg := cmd()
+
+	loaded, ok := msg.(pageLoadedMsg)
+	if !ok {
+		t.Fatalf("expected pageLoadedMsg, got %T", msg)
+	}
+	if loaded.originalHTML != "<html>body</html>" {
+		t.Errorf("originalHTML = %q", loaded.originalHTML)
+	}
+	if loaded.readabilityHTML != "<article>body</article>" {
+		t.Errorf("readabilityHTML = %q", loaded.readabilityHTML)
 	}
 }
 

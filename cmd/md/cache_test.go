@@ -268,6 +268,74 @@ func TestCache_StoreHTTP_NilCache(t *testing.T) {
 	c.storeHTTP("http://example.com", cacheEntry{Name: "test"}, logger)
 }
 
+func TestCache_LookupHTTP_ExpiresFresh(t *testing.T) {
+	fs := newMemFS()
+	c := &conversionCache{dir: "/cache", fs: fs}
+	logger := discardLogger()
+
+	// Use Expires header (no Cache-Control max-age).
+	future := time.Now().Add(1 * time.Hour).UTC().Format(time.RFC1123)
+	entry := cacheEntry{
+		Name:     "page",
+		Markdown: "# Expires Fresh",
+		Expires:  future,
+	}
+	c.store("http://example.com", entry, logger)
+
+	got, fresh := c.lookupHTTP("http://example.com", logger)
+	if got == nil {
+		t.Fatal("expected non-nil entry")
+	}
+	if !fresh {
+		t.Error("expected fresh=true for future Expires")
+	}
+}
+
+func TestCache_LookupHTTP_ExpiresStale(t *testing.T) {
+	fs := newMemFS()
+	c := &conversionCache{dir: "/cache", fs: fs}
+	logger := discardLogger()
+
+	// Expires in the past.
+	past := time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC1123)
+	entry := cacheEntry{
+		Name:     "page",
+		Markdown: "# Expires Stale",
+		Expires:  past,
+		ETag:     "\"stale-expires\"",
+	}
+	c.store("http://example.com", entry, logger)
+
+	got, fresh := c.lookupHTTP("http://example.com", logger)
+	if got == nil {
+		t.Fatal("expected non-nil entry")
+	}
+	if fresh {
+		t.Error("expected fresh=false for past Expires")
+	}
+}
+
+func TestCache_LookupHTTP_NoCachingHeaders(t *testing.T) {
+	fs := newMemFS()
+	c := &conversionCache{dir: "/cache", fs: fs}
+	logger := discardLogger()
+
+	// No Cache-Control, no Expires — should return stale.
+	entry := cacheEntry{
+		Name:     "page",
+		Markdown: "# No Headers",
+	}
+	c.store("http://example.com", entry, logger)
+
+	got, fresh := c.lookupHTTP("http://example.com", logger)
+	if got == nil {
+		t.Fatal("expected non-nil entry")
+	}
+	if fresh {
+		t.Error("expected fresh=false when no caching headers")
+	}
+}
+
 func TestCache_LookupFile_HashMatch(t *testing.T) {
 	fs := newMemFS()
 	c := &conversionCache{dir: "/cache", fs: fs}
