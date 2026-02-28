@@ -6,6 +6,7 @@ import (
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/alecthomas/chroma"
@@ -122,6 +123,7 @@ type markdownReader struct {
 	// Loading state for async page fetches.
 	loading    bool
 	loadingURL string
+	spinner    spinner.Model
 
 	// Help overlay.
 	keys      readerKeyMap
@@ -160,6 +162,7 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style) markd
 		currentSource: source,
 		keys:          keys,
 		helpModel:     helpModel,
+		spinner:       spinner.New(spinner.WithSpinner(spinner.Dot)),
 	}
 }
 
@@ -195,6 +198,14 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.showError = true
 		r.errorURL = msg.url
 		r.errorText = fmt.Sprintf("Error loading %s: %v\n\nPress 'o' to open in browser", msg.url, msg.err)
+		return r, nil
+
+	case spinner.TickMsg:
+		if r.loading {
+			var cmd tea.Cmd
+			r.spinner, cmd = r.spinner.Update(msg)
+			return r, cmd
+		}
 		return r, nil
 
 	case tea.WindowSizeMsg:
@@ -310,14 +321,14 @@ func (r *markdownReader) handleLinkNavigation(rawURL string) tea.Cmd {
 	if strings.HasPrefix(resolved, "http://") || strings.HasPrefix(resolved, "https://") {
 		r.loading = true
 		r.loadingURL = resolved
-		return fetchURLPage(resolved)
+		return tea.Batch(fetchURLPage(resolved), r.spinner.Tick)
 	}
 
 	// Local markdown files.
 	if isMarkdownFile(resolved) {
 		r.loading = true
 		r.loadingURL = resolved
-		return loadFilePage(resolved)
+		return tea.Batch(loadFilePage(resolved), r.spinner.Tick)
 	}
 
 	// Non-markdown files, mailto:, etc. — open in browser.
@@ -371,9 +382,9 @@ func (r markdownReader) View() tea.View {
 
 	var result string
 	if r.loading {
-		loadingText := "Loading..."
+		loadingText := r.spinner.View() + " Loading..."
 		if r.loadingURL != "" {
-			loadingText = fmt.Sprintf("Loading %s...", r.loadingURL)
+			loadingText = r.spinner.View() + fmt.Sprintf(" Loading %s...", r.loadingURL)
 		}
 		result = r.overlayDialog(base, "Loading", loadingText)
 	} else if r.showHelp {
