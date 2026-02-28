@@ -599,3 +599,47 @@ func TestKeyMapSetEnabled_ReEnables(t *testing.T) {
 	m, _ = m.Update(keyMsg('j'))
 	assert.Equal(t, 1, m.lineOffset, "re-enabled KeyMap should respond to 'j'")
 }
+
+// ---------------------------------------------------------------------------
+// Regression: SetText with stale lineOffset
+// ---------------------------------------------------------------------------
+
+func TestSetText_ClampsLineOffset(t *testing.T) {
+	// Regression test for a panic in SelectFirstVisible when lineOffset
+	// exceeds len(lines) after SetText replaces a long document with a
+	// shorter one.
+	//
+	// Scenario: user scrolls far down in a long document, then follows a
+	// link to a shorter page. SetText replaces the content but lineOffset
+	// was not reset, so the next key press that calls SelectFirstVisible
+	// panicked with "index out of range".
+
+	// Build a long document with links so SelectFirstVisible has work to do.
+	var longDoc strings.Builder
+	for i := 0; i < 200; i++ {
+		fmt.Fprintf(&longDoc, "Line %d with a [link](https://example.com/%d).\n\n", i, i)
+	}
+
+	m := NewModel(WithTheme(styles.Pulumi))
+	m.SetText("long.md", longDoc.String())
+	m.SetSize(80, 24)
+
+	require.True(t, len(m.lines) > 100, "long document should produce many lines")
+
+	// Scroll far down.
+	m.GotoBottom()
+	require.True(t, m.lineOffset > 100, "should be scrolled well past what the short doc will have")
+
+	// Replace with a much shorter document (simulates navigating to a new page).
+	shortDoc := "# Short\n\nJust a [link](https://example.com).\n"
+	m.SetText("short.md", shortDoc)
+
+	// lineOffset must now be valid for the new document.
+	require.Less(t, m.lineOffset, len(m.lines),
+		"lineOffset should be clamped after SetText with shorter content")
+
+	// Pressing NextLink (]) must not panic.
+	assert.NotPanics(t, func() {
+		m, _ = m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
+	}, "SelectFirstVisible should not panic after SetText with shorter content")
+}

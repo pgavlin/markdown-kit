@@ -389,6 +389,8 @@ func (m *Model) Clear() {
 	m.selectionStart = 0
 	m.selectionEnd = 0
 	m.highlightSelection = false
+	m.lineOffset = 0
+	m.columnOffset = 0
 	m.search = searchState{}
 }
 
@@ -1223,7 +1225,7 @@ func (m *Model) isSelectionVisible() bool {
 
 // SelectFirstVisible selects the first node within the viewport that matches the given selector.
 func (m *Model) SelectFirstVisible(selector Selector) bool {
-	if m.spanTree == nil || len(m.lines) == 0 {
+	if m.spanTree == nil || len(m.lines) == 0 || m.lineOffset >= len(m.lines) {
 		return false
 	}
 	vpStart := m.lines[m.lineOffset].start
@@ -1249,7 +1251,7 @@ func (m *Model) SelectFirstVisible(selector Selector) bool {
 
 // SelectLastVisible selects the last node within the viewport that matches the given selector.
 func (m *Model) SelectLastVisible(selector Selector) bool {
-	if m.spanTree == nil || len(m.lines) == 0 {
+	if m.spanTree == nil || len(m.lines) == 0 || m.lineOffset >= len(m.lines) {
 		return false
 	}
 	vpStart := m.lines[m.lineOffset].start
