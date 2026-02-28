@@ -2,18 +2,20 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/pgavlin/readability-go"
 )
 
 // converter converts raw content (typically HTML) into markdown.
 type converter interface {
-	convert(content []byte, sourceURL *url.URL) (convertResult, error)
+	convert(content []byte, sourceURL *url.URL, logger *slog.Logger) (convertResult, error)
 }
 
 // convertResult holds the output of a content conversion.
@@ -27,12 +29,14 @@ type convertResult struct {
 // builtinConverter uses readability extraction to convert HTML to markdown.
 type builtinConverter struct{}
 
-func (c *builtinConverter) convert(content []byte, sourceURL *url.URL) (convertResult, error) {
+func (c *builtinConverter) convert(content []byte, sourceURL *url.URL, logger *slog.Logger) (convertResult, error) {
 	article, err := readability.ParseReader(strings.NewReader(string(content)), sourceURL, nil)
 	if err != nil {
+		logger.Error("readability_convert_error", "url", sourceURL.String(), "error", err)
 		return convertResult{}, fmt.Errorf("failed to parse page: %w", err)
 	}
 	if article == nil {
+		logger.Error("readability_convert_error", "url", sourceURL.String(), "error", "could not extract content")
 		return convertResult{}, fmt.Errorf("could not extract content from page")
 	}
 
@@ -40,6 +44,8 @@ func (c *builtinConverter) convert(content []byte, sourceURL *url.URL) (convertR
 	if name == "" {
 		name = pageTitleFromURL(sourceURL.String())
 	}
+
+	logger.Info("readability_convert", "url", sourceURL.String(), "title", name)
 
 	return convertResult{
 		name:            name,
@@ -56,16 +62,18 @@ type externalConverter struct {
 	command string
 }
 
-func (c *externalConverter) convert(content []byte, sourceURL *url.URL) (convertResult, error) {
+func (c *externalConverter) convert(content []byte, sourceURL *url.URL, logger *slog.Logger) (convertResult, error) {
 	// Write input to a temp file.
 	inputFile, err := os.CreateTemp("", "md-input-*")
 	if err != nil {
+		logger.Error("temp_file_error", "op", "create", "error", err)
 		return convertResult{}, fmt.Errorf("creating temp input file: %w", err)
 	}
 	defer os.Remove(inputFile.Name())
 
 	if _, err := inputFile.Write(content); err != nil {
 		inputFile.Close()
+		logger.Error("temp_file_error", "op", "write", "error", err)
 		return convertResult{}, fmt.Errorf("writing temp input file: %w", err)
 	}
 	inputFile.Close()
@@ -73,6 +81,7 @@ func (c *externalConverter) convert(content []byte, sourceURL *url.URL) (convert
 	// Create a temp file path for output.
 	outputFile, err := os.CreateTemp("", "md-output-*")
 	if err != nil {
+		logger.Error("temp_file_error", "op", "create", "error", err)
 		return convertResult{}, fmt.Errorf("creating temp output file: %w", err)
 	}
 	outputFile.Close()
@@ -91,9 +100,15 @@ func (c *externalConverter) convert(content []byte, sourceURL *url.URL) (convert
 	)
 	cmd.Stderr = os.Stderr
 
+	logger.Info("external_converter_start", "command", c.command)
+	start := time.Now()
+
 	if err := cmd.Run(); err != nil {
+		logger.Error("external_converter_error", "command", c.command, "error", err)
 		return convertResult{}, fmt.Errorf("running converter command: %w", err)
 	}
+
+	logger.Info("external_converter_done", "command", c.command, "duration", time.Since(start))
 
 	// Read the output.
 	output, err := os.ReadFile(outputFile.Name())

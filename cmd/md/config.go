@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,7 +56,7 @@ func configPath() (string, error) {
 	return filepath.Join(dir, "md", "config.toml"), nil
 }
 
-func loadConfig() (config, error) {
+func loadConfig(logger *slog.Logger) (config, error) {
 	path, err := configPath()
 	if err != nil {
 		return config{}, nil
@@ -66,12 +67,16 @@ func loadConfig() (config, error) {
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			if err := createDefaultConfig(path); err != nil {
+				logger.Error("config_load_error", "path", path, "error", err)
 				return config{}, fmt.Errorf("creating default config: %w", err)
 			}
+			logger.Info("config_created", "path", path)
 			return config{}, nil
 		}
+		logger.Error("config_load_error", "path", path, "error", err)
 		return config{}, fmt.Errorf("parsing %s: %w", path, err)
 	}
+	logger.Info("config_loaded", "path", path)
 	return cfg, nil
 }
 

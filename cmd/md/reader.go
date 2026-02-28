@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"charm.land/bubbles/v2/help"
@@ -81,15 +82,17 @@ func (km readerKeyMap) FullHelp() [][]key.Binding {
 	return groups
 }
 
-func openInBrowser(url string) error {
+func openInBrowser(url string, logger *slog.Logger) error {
 	if url == "" {
 		return fmt.Errorf("missing URL")
 	}
+	logger.Info("open_browser", "url", url)
 	return open.Run(url)
 }
 
-func sendToClipboard(value string) {
+func sendToClipboard(value string, logger *slog.Logger) {
 	if !clipboard.Unsupported {
+		logger.Info("clipboard_write", "length", len(value))
 		clipboard.WriteAll(value)
 	}
 }
@@ -109,6 +112,9 @@ type markdownReader struct {
 	view mdk.Model
 
 	width, height int
+
+	// Structured logger for I/O operations.
+	logger *slog.Logger
 
 	// Content converter for non-markdown URLs.
 	converter converter
@@ -149,7 +155,7 @@ type markdownReader struct {
 
 const defaultContentWidth = 160
 
-func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv converter, cache *conversionCache) markdownReader {
+func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv converter, cache *conversionCache, logger *slog.Logger) markdownReader {
 	keys := defaultReaderKeyMap()
 
 	view := mdk.NewModel(
@@ -165,6 +171,7 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv 
 
 	return markdownReader{
 		view:          view,
+		logger:        logger,
 		converter:     conv,
 		cache:         cache,
 		currentSource: source,
@@ -238,7 +245,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.showError = false
 				r.errorURL = ""
 				r.errorText = ""
-				openInBrowser(url)
+				openInBrowser(url, r.logger)
 				return r, nil
 			}
 			if msg.String() == "esc" || msg.String() == "enter" || msg.String() == "q" {
@@ -302,7 +309,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return r, nil
 		case "ctrl+o":
 			link := r.view.FocusedLinkDestination()
-			if err := openInBrowser(link); err != nil {
+			if err := openInBrowser(link, r.logger); err != nil {
 				r.showError = true
 				r.errorText = fmt.Sprintf("Error opening URL: %v", err)
 			}
@@ -329,18 +336,18 @@ func (r *markdownReader) handleLinkNavigation(rawURL string) tea.Cmd {
 	if strings.HasPrefix(resolved, "http://") || strings.HasPrefix(resolved, "https://") {
 		r.loading = true
 		r.loadingURL = resolved
-		return tea.Batch(fetchURLPage(resolved, r.converter, r.cache), r.spinner.Tick)
+		return tea.Batch(fetchURLPage(resolved, r.converter, r.cache, r.logger), r.spinner.Tick)
 	}
 
 	// Local markdown files.
 	if isMarkdownFile(resolved) {
 		r.loading = true
 		r.loadingURL = resolved
-		return tea.Batch(loadFilePage(resolved), r.spinner.Tick)
+		return tea.Batch(loadFilePage(resolved, r.logger), r.spinner.Tick)
 	}
 
 	// Non-markdown files, mailto:, etc. — open in browser.
-	openInBrowser(resolved)
+	openInBrowser(resolved, r.logger)
 	return nil
 }
 

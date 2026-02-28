@@ -22,6 +22,11 @@ func main() {
 				Name:  "config",
 				Usage: "show the current configuration",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
+					logger, logFile, _ := openLogger()
+					if logFile != nil {
+						defer logFile.Close()
+					}
+
 					path, err := configPath()
 					if err != nil {
 						fmt.Println("# config file path unknown")
@@ -29,7 +34,7 @@ func main() {
 						fmt.Printf("# %s\n", path)
 					}
 
-					cfg, err := loadConfig()
+					cfg, err := loadConfig(logger)
 					if err != nil {
 						return err
 					}
@@ -44,7 +49,12 @@ func main() {
 				return fmt.Errorf("expected exactly one argument")
 			}
 
-			cfg, err := loadConfig()
+			logger, logFile, _ := openLogger()
+			if logFile != nil {
+				defer logFile.Close()
+			}
+
+			cfg, err := loadConfig(logger)
 			if err != nil {
 				return fmt.Errorf("error loading config: %w", err)
 			}
@@ -60,11 +70,11 @@ func main() {
 
 			var model markdownReader
 			if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
-				result, err := fetchURL(arg, conv, cache)
+				result, err := fetchURL(arg, conv, cache, logger)
 				if err != nil {
 					return fmt.Errorf("error fetching %v: %w", arg, err)
 				}
-				model = newMarkdownReader(result.name, result.markdown, result.source, theme, conv, cache)
+				model = newMarkdownReader(result.name, result.markdown, result.source, theme, conv, cache, logger)
 				model.currentOriginalHTML = result.originalHTML
 				model.currentReadabilityHTML = result.readabilityHTML
 				model.updateHTMLKeyBindings()
@@ -77,7 +87,7 @@ func main() {
 				if err != nil {
 					absPath = arg
 				}
-				model = newMarkdownReader(filepath.Base(absPath), string(source), absPath, theme, conv, cache)
+				model = newMarkdownReader(filepath.Base(absPath), string(source), absPath, theme, conv, cache, logger)
 			}
 
 			cfg.applyKeys(&model.keys)

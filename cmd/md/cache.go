@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -77,13 +78,16 @@ func (c *conversionCache) load(key string) *cacheEntry {
 	return &entry
 }
 
-// store writes a cache entry to disk. Errors are silently ignored.
-func (c *conversionCache) store(key string, entry cacheEntry) {
+// store writes a cache entry to disk.
+func (c *conversionCache) store(key string, entry cacheEntry, logger *slog.Logger) {
 	data, err := json.Marshal(entry)
 	if err != nil {
+		logger.Error("cache_write_error", "key", key, "error", err)
 		return
 	}
-	_ = os.WriteFile(c.entryPath(key), data, 0o644)
+	if err := os.WriteFile(c.entryPath(key), data, 0o644); err != nil {
+		logger.Error("cache_write_error", "key", key, "error", err)
+	}
 }
 
 // lookupHTTP returns a cached entry for the given URL. The second return value
@@ -91,11 +95,12 @@ func (c *conversionCache) store(key string, entry cacheEntry) {
 // A stale entry is still returned so the caller can use ETag/Last-Modified for
 // conditional requests. Returns nil, false if no entry exists or caching is
 // disabled.
-func (c *conversionCache) lookupHTTP(rawURL string) (*cacheEntry, bool) {
+func (c *conversionCache) lookupHTTP(rawURL string, logger *slog.Logger) (*cacheEntry, bool) {
 	if c == nil {
 		return nil, false
 	}
 
+	logger.Debug("cache_load", "key", rawURL)
 	entry := c.load(rawURL)
 	if entry == nil {
 		return nil, false
@@ -145,20 +150,21 @@ func (c *conversionCache) lookupHTTP(rawURL string) (*cacheEntry, bool) {
 }
 
 // storeHTTP writes an HTTP cache entry to disk.
-func (c *conversionCache) storeHTTP(rawURL string, entry cacheEntry) {
+func (c *conversionCache) storeHTTP(rawURL string, entry cacheEntry, logger *slog.Logger) {
 	if c == nil {
 		return
 	}
-	c.store(rawURL, entry)
+	c.store(rawURL, entry, logger)
 }
 
 // lookupFile returns a cached entry for a local file if the content hash
 // matches. Returns nil, false on cache miss.
-func (c *conversionCache) lookupFile(absPath string, content []byte) (*cacheEntry, bool) {
+func (c *conversionCache) lookupFile(absPath string, content []byte, logger *slog.Logger) (*cacheEntry, bool) {
 	if c == nil {
 		return nil, false
 	}
 
+	logger.Debug("cache_load", "key", absPath)
 	entry := c.load(absPath)
 	if entry == nil {
 		return nil, false
@@ -173,12 +179,12 @@ func (c *conversionCache) lookupFile(absPath string, content []byte) (*cacheEntr
 
 // storeFile writes a local file cache entry to disk, setting ContentHash from
 // the provided content.
-func (c *conversionCache) storeFile(absPath string, content []byte, entry cacheEntry) {
+func (c *conversionCache) storeFile(absPath string, content []byte, entry cacheEntry, logger *slog.Logger) {
 	if c == nil {
 		return
 	}
 	entry.ContentHash = contentHash(content)
-	c.store(absPath, entry)
+	c.store(absPath, entry, logger)
 }
 
 // contentHash returns the SHA-256 hex digest of content.
