@@ -267,6 +267,19 @@ func isHeading(n ast.Node) (bool, bool) {
 	return n.Kind() == ast.KindHeading, n.Kind() == ast.KindHeading
 }
 
+// firstHeadingText returns the plain text of the first heading in the document,
+// or "" if no heading is found.
+func firstHeadingText(doc ast.Node, source []byte) string {
+	for n := doc.FirstChild(); n != nil; n = n.NextSibling() {
+		if n.Kind() == ast.KindHeading {
+			if s := string(n.Text(source)); s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
 // isHeadingOrAnchor matches headings and HTML anchor nodes for navigation.
 func (m *Model) isHeadingOrAnchor(n ast.Node) (bool, bool) {
 	if n.Kind() == ast.KindHeading {
@@ -405,15 +418,19 @@ func (m *Model) GetMarkdown() []byte {
 }
 
 // SetText sets the text of this view. Previously contained text will be removed.
+// If name is empty, the name is inferred from the first heading in the document.
 func (m *Model) SetText(name, markdown string) {
 	m.Clear()
-	m.name = name
 	m.markdown = []byte(markdown)
 	parser := goldmark.DefaultParser()
 	parser.AddOptions(goldmark_parser.WithParagraphTransformers(
 		util.Prioritized(extension.NewTableParagraphTransformer(), 200),
 	))
 	m.document = parser.Parse(text.NewReader(m.markdown))
+	if name == "" {
+		name = firstHeadingText(m.document, m.markdown)
+	}
+	m.name = name
 	if doc, ok := m.document.(*ast.Document); ok {
 		m.index = indexer.Index(doc, m.markdown)
 		m.anchorNodes = m.index.AnchorNodes()
