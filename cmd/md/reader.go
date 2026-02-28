@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 
 	"charm.land/bubbles/v2/filepicker"
@@ -24,13 +23,13 @@ import (
 type readerKeyMap struct {
 	mdk.KeyMap // embed the view KeyMap
 
-	ToggleRaw            key.Binding
-	ToggleOriginalHTML   key.Binding
+	ToggleRaw             key.Binding
+	ToggleOriginalHTML    key.Binding
 	ToggleReadabilityHTML key.Binding
-	OpenFile             key.Binding
-	OpenBrowser          key.Binding
-	Help                 key.Binding
-	Quit                 key.Binding
+	OpenFile              key.Binding
+	OpenBrowser           key.Binding
+	Help                  key.Binding
+	Quit                  key.Binding
 }
 
 func defaultReaderKeyMap() readerKeyMap {
@@ -193,7 +192,7 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv 
 	fp.FileAllowed = true
 	fp.DirAllowed = false
 	fp.AutoHeight = false
-	if wd, err := os.Getwd(); err == nil {
+	if wd, err := fsys.Getwd(); err == nil {
 		fp.CurrentDirectory = wd
 	}
 
@@ -513,6 +512,7 @@ func (r markdownReader) View() tea.View {
 
 	v := tea.NewView(result)
 	v.AltScreen = true
+	v.WindowTitle = r.view.GetName()
 	return v
 }
 
