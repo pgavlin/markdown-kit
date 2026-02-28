@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -67,6 +68,43 @@ func openLogger() (*slog.Logger, *os.File, error) {
 
 	logger := slog.New(slog.NewJSONHandler(f, nil))
 	return logger, f, nil
+}
+
+// handlePanic recovers from a panic, logs it to the logger, and prints a
+// user-friendly crash report to stderr. If logFile is non-nil its path is
+// included in the report so the user can find the full details.
+func handlePanic(logger *slog.Logger, logFile *os.File) {
+	r := recover()
+	if r == nil {
+		return
+	}
+
+	// Capture the stack trace (skip the recover/handlePanic frames).
+	buf := make([]byte, 64<<10)
+	n := runtime.Stack(buf, false)
+	stack := string(buf[:n])
+
+	// Log the panic with full stack trace.
+	logger.Error("panic", "value", fmt.Sprint(r), "stack", stack)
+
+	// Ensure the log is flushed before we exit.
+	if logFile != nil {
+		logFile.Sync()
+	}
+
+	// Print a user-friendly report to stderr.
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "md crashed unexpectedly.")
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintf(os.Stderr, "  panic: %v\n", r)
+	fmt.Fprintln(os.Stderr, "")
+	if logFile != nil {
+		fmt.Fprintf(os.Stderr, "Details have been written to: %s\n", logFile.Name())
+		fmt.Fprintln(os.Stderr, "")
+	}
+	fmt.Fprintln(os.Stderr, "Please report this issue at: https://github.com/pgavlin/markdown-kit/issues")
+
+	os.Exit(2)
 }
 
 // discardHandler is a slog.Handler that discards all records.

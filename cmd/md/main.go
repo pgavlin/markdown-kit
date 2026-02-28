@@ -13,6 +13,12 @@ import (
 )
 
 func main() {
+	logger, logFile, _ := openLogger()
+	if logFile != nil {
+		defer logFile.Close()
+	}
+	defer handlePanic(logger, logFile)
+
 	cmd := &cli.Command{
 		Name:      "md",
 		Usage:     "interactive terminal-based Markdown reader",
@@ -22,11 +28,6 @@ func main() {
 				Name:  "config",
 				Usage: "show the current configuration",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					logger, logFile, _ := openLogger()
-					if logFile != nil {
-						defer logFile.Close()
-					}
-
 					path, err := configPath()
 					if err != nil {
 						fmt.Println("# config file path unknown")
@@ -47,11 +48,6 @@ func main() {
 			if cmd.Args().Len() != 1 {
 				cli.ShowAppHelp(cmd)
 				return fmt.Errorf("expected exactly one argument")
-			}
-
-			logger, logFile, _ := openLogger()
-			if logFile != nil {
-				defer logFile.Close()
 			}
 
 			cfg, err := loadConfig(logger)
