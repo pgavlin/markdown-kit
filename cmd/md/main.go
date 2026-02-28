@@ -21,17 +21,23 @@ func main() {
 		os.Exit(-1)
 	}
 
+	if err := cfg.Converter.validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "error in config: %v\n", err)
+		os.Exit(-1)
+	}
+
 	arg := os.Args[1]
 	theme := cfg.theme()
+	conv := cfg.Converter.newConverter()
 
 	var model markdownReader
 	if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
-		result, err := fetchURL(arg)
+		result, err := fetchURL(arg, conv)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error fetching %v: %v\n", arg, err)
 			os.Exit(-1)
 		}
-		model = newMarkdownReader(result.name, result.markdown, result.source, theme)
+		model = newMarkdownReader(result.name, result.markdown, result.source, theme, conv)
 		model.currentOriginalHTML = result.originalHTML
 		model.currentReadabilityHTML = result.readabilityHTML
 		model.updateHTMLKeyBindings()
@@ -45,7 +51,7 @@ func main() {
 		if err != nil {
 			absPath = arg
 		}
-		model = newMarkdownReader(filepath.Base(absPath), string(source), absPath, theme)
+		model = newMarkdownReader(filepath.Base(absPath), string(source), absPath, theme, conv)
 	}
 
 	cfg.applyKeys(&model.keys)

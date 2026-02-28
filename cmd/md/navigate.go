@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/pgavlin/readability-go"
 )
 
 // pageLoadedMsg is sent when a page has been successfully loaded.
@@ -111,9 +110,9 @@ type fetchResult struct {
 }
 
 // fetchURL fetches a URL and returns a fetchResult. If the content is markdown,
-// it's used directly. If it's HTML, it's converted to markdown via readability
-// and both the original and post-readability HTML are retained.
-func fetchURL(rawURL string) (fetchResult, error) {
+// it's used directly. Otherwise, the provided converter is used to convert the
+// content to markdown.
+func fetchURL(rawURL string, conv converter) (fetchResult, error) {
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
 		return fetchResult{}, err
@@ -146,41 +145,31 @@ func fetchURL(rawURL string) (fetchResult, error) {
 		}, nil
 	}
 
-	// Read the full body so we can keep the original HTML.
+	// Read the full body for conversion.
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fetchResult{}, err
 	}
 
-	// Try readability extraction from HTML.
 	pageURL, _ := url.Parse(finalURL)
-	article, err := readability.ParseReader(strings.NewReader(string(body)), pageURL, nil)
+	cr, err := conv.convert(body, pageURL)
 	if err != nil {
-		return fetchResult{}, fmt.Errorf("failed to parse page: %w", err)
-	}
-	if article == nil {
-		return fetchResult{}, fmt.Errorf("could not extract content from page")
-	}
-
-	md := article.Markdown()
-	name := article.Title
-	if name == "" {
-		name = pageTitleFromURL(finalURL)
+		return fetchResult{}, err
 	}
 
 	return fetchResult{
-		name:            name,
-		markdown:        md,
+		name:            cr.name,
+		markdown:        cr.markdown,
 		source:          finalURL,
-		originalHTML:    string(body),
-		readabilityHTML: article.Content,
+		originalHTML:    cr.originalHTML,
+		readabilityHTML: cr.readabilityHTML,
 	}, nil
 }
 
 // fetchURLPage fetches a URL asynchronously as a tea.Cmd.
-func fetchURLPage(rawURL string) tea.Cmd {
+func fetchURLPage(rawURL string, conv converter) tea.Cmd {
 	return func() tea.Msg {
-		result, err := fetchURL(rawURL)
+		result, err := fetchURL(rawURL, conv)
 		if err != nil {
 			return pageLoadErrorMsg{url: rawURL, err: err}
 		}

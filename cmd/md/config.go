@@ -15,9 +15,36 @@ import (
 	"github.com/pgavlin/markdown-kit/styles"
 )
 
+type converterConfig struct {
+	Method  string   `toml:"method"`  // "builtin" (default) or "external"
+	Command []string `toml:"command"` // required when method = "external"; [program, args...]
+}
+
+func (c converterConfig) validate() error {
+	switch c.Method {
+	case "", "builtin":
+		return nil
+	case "external":
+		if len(c.Command) == 0 {
+			return fmt.Errorf("converter: method \"external\" requires a non-empty command")
+		}
+		return nil
+	default:
+		return fmt.Errorf("converter: unknown method %q (expected \"builtin\" or \"external\")", c.Method)
+	}
+}
+
+func (c converterConfig) newConverter() converter {
+	if c.Method == "external" {
+		return &externalConverter{command: c.Command}
+	}
+	return &builtinConverter{}
+}
+
 type config struct {
-	Theme string         `toml:"theme"`
-	Keys  map[string]any `toml:"keys"`
+	Theme     string          `toml:"theme"`
+	Keys      map[string]any  `toml:"keys"`
+	Converter converterConfig `toml:"converter"`
 }
 
 func loadConfig() (config, error) {
