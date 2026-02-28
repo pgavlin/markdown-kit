@@ -1070,8 +1070,27 @@ func (r *Renderer) RenderThematicBreak(w util.BufWriter, source []byte, node ast
 		return ast.WalkStop, err
 	}
 
-	if _, err := r.WriteString(w, "***\n"); err != nil {
-		return ast.WalkStop, err
+	if r.theme == nil {
+		if _, err := r.WriteString(w, "***\n"); err != nil {
+			return ast.WalkStop, err
+		}
+	} else {
+		width := r.wordWrap
+		if width <= 0 {
+			width = 80
+		}
+		if err := r.writeSGR(w, "2"); err != nil {
+			return ast.WalkStop, err
+		}
+		if _, err := r.WriteString(w, strings.Repeat("─", width)); err != nil {
+			return ast.WalkStop, err
+		}
+		if err := r.writeSGR(w, "22"); err != nil {
+			return ast.WalkStop, err
+		}
+		if _, err := r.WriteString(w, "\n"); err != nil {
+			return ast.WalkStop, err
+		}
 	}
 
 	return ast.WalkContinue, nil

@@ -620,13 +620,14 @@ func TestAutoLink(t *testing.T) {
 	assert.True(t, strings.Contains(output, "<http://example.com>"), "autolink should be rendered with angle brackets")
 }
 
-// TestThematicBreak verifies that thematic breaks render as ***.
+// TestThematicBreak verifies that thematic breaks render as a dim horizontal line.
 func TestThematicBreak(t *testing.T) {
 	input := "***\n"
 
-	output, _ := renderMarkdown(t, input)
+	output, _ := renderMarkdown(t, input, WithTheme(styles.Pulumi))
 
-	assert.True(t, strings.Contains(output, "***"), "thematic break should render as '***'")
+	assert.True(t, strings.Contains(output, "─"), "thematic break should render as a horizontal line")
+	assert.True(t, strings.Contains(output, "\033[2m"), "thematic break should be dim")
 }
 
 // TestNodeSpanContains verifies the Contains method on NodeSpan.
