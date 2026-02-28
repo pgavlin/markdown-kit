@@ -56,14 +56,15 @@ func main() {
 			arg := cmd.Args().Get(0)
 			theme := cfg.theme()
 			conv := cfg.Converter.newConverter()
+			cache := openCache()
 
 			var model markdownReader
 			if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
-				result, err := fetchURL(arg, conv)
+				result, err := fetchURL(arg, conv, cache)
 				if err != nil {
 					return fmt.Errorf("error fetching %v: %w", arg, err)
 				}
-				model = newMarkdownReader(result.name, result.markdown, result.source, theme, conv)
+				model = newMarkdownReader(result.name, result.markdown, result.source, theme, conv, cache)
 				model.currentOriginalHTML = result.originalHTML
 				model.currentReadabilityHTML = result.readabilityHTML
 				model.updateHTMLKeyBindings()
@@ -76,7 +77,7 @@ func main() {
 				if err != nil {
 					absPath = arg
 				}
-				model = newMarkdownReader(filepath.Base(absPath), string(source), absPath, theme, conv)
+				model = newMarkdownReader(filepath.Base(absPath), string(source), absPath, theme, conv, cache)
 			}
 
 			cfg.applyKeys(&model.keys)

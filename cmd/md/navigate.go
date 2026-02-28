@@ -111,19 +111,67 @@ type fetchResult struct {
 
 // fetchURL fetches a URL and returns a fetchResult. If the content is markdown,
 // it's used directly. Otherwise, the provided converter is used to convert the
-// content to markdown.
-func fetchURL(rawURL string, conv converter) (fetchResult, error) {
+// content to markdown. Results are cached to disk when a cache is provided.
+func fetchURL(rawURL string, conv converter, cache *conversionCache) (fetchResult, error) {
+	// Check the cache for a fresh or stale entry.
+	cached, fresh := cache.lookupHTTP(rawURL)
+	if cached != nil && fresh {
+		return fetchResult{
+			name:            cached.Name,
+			markdown:        cached.Markdown,
+			source:          rawURL,
+			originalHTML:    cached.OriginalHTML,
+			readabilityHTML: cached.ReadabilityHTML,
+		}, nil
+	}
+
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
 		return fetchResult{}, err
 	}
 	req.Header.Set("User-Agent", "markdown-kit/md")
 
+	// Add conditional request headers if we have a stale cache entry.
+	if cached != nil {
+		if cached.ETag != "" {
+			req.Header.Set("If-None-Match", cached.ETag)
+		}
+		if cached.LastModified != "" {
+			req.Header.Set("If-Modified-Since", cached.LastModified)
+		}
+	}
+
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fetchResult{}, err
 	}
 	defer resp.Body.Close()
+
+	// 304 Not Modified — use the cached entry.
+	if resp.StatusCode == http.StatusNotModified && cached != nil {
+		// Update caching headers from the new response.
+		updated := *cached
+		if v := resp.Header.Get("ETag"); v != "" {
+			updated.ETag = v
+		}
+		if v := resp.Header.Get("Cache-Control"); v != "" {
+			updated.CacheControl = v
+		}
+		if v := resp.Header.Get("Expires"); v != "" {
+			updated.Expires = v
+		}
+		if v := resp.Header.Get("Date"); v != "" {
+			updated.Date = v
+		}
+		cache.storeHTTP(rawURL, updated)
+		return fetchResult{
+			name:            cached.Name,
+			markdown:        cached.Markdown,
+			source:          rawURL,
+			originalHTML:    cached.OriginalHTML,
+			readabilityHTML: cached.ReadabilityHTML,
+		}, nil
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		return fetchResult{}, fmt.Errorf("HTTP %d %s", resp.StatusCode, resp.Status)
@@ -138,9 +186,13 @@ func fetchURL(rawURL string, conv converter) (fetchResult, error) {
 		if err != nil {
 			return fetchResult{}, err
 		}
+		entry := cacheEntryFromResponse(resp)
+		entry.Name = pageTitleFromURL(finalURL)
+		entry.Markdown = string(body)
+		cache.storeHTTP(rawURL, entry)
 		return fetchResult{
-			name:     pageTitleFromURL(finalURL),
-			markdown: string(body),
+			name:     entry.Name,
+			markdown: entry.Markdown,
 			source:   finalURL,
 		}, nil
 	}
@@ -157,6 +209,13 @@ func fetchURL(rawURL string, conv converter) (fetchResult, error) {
 		return fetchResult{}, err
 	}
 
+	entry := cacheEntryFromResponse(resp)
+	entry.Name = cr.name
+	entry.Markdown = cr.markdown
+	entry.OriginalHTML = cr.originalHTML
+	entry.ReadabilityHTML = cr.readabilityHTML
+	cache.storeHTTP(rawURL, entry)
+
 	return fetchResult{
 		name:            cr.name,
 		markdown:        cr.markdown,
@@ -167,9 +226,9 @@ func fetchURL(rawURL string, conv converter) (fetchResult, error) {
 }
 
 // fetchURLPage fetches a URL asynchronously as a tea.Cmd.
-func fetchURLPage(rawURL string, conv converter) tea.Cmd {
+func fetchURLPage(rawURL string, conv converter, cache *conversionCache) tea.Cmd {
 	return func() tea.Msg {
-		result, err := fetchURL(rawURL, conv)
+		result, err := fetchURL(rawURL, conv, cache)
 		if err != nil {
 			return pageLoadErrorMsg{url: rawURL, err: err}
 		}

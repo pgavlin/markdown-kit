@@ -113,6 +113,9 @@ type markdownReader struct {
 	// Content converter for non-markdown URLs.
 	converter converter
 
+	// Disk cache for conversion results.
+	cache *conversionCache
+
 	// The source path or URL of the current document.
 	currentSource string
 
@@ -146,7 +149,7 @@ type markdownReader struct {
 
 const defaultContentWidth = 160
 
-func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv converter) markdownReader {
+func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv converter, cache *conversionCache) markdownReader {
 	keys := defaultReaderKeyMap()
 
 	view := mdk.NewModel(
@@ -163,6 +166,7 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv 
 	return markdownReader{
 		view:          view,
 		converter:     conv,
+		cache:         cache,
 		currentSource: source,
 		keys:          keys,
 		helpModel:     helpModel,
@@ -325,7 +329,7 @@ func (r *markdownReader) handleLinkNavigation(rawURL string) tea.Cmd {
 	if strings.HasPrefix(resolved, "http://") || strings.HasPrefix(resolved, "https://") {
 		r.loading = true
 		r.loadingURL = resolved
-		return tea.Batch(fetchURLPage(resolved, r.converter), r.spinner.Tick)
+		return tea.Batch(fetchURLPage(resolved, r.converter, r.cache), r.spinner.Tick)
 	}
 
 	// Local markdown files.
