@@ -58,11 +58,39 @@ func loadConfig() (config, error) {
 	_, err = toml.DecodeFile(path, &cfg)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
+			if err := createDefaultConfig(path); err != nil {
+				return config{}, fmt.Errorf("creating default config: %w", err)
+			}
 			return config{}, nil
 		}
 		return config{}, fmt.Errorf("parsing %s: %w", path, err)
 	}
 	return cfg, nil
+}
+
+const defaultConfig = `# md configuration file
+# See https://github.com/pgavlin/markdown-kit for documentation.
+
+# Color theme (any Chroma style name, e.g. "monokai", "dracula").
+# Defaults to a built-in dark theme when empty.
+# theme = ""
+
+# Content converter for HTML-to-Markdown when opening URLs.
+# [converter]
+# method = "builtin"              # "builtin" (default) or "external"
+# command = ["pandoc", "-f", "html", "-t", "markdown"]  # required when method = "external"
+
+# Custom key bindings. Each key accepts a string or array of strings.
+# [keys]
+# quit = ["q", "ctrl+c"]
+# help = "?"
+`
+
+func createDefaultConfig(path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(defaultConfig), 0o644)
 }
 
 func (c config) theme() *chroma.Style {
