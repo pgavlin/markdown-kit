@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/pgavlin/markdown-kit/styles"
 )
 
 func main() {
@@ -16,7 +15,14 @@ func main() {
 		os.Exit(-1)
 	}
 
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error loading config: %v\n", err)
+		os.Exit(-1)
+	}
+
 	arg := os.Args[1]
+	theme := cfg.theme()
 
 	var model markdownReader
 	if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
@@ -25,7 +31,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "error fetching %v: %v\n", arg, err)
 			os.Exit(-1)
 		}
-		model = newMarkdownReader(result.name, result.markdown, result.source, styles.GlamourDark)
+		model = newMarkdownReader(result.name, result.markdown, result.source, theme)
 		model.currentOriginalHTML = result.originalHTML
 		model.currentReadabilityHTML = result.readabilityHTML
 		model.updateHTMLKeyBindings()
@@ -39,8 +45,11 @@ func main() {
 		if err != nil {
 			absPath = arg
 		}
-		model = newMarkdownReader(filepath.Base(absPath), string(source), absPath, styles.GlamourDark)
+		model = newMarkdownReader(filepath.Base(absPath), string(source), absPath, theme)
 	}
+
+	cfg.applyKeys(&model.keys)
+	model.view.KeyMap = model.keys.KeyMap
 
 	p := tea.NewProgram(model)
 
