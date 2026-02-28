@@ -46,6 +46,8 @@ github.com/disintegration/imaging v1.6.2 h1:w1LecBlG2Lnp8B3jk5zSuNqd7b4DXhcjwek1
 github.com/disintegration/imaging v1.6.2/go.mod h1:44/5580QXChDfwIclfc/PCwrr44amcmDAg8hxG0Ewe4=
 github.com/dlclark/regexp2 v1.2.0 h1:8sAhBGEM0dRWogWqWyQeIJnxjWO6oIjl8FKqREDsGfk=
 github.com/dlclark/regexp2 v1.2.0/go.mod h1:2pZnwuY/m+8K6iRw6wQdMtk+rH5tNGR1i55kozfMjCc=
+github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
+github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/eliukblau/pixterm v1.3.1 h1:XeouQViH+lmzCa7sMUoK2cd7qlgHYGLIjwRKaOdJbKA=
 github.com/eliukblau/pixterm v1.3.1/go.mod h1:on5ueknFt+ZFVvIVVzQ7/JXwPjv5fJd8Q1Ybh7XixfU=
 github.com/flopp/go-findfont v0.0.0-20201114153133-e7393a00c15b h1:/wqXgpZNTP8qV1dPEApjJXlDQd5N/F9U/WEvy5SawUI=

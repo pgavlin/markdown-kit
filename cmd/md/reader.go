@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 
+	"charm.land/bubbles/v2/filepicker"
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
@@ -25,6 +27,7 @@ type readerKeyMap struct {
 	ToggleRaw            key.Binding
 	ToggleOriginalHTML   key.Binding
 	ToggleReadabilityHTML key.Binding
+	OpenFile             key.Binding
 	OpenBrowser          key.Binding
 	Help                 key.Binding
 	Quit                 key.Binding
@@ -52,6 +55,10 @@ func defaultReaderKeyMap() readerKeyMap {
 			key.WithHelp("ctrl+t", "view readability HTML"),
 			key.WithDisabled(),
 		),
+		OpenFile: key.NewBinding(
+			key.WithKeys("ctrl+f"),
+			key.WithHelp("ctrl+f", "open file"),
+		),
 		OpenBrowser: key.NewBinding(
 			key.WithKeys("ctrl+o"),
 			key.WithHelp("ctrl+o", "open in browser"),
@@ -69,14 +76,14 @@ func defaultReaderKeyMap() readerKeyMap {
 
 // ShortHelp returns a short list of key bindings for the compact help view.
 func (km readerKeyMap) ShortHelp() []key.Binding {
-	return append(km.KeyMap.ShortHelp(), km.ToggleRaw, km.Help, km.Quit)
+	return append(km.KeyMap.ShortHelp(), km.OpenFile, km.ToggleRaw, km.Help, km.Quit)
 }
 
 // FullHelp returns the full set of key bindings for the expanded help view.
 func (km readerKeyMap) FullHelp() [][]key.Binding {
 	groups := km.KeyMap.FullHelp()
 	groups = append(groups, []key.Binding{
-		km.ToggleRaw, km.ToggleOriginalHTML, km.ToggleReadabilityHTML,
+		km.OpenFile, km.ToggleRaw, km.ToggleOriginalHTML, km.ToggleReadabilityHTML,
 		km.OpenBrowser, km.Help, km.Quit,
 	})
 	return groups
@@ -157,6 +164,11 @@ type markdownReader struct {
 	showError bool
 	errorText string
 	errorURL  string // URL that failed, for "open in browser" fallback
+
+	// File picker state.
+	picker        filepicker.Model
+	showPicker    bool
+	pickerStartup bool // true when picker is shown at startup (no content loaded yet)
 }
 
 const defaultContentWidth = 160
@@ -175,6 +187,16 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv 
 	helpModel := help.New()
 	helpModel.ShowAll = true
 
+	fp := filepicker.New()
+	fp.AllowedTypes = markdownExtsList()
+	fp.ShowHidden = false
+	fp.FileAllowed = true
+	fp.DirAllowed = false
+	fp.AutoHeight = false
+	if wd, err := os.Getwd(); err == nil {
+		fp.CurrentDirectory = wd
+	}
+
 	return markdownReader{
 		view:          view,
 		logger:        logger,
@@ -186,14 +208,50 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv 
 		keys:          keys,
 		helpModel:     helpModel,
 		spinner:       spinner.New(spinner.WithSpinner(spinner.Dot)),
+		picker:        fp,
 	}
 }
 
 func (r markdownReader) Init() tea.Cmd {
+	if r.showPicker {
+		return r.picker.Init()
+	}
 	return nil
 }
 
 func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Handle file picker state — all message types must reach the picker.
+	if r.showPicker {
+		if km, ok := msg.(tea.KeyPressMsg); ok {
+			switch km.String() {
+			case "q", "ctrl+c", "esc":
+				if r.pickerStartup {
+					return r, tea.Quit
+				}
+				r.showPicker = false
+				return r, nil
+			}
+		}
+		var cmd tea.Cmd
+		r.picker, cmd = r.picker.Update(msg)
+		if didSelect, path := r.picker.DidSelectFile(msg); didSelect {
+			r.showPicker = false
+			r.pickerStartup = false
+			r.loading = true
+			r.loadingURL = path
+			return r, tea.Batch(loadFilePage(path, r.fsys, r.logger), r.spinner.Tick)
+		}
+		// Also handle window size for picker height.
+		if ws, ok := msg.(tea.WindowSizeMsg); ok {
+			r.width = ws.Width
+			r.height = ws.Height
+			r.view.SetSize(ws.Width, ws.Height)
+			r.helpModel.SetWidth(ws.Width)
+			r.picker.SetHeight(ws.Height - 2)
+		}
+		return r, cmd
+	}
+
 	switch msg := msg.(type) {
 	case mdk.OpenLinkMsg:
 		return r, r.handleLinkNavigation(msg.URL)
@@ -205,7 +263,10 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pageLoadedMsg:
 		r.showRaw = false
-		r.pushCurrentPage()
+		// Don't push an empty page onto the stack (e.g. first load from picker).
+		if r.view.GetName() != "" || len(r.view.GetMarkdown()) > 0 {
+			r.pushCurrentPage()
+		}
 		r.view.SetText(msg.name, msg.markdown)
 		r.currentSource = msg.source
 		r.currentOriginalHTML = msg.originalHTML
@@ -236,6 +297,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.height = msg.Height
 		r.view.SetSize(msg.Width, msg.Height)
 		r.helpModel.SetWidth(msg.Width)
+		r.picker.SetHeight(msg.Height - 2)
 		return r, nil
 
 	case tea.KeyPressMsg:
@@ -315,6 +377,10 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.showRaw = true
 			}
 			return r, nil
+		case "ctrl+f":
+			r.showPicker = true
+			r.pickerStartup = false
+			return r, r.picker.Init()
 		case "ctrl+o":
 			link := r.view.FocusedLinkDestination()
 			if err := openInBrowser(link, r.logger); err != nil {
@@ -404,7 +470,22 @@ func (r markdownReader) View() tea.View {
 	base := r.view.View()
 
 	var result string
-	if r.loading {
+	if r.showPicker {
+		pickerView := r.picker.View()
+		if r.pickerStartup {
+			// Full-screen picker with header when no content loaded.
+			header := lipgloss.NewStyle().Bold(true).Padding(0, 1).Render("Select a Markdown file")
+			result = header + "\n" + pickerView
+		} else {
+			// Overlay picker on top of existing content.
+			maxW := r.width * 3 / 4
+			if maxW < 40 {
+				maxW = min(r.width-4, 40)
+			}
+			maxH := r.height * 3 / 4
+			result = r.renderOverlay(base, pickerView, maxW, maxH)
+		}
+	} else if r.loading {
 		loadingText := r.spinner.View() + " Loading..."
 		if r.loadingURL != "" {
 			loadingText = r.spinner.View() + fmt.Sprintf(" Loading %s...", r.loadingURL)

@@ -46,9 +46,9 @@ func main() {
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			if cmd.Args().Len() != 1 {
+			if cmd.Args().Len() > 1 {
 				cli.ShowAppHelp(cmd)
-				return fmt.Errorf("expected exactly one argument")
+				return fmt.Errorf("expected zero or one arguments")
 			}
 
 			cfgPath, err := configPath()
@@ -66,32 +66,39 @@ func main() {
 				return fmt.Errorf("error in config: %w", err)
 			}
 
-			arg := cmd.Args().Get(0)
 			theme := cfg.theme()
 			conv := cfg.Converter.newConverter()
 			cache := openCache()
 			httpCl := http.DefaultClient
 
 			var model markdownReader
-			if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
-				result, err := fetchURL(arg, conv, cache, httpCl, logger)
-				if err != nil {
-					return fmt.Errorf("error fetching %v: %w", arg, err)
-				}
-				model = newMarkdownReader(result.name, result.markdown, result.source, theme, conv, cache, httpCl, fsys, logger)
-				model.currentOriginalHTML = result.originalHTML
-				model.currentReadabilityHTML = result.readabilityHTML
-				model.updateHTMLKeyBindings()
+			if cmd.Args().Len() == 0 {
+				// No args — start with file picker.
+				model = newMarkdownReader("", "", "", theme, conv, cache, httpCl, fsys, logger)
+				model.showPicker = true
+				model.pickerStartup = true
 			} else {
-				source, err := fsys.ReadFile(arg)
-				if err != nil {
-					return fmt.Errorf("error opening %v: %w", arg, err)
+				arg := cmd.Args().Get(0)
+				if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
+					result, err := fetchURL(arg, conv, cache, httpCl, logger)
+					if err != nil {
+						return fmt.Errorf("error fetching %v: %w", arg, err)
+					}
+					model = newMarkdownReader(result.name, result.markdown, result.source, theme, conv, cache, httpCl, fsys, logger)
+					model.currentOriginalHTML = result.originalHTML
+					model.currentReadabilityHTML = result.readabilityHTML
+					model.updateHTMLKeyBindings()
+				} else {
+					source, err := fsys.ReadFile(arg)
+					if err != nil {
+						return fmt.Errorf("error opening %v: %w", arg, err)
+					}
+					absPath, err := filepath.Abs(arg)
+					if err != nil {
+						absPath = arg
+					}
+					model = newMarkdownReader(filepath.Base(absPath), string(source), absPath, theme, conv, cache, httpCl, fsys, logger)
 				}
-				absPath, err := filepath.Abs(arg)
-				if err != nil {
-					absPath = arg
-				}
-				model = newMarkdownReader(filepath.Base(absPath), string(source), absPath, theme, conv, cache, httpCl, fsys, logger)
 			}
 
 			cfg.applyKeys(&model.keys)

@@ -70,6 +70,15 @@ var markdownExts = map[string]bool{
 	".mdwn":     true,
 }
 
+// markdownExtsList returns the allowed markdown file extensions as a slice.
+func markdownExtsList() []string {
+	exts := make([]string, 0, len(markdownExts))
+	for ext := range markdownExts {
+		exts = append(exts, ext)
+	}
+	return exts
+}
+
 // isMarkdownFile checks if a path has a markdown file extension.
 func isMarkdownFile(path string) bool {
 	// Strip any fragment (e.g. "file.md#heading").
