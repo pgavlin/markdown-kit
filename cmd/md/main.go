@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/BurntSushi/toml"
 	"github.com/urfave/cli/v3"
 )
 
@@ -16,6 +17,27 @@ func main() {
 		Name:      "md",
 		Usage:     "interactive terminal-based Markdown reader",
 		ArgsUsage: "[path or URL]",
+		Commands: []*cli.Command{
+			{
+				Name:  "config",
+				Usage: "show the current configuration",
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					path, err := configPath()
+					if err != nil {
+						fmt.Println("# config file path unknown")
+					} else {
+						fmt.Printf("# %s\n", path)
+					}
+
+					cfg, err := loadConfig()
+					if err != nil {
+						return err
+					}
+
+					return toml.NewEncoder(os.Stdout).Encode(cfg)
+				},
+			},
+		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.Args().Len() != 1 {
 				cli.ShowAppHelp(cmd)

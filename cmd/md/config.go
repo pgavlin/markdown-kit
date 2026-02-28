@@ -47,12 +47,19 @@ type config struct {
 	Converter converterConfig `toml:"converter"`
 }
 
-func loadConfig() (config, error) {
+func configPath() (string, error) {
 	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "md", "config.toml"), nil
+}
+
+func loadConfig() (config, error) {
+	path, err := configPath()
 	if err != nil {
 		return config{}, nil
 	}
-	path := filepath.Join(dir, "md", "config.toml")
 
 	var cfg config
 	_, err = toml.DecodeFile(path, &cfg)
