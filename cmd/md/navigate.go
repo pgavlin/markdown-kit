@@ -114,7 +114,13 @@ type fetchResult struct {
 // it's used directly. If it's HTML, it's converted to markdown via readability
 // and both the original and post-readability HTML are retained.
 func fetchURL(rawURL string) (fetchResult, error) {
-	resp, err := http.Get(rawURL)
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return fetchResult{}, err
+	}
+	req.Header.Set("User-Agent", "markdown-kit/md")
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fetchResult{}, err
 	}
