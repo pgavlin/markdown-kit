@@ -42,10 +42,32 @@ func (c converterConfig) newConverter() converter {
 	return &builtinConverter{}
 }
 
+type formatConverterConfig struct {
+	Extensions []string `toml:"extensions"` // e.g. [".rst", ".adoc"]
+	MIMETypes  []string `toml:"mime_types"` // e.g. ["text/x-rst"]
+	Command    string   `toml:"command"`    // required
+}
+
+func (c formatConverterConfig) validate() error {
+	if c.Command == "" {
+		return fmt.Errorf("format converter: command is required")
+	}
+	if len(c.Extensions) == 0 && len(c.MIMETypes) == 0 {
+		return fmt.Errorf("format converter: at least one extension or MIME type is required")
+	}
+	for _, ext := range c.Extensions {
+		if !strings.HasPrefix(ext, ".") {
+			return fmt.Errorf("format converter: extension %q must start with \".\"", ext)
+		}
+	}
+	return nil
+}
+
 type config struct {
-	Theme     string          `toml:"theme"`
-	Keys      map[string]any  `toml:"keys"`
-	Converter converterConfig `toml:"converter"`
+	Theme      string                 `toml:"theme"`
+	Keys       map[string]any         `toml:"keys"`
+	Converter  converterConfig        `toml:"converter"`
+	Converters []formatConverterConfig `toml:"converters"`
 }
 
 func configPath() (string, error) {
@@ -91,6 +113,13 @@ const defaultConfig = `# md configuration file
 # [converter]
 # method = "builtin"              # "builtin" (default) or "external"
 # command = "pandoc -f html -t markdown"  # required when method = "external"; run via system shell
+
+# Format converters for non-markdown files. Each entry specifies a shell
+# command and the file extensions / MIME types it handles.
+# [[converters]]
+# extensions = [".rst"]
+# mime_types = ["text/x-rst"]
+# command = "pandoc -f rst -t markdown $MD_INPUT -o $MD_OUTPUT"
 
 # Custom key bindings. Each key accepts a string or array of strings.
 # [keys]

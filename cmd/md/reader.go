@@ -192,6 +192,9 @@ type markdownReader struct {
 	// Content converter for non-markdown URLs.
 	converter converter
 
+	// Format converter registry for non-markdown files and MIME types.
+	registry *converterRegistry
+
 	// Disk cache for conversion results.
 	cache *conversionCache
 
@@ -244,7 +247,7 @@ func (r *markdownReader) newTab() tab {
 	return tab{view: view}
 }
 
-func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv converter, cache *conversionCache, client httpClient, fsys fileSystem, logger *slog.Logger) markdownReader {
+func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv converter, registry *converterRegistry, cache *conversionCache, client httpClient, fsys fileSystem, logger *slog.Logger) markdownReader {
 	keys := defaultReaderKeyMap()
 
 	view := mdk.NewModel(
@@ -259,7 +262,7 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv 
 	helpModel.ShowAll = true
 
 	wd, _ := fsys.Getwd()
-	fp := newFuzzyPicker(wd, markdownExtsList(), fsys)
+	fp := newFuzzyPicker(wd, viewableExtsList(registry), fsys)
 
 	return markdownReader{
 		tabs: []tab{{
@@ -270,6 +273,7 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv 
 		theme:     theme,
 		logger:    logger,
 		converter: conv,
+		registry:  registry,
 		cache:     cache,
 		client:    client,
 		fsys:      fsys,
@@ -438,7 +442,13 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.pickerStartup = false
 			r.loading = true
 			r.loadingURL = path
-			return r, tea.Batch(loadFilePage(path, r.pickerNewTab, r.fsys, r.logger), r.spinner.Tick)
+			var cmd tea.Cmd
+			if isConvertibleFile(path, r.registry) {
+				cmd = loadConvertFilePage(path, r.pickerNewTab, r.registry, r.cache, r.fsys, r.logger)
+			} else {
+				cmd = loadFilePage(path, r.pickerNewTab, r.fsys, r.logger)
+			}
+			return r, tea.Batch(cmd, r.spinner.Tick)
 		}
 		// Also handle window size for picker dimensions.
 		if ws, ok := msg.(tea.WindowSizeMsg); ok {
@@ -649,7 +659,7 @@ func (r *markdownReader) handleLinkNavigation(rawURL string, newTab bool) tea.Cm
 	if strings.HasPrefix(resolved, "http://") || strings.HasPrefix(resolved, "https://") {
 		r.loading = true
 		r.loadingURL = resolved
-		return tea.Batch(fetchURLPage(resolved, newTab, r.converter, r.cache, r.client, r.logger), r.spinner.Tick)
+		return tea.Batch(fetchURLPage(resolved, newTab, r.converter, r.registry, r.cache, r.client, r.logger), r.spinner.Tick)
 	}
 
 	// Local markdown files.
@@ -657,6 +667,13 @@ func (r *markdownReader) handleLinkNavigation(rawURL string, newTab bool) tea.Cm
 		r.loading = true
 		r.loadingURL = resolved
 		return tea.Batch(loadFilePage(resolved, newTab, r.fsys, r.logger), r.spinner.Tick)
+	}
+
+	// Local files with a registered converter.
+	if isConvertibleFile(resolved, r.registry) {
+		r.loading = true
+		r.loadingURL = resolved
+		return tea.Batch(loadConvertFilePage(resolved, newTab, r.registry, r.cache, r.fsys, r.logger), r.spinner.Tick)
 	}
 
 	// Non-markdown files, mailto:, etc. — open in browser.
@@ -718,7 +735,7 @@ func (r markdownReader) View() tea.View {
 
 	var result string
 	if r.showPicker {
-		header := lipgloss.NewStyle().Bold(true).Render("Select a Markdown file")
+		header := lipgloss.NewStyle().Bold(true).Render("Select a file")
 		pickerView := header + "\n\n" + r.picker.View()
 		fixedW := r.width * 3 / 4
 		if fixedW < 40 {

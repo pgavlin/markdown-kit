@@ -53,6 +53,25 @@ func (c *builtinConverter) convert(content []byte, sourceURL *url.URL, logger *s
 	}, nil
 }
 
+// fallbackConverter tries multiple converters in order, returning the first
+// successful result.
+type fallbackConverter struct {
+	converters []converter
+}
+
+func (f *fallbackConverter) convert(content []byte, sourceURL *url.URL, logger *slog.Logger) (convertResult, error) {
+	var lastErr error
+	for _, c := range f.converters {
+		result, err := c.convert(content, sourceURL, logger)
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+		logger.Info("converter_fallback", "error", err)
+	}
+	return convertResult{}, lastErr
+}
+
 // externalConverter runs an external command via the system shell to convert
 // content to markdown. The command receives the input via the MD_INPUT env var
 // (path to a temp file) and writes output to the path in MD_OUTPUT.
@@ -73,8 +92,13 @@ func (c *externalConverter) convert(content []byte, sourceURL *url.URL, logger *
 
 	logger.Info("external_converter_done", "command", c.command, "duration", time.Since(start))
 
+	var name string
+	if sourceURL != nil {
+		name = pageTitleFromURL(sourceURL.String())
+	}
+
 	return convertResult{
-		name:     pageTitleFromURL(sourceURL.String()),
+		name:     name,
 		markdown: string(output),
 	}, nil
 }

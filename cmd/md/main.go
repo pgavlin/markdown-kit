@@ -60,30 +60,52 @@ func main() {
 			if err := cfg.Converter.validate(); err != nil {
 				return fmt.Errorf("error in config: %w", err)
 			}
+			for i, fc := range cfg.Converters {
+				if err := fc.validate(); err != nil {
+					return fmt.Errorf("error in config: converters[%d]: %w", i, err)
+				}
+			}
 
 			theme := cfg.theme()
 			conv := cfg.Converter.newConverter()
+			registry := newConverterRegistry(cfg.Converters, osShellRunner{})
 			cache := openCache()
 			httpCl := http.DefaultClient
 
 			var model markdownReader
 			if cmd.Args().Len() == 0 {
 				// No args — start with file picker.
-				model = newMarkdownReader("", "", "", theme, conv, cache, httpCl, fsys, logger)
+				model = newMarkdownReader("", "", "", theme, conv, registry, cache, httpCl, fsys, logger)
 				model.showPicker = true
 				model.pickerStartup = true
 			} else {
 				// Load the first argument into the initial tab.
 				arg := cmd.Args().Get(0)
 				if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
-					result, err := fetchURL(arg, conv, cache, httpCl, logger)
+					result, err := fetchURL(arg, conv, registry, cache, httpCl, logger)
 					if err != nil {
 						return fmt.Errorf("error fetching %v: %w", arg, err)
 					}
-					model = newMarkdownReader("", result.markdown, result.source, theme, conv, cache, httpCl, fsys, logger)
+					model = newMarkdownReader("", result.markdown, result.source, theme, conv, registry, cache, httpCl, fsys, logger)
 					model.active().currentOriginalHTML = result.originalHTML
 					model.active().currentReadabilityHTML = result.readabilityHTML
 					model.updateHTMLKeyBindings()
+				} else if isConvertibleFile(arg, registry) {
+					source, err := fsys.ReadFile(arg)
+					if err != nil {
+						return fmt.Errorf("error opening %v: %w", arg, err)
+					}
+					absPath, err := filepath.Abs(arg)
+					if err != nil {
+						absPath = arg
+					}
+					ext := strings.ToLower(filepath.Ext(absPath))
+					fc := registry.forExtension(ext)
+					cr, err := fc.convert(source, nil, logger)
+					if err != nil {
+						return fmt.Errorf("error converting %v: %w", arg, err)
+					}
+					model = newMarkdownReader(cr.name, cr.markdown, absPath, theme, conv, registry, cache, httpCl, fsys, logger)
 				} else {
 					source, err := fsys.ReadFile(arg)
 					if err != nil {
@@ -93,7 +115,7 @@ func main() {
 					if err != nil {
 						absPath = arg
 					}
-					model = newMarkdownReader("", string(source), absPath, theme, conv, cache, httpCl, fsys, logger)
+					model = newMarkdownReader("", string(source), absPath, theme, conv, registry, cache, httpCl, fsys, logger)
 				}
 			}
 
@@ -104,13 +126,29 @@ func main() {
 			for i := 1; i < cmd.Args().Len(); i++ {
 				arg := cmd.Args().Get(i)
 				if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
-					result, err := fetchURL(arg, conv, cache, httpCl, logger)
+					result, err := fetchURL(arg, conv, registry, cache, httpCl, logger)
 					if err != nil {
 						return fmt.Errorf("error fetching %v: %w", arg, err)
 					}
 					model.openNewTab("", result.markdown, result.source)
 					model.active().currentOriginalHTML = result.originalHTML
 					model.active().currentReadabilityHTML = result.readabilityHTML
+				} else if isConvertibleFile(arg, registry) {
+					source, err := fsys.ReadFile(arg)
+					if err != nil {
+						return fmt.Errorf("error opening %v: %w", arg, err)
+					}
+					absPath, err := filepath.Abs(arg)
+					if err != nil {
+						absPath = arg
+					}
+					ext := strings.ToLower(filepath.Ext(absPath))
+					fc := registry.forExtension(ext)
+					cr, err := fc.convert(source, nil, logger)
+					if err != nil {
+						return fmt.Errorf("error converting %v: %w", arg, err)
+					}
+					model.openNewTab(cr.name, cr.markdown, absPath)
 				} else {
 					source, err := fsys.ReadFile(arg)
 					if err != nil {

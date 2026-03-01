@@ -28,6 +28,56 @@ func TestConverterConfig_Validate(t *testing.T) {
 	}
 }
 
+func TestFormatConverterConfig_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     formatConverterConfig
+		wantErr bool
+	}{
+		{"valid", formatConverterConfig{Extensions: []string{".rst"}, Command: "pandoc"}, false},
+		{"mime_only", formatConverterConfig{MIMETypes: []string{"text/x-rst"}, Command: "pandoc"}, false},
+		{"both", formatConverterConfig{Extensions: []string{".rst"}, MIMETypes: []string{"text/x-rst"}, Command: "pandoc"}, false},
+		{"missing_command", formatConverterConfig{Extensions: []string{".rst"}}, true},
+		{"no_ext_or_mime", formatConverterConfig{Command: "pandoc"}, true},
+		{"bad_ext_no_dot", formatConverterConfig{Extensions: []string{"rst"}, Command: "pandoc"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_WithConverters(t *testing.T) {
+	fs := newMemFS()
+	fs.files["/config.toml"] = []byte(`
+[[converters]]
+extensions = [".rst"]
+command = "pandoc -f rst -t markdown $MD_INPUT -o $MD_OUTPUT"
+
+[[converters]]
+extensions = [".adoc"]
+mime_types = ["text/x-asciidoc"]
+command = "asciidoctor"
+`)
+	cfg, err := loadConfig("/config.toml", fs, discardLogger())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Converters) != 2 {
+		t.Fatalf("Converters length = %d, want 2", len(cfg.Converters))
+	}
+	if cfg.Converters[0].Command != "pandoc -f rst -t markdown $MD_INPUT -o $MD_OUTPUT" {
+		t.Errorf("Converters[0].Command = %q", cfg.Converters[0].Command)
+	}
+	if len(cfg.Converters[1].MIMETypes) != 1 || cfg.Converters[1].MIMETypes[0] != "text/x-asciidoc" {
+		t.Errorf("Converters[1].MIMETypes = %v", cfg.Converters[1].MIMETypes)
+	}
+}
+
 func TestConfig_Theme(t *testing.T) {
 	tests := []struct {
 		name      string

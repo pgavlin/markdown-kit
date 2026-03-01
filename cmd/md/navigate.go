@@ -80,6 +80,25 @@ func markdownExtsList() []string {
 	return exts
 }
 
+// isConvertibleFile checks if a path has an extension handled by the registry.
+func isConvertibleFile(path string, registry *converterRegistry) bool {
+	if registry == nil {
+		return false
+	}
+	if i := strings.IndexByte(path, '#'); i >= 0 {
+		path = path[:i]
+	}
+	ext := strings.ToLower(filepath.Ext(path))
+	return registry.forExtension(ext) != nil
+}
+
+// viewableExtsList returns markdown extensions plus converter extensions.
+func viewableExtsList(registry *converterRegistry) []string {
+	exts := markdownExtsList()
+	exts = append(exts, registry.allExtensions()...)
+	return exts
+}
+
 // isMarkdownFile checks if a path has a markdown file extension.
 func isMarkdownFile(path string) bool {
 	// Strip any fragment (e.g. "file.md#heading").
@@ -113,6 +132,56 @@ func loadFilePage(path string, newTab bool, fsys fileSystem, logger *slog.Logger
 	}
 }
 
+// loadConvertFilePage reads a local file, converts it via the registry, and
+// returns a pageLoadedMsg. Results are cached by content hash.
+func loadConvertFilePage(path string, newTab bool, registry *converterRegistry, cache *conversionCache, fsys fileSystem, logger *slog.Logger) tea.Cmd {
+	return func() tea.Msg {
+		data, err := fsys.ReadFile(path)
+		if err != nil {
+			logger.Error("file_read_error", "path", path, "error", err)
+			return pageLoadErrorMsg{url: path, err: err}
+		}
+
+		ext := strings.ToLower(filepath.Ext(path))
+		conv := registry.forExtension(ext)
+		if conv == nil {
+			return pageLoadErrorMsg{url: path, err: fmt.Errorf("no converter for extension %q", ext)}
+		}
+
+		// Check cache.
+		if cached, ok := cache.lookupFile(path, data, logger); ok {
+			logger.Info("cache_hit", "path", path)
+			return pageLoadedMsg{
+				name:     cached.Name,
+				markdown: cached.Markdown,
+				source:   path,
+				newTab:   newTab,
+			}
+		}
+
+		logger.Info("converting_file", "path", path, "ext", ext)
+		cr, err := conv.convert(data, nil, logger)
+		if err != nil {
+			logger.Error("file_convert_error", "path", path, "error", err)
+			return pageLoadErrorMsg{url: path, err: err}
+		}
+
+		entry := cacheEntry{
+			Name:     cr.name,
+			Markdown: cr.markdown,
+		}
+		cache.storeFile(path, data, entry, logger)
+		logger.Info("cache_store", "path", path)
+
+		return pageLoadedMsg{
+			name:     cr.name,
+			markdown: cr.markdown,
+			source:   path,
+			newTab:   newTab,
+		}
+	}
+}
+
 // fetchResult holds the result of fetching a URL.
 type fetchResult struct {
 	name            string
@@ -125,7 +194,7 @@ type fetchResult struct {
 // fetchURL fetches a URL and returns a fetchResult. If the content is markdown,
 // it's used directly. Otherwise, the provided converter is used to convert the
 // content to markdown. Results are cached to disk when a cache is provided.
-func fetchURL(rawURL string, conv converter, cache *conversionCache, client httpClient, logger *slog.Logger) (fetchResult, error) {
+func fetchURL(rawURL string, conv converter, registry *converterRegistry, cache *conversionCache, client httpClient, logger *slog.Logger) (fetchResult, error) {
 	// Check the cache for a fresh or stale entry.
 	cached, fresh := cache.lookupHTTP(rawURL, logger)
 	if cached != nil && fresh {
@@ -229,8 +298,14 @@ func fetchURL(rawURL string, conv converter, cache *conversionCache, client http
 
 	logger.Info("content_converted", "url", finalURL, "content_type", ct)
 
+	// Check if the registry has a MIME-type-specific converter.
+	activeConv := conv
+	if mc := registry.forMIMEType(ct); mc != nil {
+		activeConv = mc
+	}
+
 	pageURL, _ := url.Parse(finalURL)
-	cr, err := conv.convert(body, pageURL, logger)
+	cr, err := activeConv.convert(body, pageURL, logger)
 	if err != nil {
 		return fetchResult{}, err
 	}
@@ -253,9 +328,9 @@ func fetchURL(rawURL string, conv converter, cache *conversionCache, client http
 }
 
 // fetchURLPage fetches a URL asynchronously as a tea.Cmd.
-func fetchURLPage(rawURL string, newTab bool, conv converter, cache *conversionCache, client httpClient, logger *slog.Logger) tea.Cmd {
+func fetchURLPage(rawURL string, newTab bool, conv converter, registry *converterRegistry, cache *conversionCache, client httpClient, logger *slog.Logger) tea.Cmd {
 	return func() tea.Msg {
-		result, err := fetchURL(rawURL, conv, cache, client, logger)
+		result, err := fetchURL(rawURL, conv, registry, cache, client, logger)
 		if err != nil {
 			return pageLoadErrorMsg{url: rawURL, err: err}
 		}
