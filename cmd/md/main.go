@@ -23,7 +23,7 @@ func main() {
 	cmd := &cli.Command{
 		Name:      "md",
 		Usage:     "interactive terminal-based Markdown reader",
-		ArgsUsage: "[path or URL]",
+		ArgsUsage: "[path or URL ...]",
 		Commands: []*cli.Command{
 			{
 				Name:  "config",
@@ -46,11 +46,6 @@ func main() {
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			if cmd.Args().Len() > 1 {
-				cli.ShowAppHelp(cmd)
-				return fmt.Errorf("expected zero or one arguments")
-			}
-
 			cfgPath, err := configPath()
 			if err != nil {
 				return fmt.Errorf("error determining config path: %w", err)
@@ -78,6 +73,7 @@ func main() {
 				model.showPicker = true
 				model.pickerStartup = true
 			} else {
+				// Load the first argument into the initial tab.
 				arg := cmd.Args().Get(0)
 				if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
 					result, err := fetchURL(arg, conv, cache, httpCl, logger)
@@ -103,6 +99,36 @@ func main() {
 
 			cfg.applyKeys(&model.keys)
 			model.active().view.KeyMap = model.keys.KeyMap
+
+			// Open remaining arguments in additional tabs.
+			for i := 1; i < cmd.Args().Len(); i++ {
+				arg := cmd.Args().Get(i)
+				if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
+					result, err := fetchURL(arg, conv, cache, httpCl, logger)
+					if err != nil {
+						return fmt.Errorf("error fetching %v: %w", arg, err)
+					}
+					model.openNewTab("", result.markdown, result.source)
+					model.active().currentOriginalHTML = result.originalHTML
+					model.active().currentReadabilityHTML = result.readabilityHTML
+				} else {
+					source, err := fsys.ReadFile(arg)
+					if err != nil {
+						return fmt.Errorf("error opening %v: %w", arg, err)
+					}
+					absPath, err := filepath.Abs(arg)
+					if err != nil {
+						absPath = arg
+					}
+					model.openNewTab("", string(source), absPath)
+				}
+			}
+
+			// Activate the first tab when multiple were opened.
+			if cmd.Args().Len() > 1 {
+				model.activeTab = 0
+				model.updateHTMLKeyBindings()
+			}
 
 			p := tea.NewProgram(model)
 
