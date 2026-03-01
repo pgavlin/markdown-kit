@@ -11,6 +11,7 @@ import (
 
 // fileSystem abstracts os-level file operations.
 type fileSystem interface {
+	Getwd() (string, error)
 	ReadFile(name string) ([]byte, error)
 	WriteFile(name string, data []byte, perm fs.FileMode) error
 	MkdirAll(path string, perm fs.FileMode) error
@@ -30,9 +31,12 @@ type shellRunner interface {
 // osFileSystem delegates to the os package.
 type osFileSystem struct{}
 
-func (osFileSystem) ReadFile(name string) ([]byte, error)                  { return os.ReadFile(name) }
-func (osFileSystem) WriteFile(name string, data []byte, perm fs.FileMode) error { return os.WriteFile(name, data, perm) }
-func (osFileSystem) MkdirAll(path string, perm fs.FileMode) error         { return os.MkdirAll(path, perm) }
+func (osFileSystem) Getwd() (string, error)               { return os.Getwd() }
+func (osFileSystem) ReadFile(name string) ([]byte, error) { return os.ReadFile(name) }
+func (osFileSystem) WriteFile(name string, data []byte, perm fs.FileMode) error {
+	return os.WriteFile(name, data, perm)
+}
+func (osFileSystem) MkdirAll(path string, perm fs.FileMode) error { return os.MkdirAll(path, perm) }
 
 // osShellRunner creates temp files, runs a command via the system shell,
 // reads the output, and cleans up.

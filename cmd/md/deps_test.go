@@ -10,11 +10,16 @@ import (
 
 // memFS is an in-memory fileSystem for testing.
 type memFS struct {
+	wd    string
 	files map[string][]byte
 }
 
 func newMemFS() *memFS {
-	return &memFS{files: make(map[string][]byte)}
+	return &memFS{wd: ".", files: make(map[string][]byte)}
+}
+
+func (m *memFS) Getwd() (string, error) {
+	return m.wd, nil
 }
 
 func (m *memFS) ReadFile(name string) ([]byte, error) {
