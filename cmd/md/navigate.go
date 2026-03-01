@@ -20,6 +20,7 @@ type pageLoadedMsg struct {
 	source          string
 	originalHTML    string // non-empty for pages fetched from HTML
 	readabilityHTML string // non-empty for pages fetched from HTML
+	newTab          bool   // when true, open in a new tab instead of current tab
 }
 
 // pageLoadErrorMsg is sent when a page fails to load.
@@ -96,7 +97,7 @@ func isMarkdownContentType(ct string) bool {
 }
 
 // loadFilePage reads a local markdown file and returns a pageLoadedMsg.
-func loadFilePage(path string, fsys fileSystem, logger *slog.Logger) tea.Cmd {
+func loadFilePage(path string, newTab bool, fsys fileSystem, logger *slog.Logger) tea.Cmd {
 	return func() tea.Msg {
 		data, err := fsys.ReadFile(path)
 		if err != nil {
@@ -108,6 +109,7 @@ func loadFilePage(path string, fsys fileSystem, logger *slog.Logger) tea.Cmd {
 			name:     filepath.Base(path),
 			markdown: string(data),
 			source:   path,
+			newTab:   newTab,
 		}
 	}
 }
@@ -252,7 +254,7 @@ func fetchURL(rawURL string, conv converter, cache *conversionCache, client http
 }
 
 // fetchURLPage fetches a URL asynchronously as a tea.Cmd.
-func fetchURLPage(rawURL string, conv converter, cache *conversionCache, client httpClient, logger *slog.Logger) tea.Cmd {
+func fetchURLPage(rawURL string, newTab bool, conv converter, cache *conversionCache, client httpClient, logger *slog.Logger) tea.Cmd {
 	return func() tea.Msg {
 		result, err := fetchURL(rawURL, conv, cache, client, logger)
 		if err != nil {
@@ -264,6 +266,7 @@ func fetchURLPage(rawURL string, conv converter, cache *conversionCache, client 
 			source:          result.source,
 			originalHTML:    result.originalHTML,
 			readabilityHTML: result.readabilityHTML,
+			newTab:          newTab,
 		}
 	}
 }

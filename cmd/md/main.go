@@ -84,9 +84,9 @@ func main() {
 					if err != nil {
 						return fmt.Errorf("error fetching %v: %w", arg, err)
 					}
-					model = newMarkdownReader(result.name, result.markdown, result.source, theme, conv, cache, httpCl, fsys, logger)
-					model.currentOriginalHTML = result.originalHTML
-					model.currentReadabilityHTML = result.readabilityHTML
+					model = newMarkdownReader("", result.markdown, result.source, theme, conv, cache, httpCl, fsys, logger)
+					model.active().currentOriginalHTML = result.originalHTML
+					model.active().currentReadabilityHTML = result.readabilityHTML
 					model.updateHTMLKeyBindings()
 				} else {
 					source, err := fsys.ReadFile(arg)
@@ -97,12 +97,12 @@ func main() {
 					if err != nil {
 						absPath = arg
 					}
-					model = newMarkdownReader(filepath.Base(absPath), string(source), absPath, theme, conv, cache, httpCl, fsys, logger)
+					model = newMarkdownReader("", string(source), absPath, theme, conv, cache, httpCl, fsys, logger)
 				}
 			}
 
 			cfg.applyKeys(&model.keys)
-			model.view.KeyMap = model.keys.KeyMap
+			model.active().view.KeyMap = model.keys.KeyMap
 
 			p := tea.NewProgram(model)
 

@@ -44,6 +44,12 @@ func keyMsg(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}
 	case "ctrl+o":
 		return tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl}
+	case "ctrl+w":
+		return tea.KeyPressMsg{Code: 'w', Mod: tea.ModCtrl}
+	case "tab":
+		return tea.KeyPressMsg{Code: tea.KeyTab}
+	case "shift+tab":
+		return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
 	default:
 		if len(s) == 1 {
 			return tea.KeyPressMsg{Code: rune(s[0]), Text: s}
@@ -293,21 +299,21 @@ func TestUpdate_LoadingSwallowsKeys(t *testing.T) {
 
 func TestUpdate_ToggleRaw(t *testing.T) {
 	r := testReader("test", "# Hello", "")
-	if r.showRaw {
+	if r.active().showRaw {
 		t.Fatal("expected showRaw=false initially")
 	}
 
 	// Toggle on.
 	m, _ := r.Update(keyMsg("ctrl+r"))
 	reader := m.(markdownReader)
-	if !reader.showRaw {
+	if !reader.active().showRaw {
 		t.Error("expected showRaw=true after ctrl+r")
 	}
 
 	// Toggle off.
 	m, _ = reader.Update(keyMsg("ctrl+r"))
 	reader = m.(markdownReader)
-	if reader.showRaw {
+	if reader.active().showRaw {
 		t.Error("expected showRaw=false after second ctrl+r")
 	}
 }
@@ -317,26 +323,26 @@ func TestUpdate_ToggleOriginalHTML_NoHTML(t *testing.T) {
 	// No HTML content — ctrl+e should be a no-op.
 	m, _ := r.Update(keyMsg("ctrl+e"))
 	reader := m.(markdownReader)
-	if reader.showRaw {
+	if reader.active().showRaw {
 		t.Error("expected showRaw=false when no originalHTML")
 	}
 }
 
 func TestUpdate_ToggleOriginalHTML_WithHTML(t *testing.T) {
 	r := testReader("test", "# Hello", "")
-	r.currentOriginalHTML = "<html><body>test</body></html>"
+	r.active().currentOriginalHTML = "<html><body>test</body></html>"
 
 	// Toggle on.
 	m, _ := r.Update(keyMsg("ctrl+e"))
 	reader := m.(markdownReader)
-	if !reader.showRaw {
+	if !reader.active().showRaw {
 		t.Error("expected showRaw=true after ctrl+e with HTML")
 	}
 
 	// Toggle off.
 	m, _ = reader.Update(keyMsg("ctrl+e"))
 	reader = m.(markdownReader)
-	if reader.showRaw {
+	if reader.active().showRaw {
 		t.Error("expected showRaw=false after second ctrl+e")
 	}
 }
@@ -345,24 +351,24 @@ func TestUpdate_ToggleReadabilityHTML_NoHTML(t *testing.T) {
 	r := testReader("test", "# Hello", "")
 	m, _ := r.Update(keyMsg("ctrl+t"))
 	reader := m.(markdownReader)
-	if reader.showRaw {
+	if reader.active().showRaw {
 		t.Error("expected showRaw=false when no readabilityHTML")
 	}
 }
 
 func TestUpdate_ToggleReadabilityHTML_WithHTML(t *testing.T) {
 	r := testReader("test", "# Hello", "")
-	r.currentReadabilityHTML = "<article>content</article>"
+	r.active().currentReadabilityHTML = "<article>content</article>"
 
 	m, _ := r.Update(keyMsg("ctrl+t"))
 	reader := m.(markdownReader)
-	if !reader.showRaw {
+	if !reader.active().showRaw {
 		t.Error("expected showRaw=true after ctrl+t with readability HTML")
 	}
 
 	m, _ = reader.Update(keyMsg("ctrl+t"))
 	reader = m.(markdownReader)
-	if reader.showRaw {
+	if reader.active().showRaw {
 		t.Error("expected showRaw=false after second ctrl+t")
 	}
 }
@@ -380,38 +386,38 @@ func TestUpdate_PageLoadedMsg(t *testing.T) {
 	m, _ := r.Update(msg)
 	reader := m.(markdownReader)
 
-	if reader.currentSource != "http://example.com/new" {
-		t.Errorf("currentSource = %q", reader.currentSource)
+	if reader.active().currentSource != "http://example.com/new" {
+		t.Errorf("currentSource = %q", reader.active().currentSource)
 	}
-	if reader.currentOriginalHTML != "<html>orig</html>" {
-		t.Errorf("currentOriginalHTML = %q", reader.currentOriginalHTML)
+	if reader.active().currentOriginalHTML != "<html>orig</html>" {
+		t.Errorf("currentOriginalHTML = %q", reader.active().currentOriginalHTML)
 	}
-	if reader.currentReadabilityHTML != "<article>read</article>" {
-		t.Errorf("currentReadabilityHTML = %q", reader.currentReadabilityHTML)
+	if reader.active().currentReadabilityHTML != "<article>read</article>" {
+		t.Errorf("currentReadabilityHTML = %q", reader.active().currentReadabilityHTML)
 	}
 	if reader.loading {
 		t.Error("expected loading=false")
 	}
-	if reader.showRaw {
+	if reader.active().showRaw {
 		t.Error("expected showRaw=false")
 	}
 	// Page stack should have the initial page.
-	if len(reader.pageStack) != 1 {
-		t.Errorf("pageStack length = %d, want 1", len(reader.pageStack))
+	if len(reader.active().pageStack) != 1 {
+		t.Errorf("pageStack length = %d, want 1", len(reader.active().pageStack))
 	}
-	if reader.pageStack[0].source != "/doc.md" {
-		t.Errorf("pageStack[0].source = %q, want %q", reader.pageStack[0].source, "/doc.md")
+	if reader.active().pageStack[0].source != "/doc.md" {
+		t.Errorf("pageStack[0].source = %q, want %q", reader.active().pageStack[0].source, "/doc.md")
 	}
 }
 
 func TestUpdate_PageLoadedMsg_ClearsRawState(t *testing.T) {
 	r := testReader("initial", "# Initial", "")
-	r.showRaw = true
+	r.active().showRaw = true
 
 	msg := pageLoadedMsg{name: "new", markdown: "# New", source: "new.md"}
 	m, _ := r.Update(msg)
 	reader := m.(markdownReader)
-	if reader.showRaw {
+	if reader.active().showRaw {
 		t.Error("expected showRaw=false after page load")
 	}
 }
@@ -441,7 +447,7 @@ func TestUpdate_PageLoadErrorMsg(t *testing.T) {
 
 func TestUpdate_GoBackMsg(t *testing.T) {
 	r := testReader("initial", "# Initial", "/doc.md")
-	r.showRaw = true
+	r.active().showRaw = true
 
 	// Push a page via pageLoadedMsg.
 	m, _ := r.Update(pageLoadedMsg{name: "second", markdown: "# Second", source: "/second.md"})
@@ -451,14 +457,14 @@ func TestUpdate_GoBackMsg(t *testing.T) {
 	m, _ = reader.Update(mdk.GoBackMsg{})
 	reader = m.(markdownReader)
 
-	if reader.currentSource != "/doc.md" {
-		t.Errorf("currentSource = %q, want %q", reader.currentSource, "/doc.md")
+	if reader.active().currentSource != "/doc.md" {
+		t.Errorf("currentSource = %q, want %q", reader.active().currentSource, "/doc.md")
 	}
-	if reader.showRaw {
+	if reader.active().showRaw {
 		t.Error("expected showRaw=false after go back")
 	}
-	if len(reader.pageStack) != 0 {
-		t.Errorf("pageStack length = %d, want 0", len(reader.pageStack))
+	if len(reader.active().pageStack) != 0 {
+		t.Errorf("pageStack length = %d, want 0", len(reader.active().pageStack))
 	}
 }
 
@@ -467,8 +473,8 @@ func TestUpdate_GoBackMsg_EmptyStack(t *testing.T) {
 	// Go back on empty stack — should be a no-op.
 	m, _ := r.Update(mdk.GoBackMsg{})
 	reader := m.(markdownReader)
-	if reader.currentSource != "/doc.md" {
-		t.Errorf("currentSource = %q, should be unchanged", reader.currentSource)
+	if reader.active().currentSource != "/doc.md" {
+		t.Errorf("currentSource = %q, should be unchanged", reader.active().currentSource)
 	}
 }
 
@@ -546,7 +552,7 @@ func TestHandleLinkNavigation_HTTP(t *testing.T) {
 		},
 	}
 
-	cmd := r.handleLinkNavigation("http://example.com/page.md")
+	cmd := r.handleLinkNavigation("http://example.com/page.md", false)
 	if !r.loading {
 		t.Error("expected loading=true for HTTP link")
 	}
@@ -560,7 +566,7 @@ func TestHandleLinkNavigation_HTTP(t *testing.T) {
 
 func TestHandleLinkNavigation_HTTPS(t *testing.T) {
 	r := testReader("test", "# Hello", "")
-	cmd := r.handleLinkNavigation("https://example.com/page")
+	cmd := r.handleLinkNavigation("https://example.com/page", false)
 	if !r.loading {
 		t.Error("expected loading=true for HTTPS link")
 	}
@@ -575,7 +581,7 @@ func TestHandleLinkNavigation_LocalMarkdown(t *testing.T) {
 	r := testReader("test", "# Hello", "/docs/test.md")
 	r.fsys = fs
 
-	cmd := r.handleLinkNavigation("other.md")
+	cmd := r.handleLinkNavigation("other.md", false)
 	if !r.loading {
 		t.Error("expected loading=true for local markdown file")
 	}
@@ -589,7 +595,7 @@ func TestHandleLinkNavigation_LocalMarkdown(t *testing.T) {
 
 func TestHandleLinkNavigation_NonMarkdownFile(t *testing.T) {
 	r := testReader("test", "# Hello", "/docs/test.md")
-	cmd := r.handleLinkNavigation("image.png")
+	cmd := r.handleLinkNavigation("image.png", false)
 	// Should try to open in browser and return nil.
 	if r.loading {
 		t.Error("expected loading=false for non-markdown file")
@@ -603,37 +609,37 @@ func TestHandleLinkNavigation_NonMarkdownFile(t *testing.T) {
 
 func TestPushPopPage(t *testing.T) {
 	r := testReader("page1", "# Page 1", "/page1.md")
-	r.currentOriginalHTML = "<html>1</html>"
-	r.currentReadabilityHTML = "<article>1</article>"
+	r.active().currentOriginalHTML = "<html>1</html>"
+	r.active().currentReadabilityHTML = "<article>1</article>"
 
 	// Push current page.
 	r.pushCurrentPage()
-	if len(r.pageStack) != 1 {
-		t.Fatalf("pageStack length = %d, want 1", len(r.pageStack))
+	if len(r.active().pageStack) != 1 {
+		t.Fatalf("pageStack length = %d, want 1", len(r.active().pageStack))
 	}
-	if r.pageStack[0].source != "/page1.md" {
-		t.Errorf("pageStack[0].source = %q", r.pageStack[0].source)
+	if r.active().pageStack[0].source != "/page1.md" {
+		t.Errorf("pageStack[0].source = %q", r.active().pageStack[0].source)
 	}
-	if r.pageStack[0].originalHTML != "<html>1</html>" {
-		t.Errorf("pageStack[0].originalHTML = %q", r.pageStack[0].originalHTML)
+	if r.active().pageStack[0].originalHTML != "<html>1</html>" {
+		t.Errorf("pageStack[0].originalHTML = %q", r.active().pageStack[0].originalHTML)
 	}
 
 	// Simulate navigating to page 2.
-	r.view.SetText("page2", "# Page 2")
-	r.currentSource = "/page2.md"
-	r.currentOriginalHTML = ""
-	r.currentReadabilityHTML = ""
+	r.active().view.SetText("page2", "# Page 2")
+	r.active().currentSource = "/page2.md"
+	r.active().currentOriginalHTML = ""
+	r.active().currentReadabilityHTML = ""
 
 	// Pop back to page 1.
 	r.popPage()
-	if len(r.pageStack) != 0 {
-		t.Fatalf("pageStack length = %d, want 0", len(r.pageStack))
+	if len(r.active().pageStack) != 0 {
+		t.Fatalf("pageStack length = %d, want 0", len(r.active().pageStack))
 	}
-	if r.currentSource != "/page1.md" {
-		t.Errorf("currentSource = %q, want /page1.md", r.currentSource)
+	if r.active().currentSource != "/page1.md" {
+		t.Errorf("currentSource = %q, want /page1.md", r.active().currentSource)
 	}
-	if r.currentOriginalHTML != "<html>1</html>" {
-		t.Errorf("currentOriginalHTML = %q", r.currentOriginalHTML)
+	if r.active().currentOriginalHTML != "<html>1</html>" {
+		t.Errorf("currentOriginalHTML = %q", r.active().currentOriginalHTML)
 	}
 }
 
@@ -641,8 +647,8 @@ func TestPopPage_EmptyStack(t *testing.T) {
 	r := testReader("test", "# Hello", "/test.md")
 	// Should not panic on empty stack.
 	r.popPage()
-	if r.currentSource != "/test.md" {
-		t.Errorf("currentSource should be unchanged, got %q", r.currentSource)
+	if r.active().currentSource != "/test.md" {
+		t.Errorf("currentSource should be unchanged, got %q", r.active().currentSource)
 	}
 }
 
@@ -650,46 +656,279 @@ func TestPushPopPage_MultiLevel(t *testing.T) {
 	r := testReader("page1", "# Page 1", "/page1.md")
 	r.pushCurrentPage()
 
-	r.view.SetText("page2", "# Page 2")
-	r.currentSource = "/page2.md"
+	r.active().view.SetText("page2", "# Page 2")
+	r.active().currentSource = "/page2.md"
 	r.pushCurrentPage()
 
-	r.view.SetText("page3", "# Page 3")
-	r.currentSource = "/page3.md"
+	r.active().view.SetText("page3", "# Page 3")
+	r.active().currentSource = "/page3.md"
 
-	if len(r.pageStack) != 2 {
-		t.Fatalf("pageStack length = %d, want 2", len(r.pageStack))
+	if len(r.active().pageStack) != 2 {
+		t.Fatalf("pageStack length = %d, want 2", len(r.active().pageStack))
 	}
 
 	r.popPage()
-	if r.currentSource != "/page2.md" {
-		t.Errorf("after first pop: currentSource = %q", r.currentSource)
+	if r.active().currentSource != "/page2.md" {
+		t.Errorf("after first pop: currentSource = %q", r.active().currentSource)
 	}
 
 	r.popPage()
-	if r.currentSource != "/page1.md" {
-		t.Errorf("after second pop: currentSource = %q", r.currentSource)
+	if r.active().currentSource != "/page1.md" {
+		t.Errorf("after second pop: currentSource = %q", r.active().currentSource)
 	}
 
 	r.popPage() // empty stack — no-op
-	if r.currentSource != "/page1.md" {
-		t.Errorf("after third pop: currentSource = %q", r.currentSource)
+	if r.active().currentSource != "/page1.md" {
+		t.Errorf("after third pop: currentSource = %q", r.active().currentSource)
 	}
 }
 
 func TestUpdateHTMLKeyBindings(t *testing.T) {
 	r := testReader("test", "# Hello", "")
 
-	r.currentOriginalHTML = "<html>yes</html>"
+	r.active().currentOriginalHTML = "<html>yes</html>"
 	r.updateHTMLKeyBindings()
 	if !r.keys.ToggleOriginalHTML.Enabled() {
 		t.Error("expected ToggleOriginalHTML enabled when HTML present")
 	}
 
-	r.currentOriginalHTML = ""
+	r.active().currentOriginalHTML = ""
 	r.updateHTMLKeyBindings()
 	if r.keys.ToggleOriginalHTML.Enabled() {
 		t.Error("expected ToggleOriginalHTML disabled when no HTML")
+	}
+}
+
+// --- Tab management tests ---
+
+func TestOpenNewTab(t *testing.T) {
+	r := testReader("page1", "# Page 1", "/page1.md")
+	r.width = 80
+	r.height = 24
+	r.resizeAllViews()
+
+	if len(r.tabs) != 1 {
+		t.Fatalf("expected 1 tab, got %d", len(r.tabs))
+	}
+
+	r.openNewTab("page2", "# Page 2", "/page2.md")
+
+	if len(r.tabs) != 2 {
+		t.Fatalf("expected 2 tabs, got %d", len(r.tabs))
+	}
+	if r.activeTab != 1 {
+		t.Errorf("activeTab = %d, want 1", r.activeTab)
+	}
+	if r.active().currentSource != "/page2.md" {
+		t.Errorf("active tab source = %q", r.active().currentSource)
+	}
+}
+
+func TestNextPrevTab(t *testing.T) {
+	r := testReader("page1", "# Page 1", "/page1.md")
+	r.width = 80
+	r.height = 24
+	r.resizeAllViews()
+
+	// Single tab — next/prev should be no-ops.
+	r.nextTab()
+	if r.activeTab != 0 {
+		t.Errorf("activeTab = %d after nextTab with 1 tab", r.activeTab)
+	}
+
+	r.openNewTab("page2", "# Page 2", "/page2.md")
+	r.openNewTab("page3", "# Page 3", "/page3.md")
+	// Now at tab 2.
+
+	r.nextTab()
+	if r.activeTab != 0 {
+		t.Errorf("activeTab = %d, want 0 (wrap around)", r.activeTab)
+	}
+
+	r.prevTab()
+	if r.activeTab != 2 {
+		t.Errorf("activeTab = %d, want 2 (wrap around)", r.activeTab)
+	}
+
+	r.prevTab()
+	if r.activeTab != 1 {
+		t.Errorf("activeTab = %d, want 1", r.activeTab)
+	}
+}
+
+func TestCloseTab(t *testing.T) {
+	r := testReader("page1", "# Page 1", "/page1.md")
+	r.width = 80
+	r.height = 24
+	r.resizeAllViews()
+
+	r.openNewTab("page2", "# Page 2", "/page2.md")
+	r.openNewTab("page3", "# Page 3", "/page3.md")
+	// 3 tabs, active = 2
+
+	// Close middle tab (index 1).
+	r.activeTab = 1
+	quit := r.closeTab(1)
+	if quit {
+		t.Error("expected quit=false when closing non-last tab")
+	}
+	if len(r.tabs) != 2 {
+		t.Fatalf("expected 2 tabs after close, got %d", len(r.tabs))
+	}
+	if r.activeTab != 1 {
+		t.Errorf("activeTab = %d, want 1", r.activeTab)
+	}
+	// The remaining tab at index 1 should be page3.
+	if r.active().currentSource != "/page3.md" {
+		t.Errorf("active tab source = %q, want /page3.md", r.active().currentSource)
+	}
+}
+
+func TestCloseTab_LastTab(t *testing.T) {
+	r := testReader("page1", "# Page 1", "/page1.md")
+	quit := r.closeTab(0)
+	if !quit {
+		t.Error("expected quit=true when closing the last tab")
+	}
+}
+
+func TestCloseTab_ActiveBeyondEnd(t *testing.T) {
+	r := testReader("page1", "# Page 1", "/page1.md")
+	r.width = 80
+	r.height = 24
+	r.resizeAllViews()
+
+	r.openNewTab("page2", "# Page 2", "/page2.md")
+	// active = 1 (last tab)
+
+	quit := r.closeTab(1)
+	if quit {
+		t.Error("expected quit=false")
+	}
+	if r.activeTab != 0 {
+		t.Errorf("activeTab = %d, want 0", r.activeTab)
+	}
+}
+
+func TestUpdate_PageLoadedMsg_NewTab(t *testing.T) {
+	r := testReader("initial", "# Initial", "/doc.md")
+	r.width = 80
+	r.height = 24
+	r.resizeAllViews()
+
+	msg := pageLoadedMsg{
+		name:     "new page",
+		markdown: "# New",
+		source:   "/new.md",
+		newTab:   true,
+	}
+
+	m, _ := r.Update(msg)
+	reader := m.(markdownReader)
+
+	if len(reader.tabs) != 2 {
+		t.Fatalf("expected 2 tabs, got %d", len(reader.tabs))
+	}
+	if reader.activeTab != 1 {
+		t.Errorf("activeTab = %d, want 1", reader.activeTab)
+	}
+	if reader.active().currentSource != "/new.md" {
+		t.Errorf("active tab source = %q", reader.active().currentSource)
+	}
+	// Original tab should be unchanged.
+	if reader.tabs[0].currentSource != "/doc.md" {
+		t.Errorf("tab 0 source = %q, want /doc.md", reader.tabs[0].currentSource)
+	}
+}
+
+func TestUpdate_TabSwitch(t *testing.T) {
+	r := testReader("page1", "# Page 1", "/page1.md")
+	r.width = 80
+	r.height = 24
+	r.resizeAllViews()
+	r.openNewTab("page2", "# Page 2", "/page2.md")
+	// active = 1
+
+	// Switch to next tab (wraps to 0).
+	m, _ := r.Update(keyMsg("tab"))
+	reader := m.(markdownReader)
+	if reader.activeTab != 0 {
+		t.Errorf("activeTab = %d, want 0 after tab key", reader.activeTab)
+	}
+
+	// Switch to prev tab (wraps to 1).
+	m, _ = reader.Update(keyMsg("shift+tab"))
+	reader = m.(markdownReader)
+	if reader.activeTab != 1 {
+		t.Errorf("activeTab = %d, want 1 after shift+tab key", reader.activeTab)
+	}
+}
+
+func TestUpdate_CloseTab(t *testing.T) {
+	r := testReader("page1", "# Page 1", "/page1.md")
+	r.width = 80
+	r.height = 24
+	r.resizeAllViews()
+	r.openNewTab("page2", "# Page 2", "/page2.md")
+
+	// Close active tab.
+	m, cmd := r.Update(keyMsg("ctrl+w"))
+	reader := m.(markdownReader)
+	if len(reader.tabs) != 1 {
+		t.Fatalf("expected 1 tab after close, got %d", len(reader.tabs))
+	}
+	if cmd != nil {
+		t.Error("expected nil command (no quit) when other tabs remain")
+	}
+}
+
+func TestUpdate_CloseLastTab_Quits(t *testing.T) {
+	r := testReader("page1", "# Page 1", "/page1.md")
+	_, cmd := r.Update(keyMsg("ctrl+w"))
+	if cmd == nil {
+		t.Error("expected quit command when closing the last tab")
+	}
+}
+
+func TestRenderTabBar_SingleTab(t *testing.T) {
+	r := testReader("test", "# Hello", "")
+	bar := r.renderTabBar()
+	if bar != "" {
+		t.Errorf("expected empty tab bar for single tab, got %q", bar)
+	}
+}
+
+func TestRenderTabBar_MultipleTabs(t *testing.T) {
+	r := testReader("page1", "# Page 1", "/page1.md")
+	r.width = 80
+	r.height = 24
+	r.resizeAllViews()
+	r.openNewTab("page2", "# Page 2", "/page2.md")
+
+	bar := r.renderTabBar()
+	if bar == "" {
+		t.Error("expected non-empty tab bar for multiple tabs")
+	}
+	if !strings.Contains(bar, "page1") {
+		t.Error("expected tab bar to contain 'page1'")
+	}
+	if !strings.Contains(bar, "page2") {
+		t.Error("expected tab bar to contain 'page2'")
+	}
+}
+
+func TestTabBarHeight(t *testing.T) {
+	r := testReader("test", "# Hello", "")
+	if r.tabBarHeight() != 0 {
+		t.Errorf("expected tabBarHeight=0 for single tab, got %d", r.tabBarHeight())
+	}
+
+	r.width = 80
+	r.height = 24
+	r.resizeAllViews()
+	r.openNewTab("page2", "# Page 2", "/page2.md")
+	if r.tabBarHeight() != 1 {
+		t.Errorf("expected tabBarHeight=1 for multiple tabs, got %d", r.tabBarHeight())
 	}
 }
 
@@ -761,7 +1000,7 @@ func TestView_NormalRendering(t *testing.T) {
 	r := testReader("test", "# Hello", "")
 	r.width = 80
 	r.height = 24
-	r.view.SetSize(80, 24)
+	r.resizeAllViews()
 
 	v := r.View()
 	if v.Content == "" {
@@ -776,7 +1015,7 @@ func TestView_LoadingOverlay(t *testing.T) {
 	r := testReader("test", "# Hello", "")
 	r.width = 80
 	r.height = 24
-	r.view.SetSize(80, 24)
+	r.resizeAllViews()
 	r.loading = true
 	r.loadingURL = "http://example.com"
 
@@ -793,7 +1032,7 @@ func TestView_LoadingOverlay_NoURL(t *testing.T) {
 	r := testReader("test", "# Hello", "")
 	r.width = 80
 	r.height = 24
-	r.view.SetSize(80, 24)
+	r.resizeAllViews()
 	r.loading = true
 
 	v := r.View()
@@ -806,7 +1045,7 @@ func TestView_HelpOverlay(t *testing.T) {
 	r := testReader("test", "# Hello", "")
 	r.width = 80
 	r.height = 24
-	r.view.SetSize(80, 24)
+	r.resizeAllViews()
 	r.showHelp = true
 
 	v := r.View()
@@ -819,7 +1058,7 @@ func TestView_HelpOverlay_NarrowTerminal(t *testing.T) {
 	r := testReader("test", "# Hello", "")
 	r.width = 30
 	r.height = 24
-	r.view.SetSize(30, 24)
+	r.resizeAllViews()
 	r.showHelp = true
 
 	v := r.View()
@@ -832,7 +1071,7 @@ func TestView_ErrorOverlay(t *testing.T) {
 	r := testReader("test", "# Hello", "")
 	r.width = 80
 	r.height = 24
-	r.view.SetSize(80, 24)
+	r.resizeAllViews()
 	r.showError = true
 	r.errorText = "Something went wrong"
 

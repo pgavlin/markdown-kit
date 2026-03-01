@@ -358,7 +358,7 @@ func TestFetchURLPage_Success(t *testing.T) {
 		},
 	}
 
-	cmd := fetchURLPage("http://example.com/doc.md", &builtinConverter{}, nil, client, discardLogger())
+	cmd := fetchURLPage("http://example.com/doc.md", false, &builtinConverter{}, nil, client, discardLogger())
 	msg := cmd()
 
 	loaded, ok := msg.(pageLoadedMsg)
@@ -371,6 +371,9 @@ func TestFetchURLPage_Success(t *testing.T) {
 	if loaded.source != "http://example.com/doc.md" {
 		t.Errorf("source = %q", loaded.source)
 	}
+	if loaded.newTab {
+		t.Error("expected newTab=false")
+	}
 }
 
 func TestFetchURLPage_Error(t *testing.T) {
@@ -380,7 +383,7 @@ func TestFetchURLPage_Error(t *testing.T) {
 		},
 	}
 
-	cmd := fetchURLPage("http://example.com", &builtinConverter{}, nil, client, discardLogger())
+	cmd := fetchURLPage("http://example.com", false, &builtinConverter{}, nil, client, discardLogger())
 	msg := cmd()
 
 	errMsg, ok := msg.(pageLoadErrorMsg)
@@ -412,7 +415,7 @@ func TestFetchURLPage_HTMLContent(t *testing.T) {
 		},
 	}
 
-	cmd := fetchURLPage("http://example.com", conv, nil, client, discardLogger())
+	cmd := fetchURLPage("http://example.com", false, conv, nil, client, discardLogger())
 	msg := cmd()
 
 	loaded, ok := msg.(pageLoadedMsg)
@@ -431,7 +434,7 @@ func TestLoadFilePage_Success(t *testing.T) {
 	fs := newMemFS()
 	fs.files["/docs/readme.md"] = []byte("# Hello World")
 
-	cmd := loadFilePage("/docs/readme.md", fs, discardLogger())
+	cmd := loadFilePage("/docs/readme.md", false, fs, discardLogger())
 	msg := cmd()
 
 	loaded, ok := msg.(pageLoadedMsg)
@@ -452,7 +455,7 @@ func TestLoadFilePage_Success(t *testing.T) {
 func TestLoadFilePage_Error(t *testing.T) {
 	fs := newMemFS()
 
-	cmd := loadFilePage("/docs/missing.md", fs, discardLogger())
+	cmd := loadFilePage("/docs/missing.md", false, fs, discardLogger())
 	msg := cmd()
 
 	errMsg, ok := msg.(pageLoadErrorMsg)

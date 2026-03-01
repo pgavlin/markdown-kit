@@ -150,6 +150,10 @@ func (c config) applyKeys(km *readerKeyMap) {
 		"toggle_original_html":    &km.ToggleOriginalHTML,
 		"toggle_readability_html": &km.ToggleReadabilityHTML,
 		"open_browser":            &km.OpenBrowser,
+		"next_tab":                &km.NextTab,
+		"prev_tab":                &km.PrevTab,
+		"close_tab":               &km.CloseTab,
+		"new_tab":                 &km.NewTab,
 		"help":                    &km.Help,
 		"quit":                    &km.Quit,
 	}
