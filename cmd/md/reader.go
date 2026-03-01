@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"strings"
 
 	"charm.land/bubbles/v2/filepicker"
@@ -150,6 +151,18 @@ type tab struct {
 	showRaw                bool
 	rawOrigName            string
 	rawOrigMarkdown        string
+}
+
+// displayName returns the tab's display name: the document heading if available,
+// otherwise the basename of the source path/URL.
+func (t *tab) displayName() string {
+	if name := t.view.GetName(); name != "" {
+		return name
+	}
+	if t.currentSource != "" {
+		return filepath.Base(t.currentSource)
+	}
+	return ""
 }
 
 type markdownReader struct {
@@ -343,8 +356,8 @@ func (r *markdownReader) renderTabBar() string {
 	inactiveStyle := lipgloss.NewStyle().Faint(true).Padding(0, 1)
 
 	var parts []string
-	for i, t := range r.tabs {
-		name := t.view.GetName()
+	for i := range r.tabs {
+		name := r.tabs[i].displayName()
 		if name == "" {
 			name = fmt.Sprintf("Tab %d", i+1)
 		}
@@ -710,7 +723,7 @@ func (r markdownReader) View() tea.View {
 
 	v := tea.NewView(result)
 	v.AltScreen = true
-	v.WindowTitle = r.active().view.GetName()
+	v.WindowTitle = r.active().displayName()
 	return v
 }
 

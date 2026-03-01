@@ -106,7 +106,6 @@ func loadFilePage(path string, newTab bool, fsys fileSystem, logger *slog.Logger
 		}
 		logger.Info("file_read", "path", path, "size", len(data))
 		return pageLoadedMsg{
-			name:     filepath.Base(path),
 			markdown: string(data),
 			source:   path,
 			newTab:   newTab,

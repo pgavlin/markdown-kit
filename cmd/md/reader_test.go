@@ -936,6 +936,33 @@ func TestTabBarHeight(t *testing.T) {
 	}
 }
 
+func TestTabDisplayName(t *testing.T) {
+	// Name set via SetText (has a heading) — returns the heading.
+	r := testReader("", "# My Document", "/docs/readme.md")
+	name := r.active().displayName()
+	if name != "My Document" {
+		t.Errorf("displayName() = %q, want %q", name, "My Document")
+	}
+
+	// Explicit name passed — returns that name.
+	r2 := testReader("Explicit", "no heading here", "/docs/readme.md")
+	if got := r2.active().displayName(); got != "Explicit" {
+		t.Errorf("displayName() = %q, want %q", got, "Explicit")
+	}
+
+	// No name, no heading — falls back to source basename.
+	r3 := testReader("", "no heading here", "/docs/notes.md")
+	if got := r3.active().displayName(); got != "notes.md" {
+		t.Errorf("displayName() = %q, want %q", got, "notes.md")
+	}
+
+	// No name, no heading, no source — returns empty.
+	r4 := testReader("", "no heading here", "")
+	if got := r4.active().displayName(); got != "" {
+		t.Errorf("displayName() = %q, want empty", got)
+	}
+}
+
 func TestUpdate_OpenFileSetsPickerNewTabFalse(t *testing.T) {
 	r := testReader("test", "# Hello", "")
 	r.pickerNewTab = true // start with true to verify it gets cleared

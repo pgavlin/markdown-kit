@@ -444,8 +444,8 @@ func TestLoadFilePage_Success(t *testing.T) {
 	if loaded.markdown != "# Hello World" {
 		t.Errorf("markdown = %q, want %q", loaded.markdown, "# Hello World")
 	}
-	if loaded.name != "readme.md" {
-		t.Errorf("name = %q, want %q", loaded.name, "readme.md")
+	if loaded.name != "" {
+		t.Errorf("name = %q, want empty (inferred from heading by SetText)", loaded.name)
 	}
 	if loaded.source != "/docs/readme.md" {
 		t.Errorf("source = %q, want %q", loaded.source, "/docs/readme.md")
