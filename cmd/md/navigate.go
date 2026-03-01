@@ -216,6 +216,7 @@ func fetchURL(rawURL string, conv converter, registry *converterRegistry, cache 
 		return fetchResult{}, err
 	}
 	req.Header.Set("User-Agent", "markdown-kit/md")
+	req.Header.Set("Accept", "text/markdown")
 
 	// Add conditional request headers if we have a stale cache entry.
 	if cached != nil {
