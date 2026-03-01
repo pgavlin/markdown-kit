@@ -154,6 +154,7 @@ func (c config) applyKeys(km *readerKeyMap) {
 		"next_tab":                &km.NextTab,
 		"prev_tab":                &km.PrevTab,
 		"close_tab":               &km.CloseTab,
+		"close_all_tabs":          &km.CloseAllTabs,
 		"new_tab":                 &km.NewTab,
 		"help":                    &km.Help,
 		"quit":                    &km.Quit,

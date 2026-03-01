@@ -773,9 +773,9 @@ func TestCloseTab(t *testing.T) {
 
 	// Close middle tab (index 1).
 	r.activeTab = 1
-	quit := r.closeTab(1)
-	if quit {
-		t.Error("expected quit=false when closing non-last tab")
+	r.closeTab(1)
+	if r.showPicker {
+		t.Error("expected showPicker=false when closing non-last tab")
 	}
 	if len(r.tabs) != 2 {
 		t.Fatalf("expected 2 tabs after close, got %d", len(r.tabs))
@@ -789,11 +789,14 @@ func TestCloseTab(t *testing.T) {
 	}
 }
 
-func TestCloseTab_LastTab(t *testing.T) {
+func TestCloseTab_LastTab_ShowsPicker(t *testing.T) {
 	r := testReader("page1", "# Page 1", "/page1.md")
-	quit := r.closeTab(0)
-	if !quit {
-		t.Error("expected quit=true when closing the last tab")
+	r.closeTab(0)
+	if !r.showPicker {
+		t.Error("expected showPicker=true when closing the last tab")
+	}
+	if !r.pickerStartup {
+		t.Error("expected pickerStartup=true when closing the last tab")
 	}
 }
 
@@ -806,9 +809,9 @@ func TestCloseTab_ActiveBeyondEnd(t *testing.T) {
 	r.openNewTab("page2", "# Page 2", "/page2.md")
 	// active = 1 (last tab)
 
-	quit := r.closeTab(1)
-	if quit {
-		t.Error("expected quit=false")
+	r.closeTab(1)
+	if r.showPicker {
+		t.Error("expected showPicker=false when other tabs remain")
 	}
 	if r.activeTab != 0 {
 		t.Errorf("activeTab = %d, want 0", r.activeTab)
@@ -887,11 +890,55 @@ func TestUpdate_CloseTab(t *testing.T) {
 	}
 }
 
-func TestUpdate_CloseLastTab_Quits(t *testing.T) {
+func TestUpdate_CloseLastTab_ShowsPicker(t *testing.T) {
 	r := testReader("page1", "# Page 1", "/page1.md")
-	_, cmd := r.Update(keyMsg("ctrl+w"))
+	m, cmd := r.Update(keyMsg("ctrl+w"))
+	reader := m.(markdownReader)
+	if !reader.showPicker {
+		t.Error("expected showPicker=true when closing the last tab")
+	}
 	if cmd == nil {
-		t.Error("expected quit command when closing the last tab")
+		t.Error("expected non-nil command (picker init)")
+	}
+}
+
+func TestUpdate_CloseAllTabs(t *testing.T) {
+	r := testReader("page1", "# Page 1", "/page1.md")
+	r.width = 80
+	r.height = 24
+	r.resizeAllViews()
+	r.openNewTab("page2", "# Page 2", "/page2.md")
+	r.openNewTab("page3", "# Page 3", "/page3.md")
+
+	m, cmd := r.Update(keyMsg("W"))
+	reader := m.(markdownReader)
+	if len(reader.tabs) != 1 {
+		t.Fatalf("expected 1 tab after close all, got %d", len(reader.tabs))
+	}
+	if !reader.showPicker {
+		t.Error("expected showPicker=true after close all")
+	}
+	if cmd == nil {
+		t.Error("expected non-nil command (picker init)")
+	}
+}
+
+func TestCloseAllTabs(t *testing.T) {
+	r := testReader("page1", "# Page 1", "/page1.md")
+	r.width = 80
+	r.height = 24
+	r.resizeAllViews()
+	r.openNewTab("page2", "# Page 2", "/page2.md")
+
+	r.closeAllTabs()
+	if len(r.tabs) != 1 {
+		t.Fatalf("expected 1 tab after closeAllTabs, got %d", len(r.tabs))
+	}
+	if !r.showPicker {
+		t.Error("expected showPicker=true")
+	}
+	if !r.pickerStartup {
+		t.Error("expected pickerStartup=true")
 	}
 }
 

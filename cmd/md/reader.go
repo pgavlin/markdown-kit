@@ -33,6 +33,7 @@ type readerKeyMap struct {
 	NextTab               key.Binding
 	PrevTab               key.Binding
 	CloseTab              key.Binding
+	CloseAllTabs          key.Binding
 	NewTab                key.Binding
 	Help                  key.Binding
 	Quit                  key.Binding
@@ -84,6 +85,10 @@ func defaultReaderKeyMap() readerKeyMap {
 			key.WithKeys("ctrl+w"),
 			key.WithHelp("ctrl+w", "close tab"),
 		),
+		CloseAllTabs: key.NewBinding(
+			key.WithKeys("W"),
+			key.WithHelp("W", "close all tabs"),
+		),
 		NewTab: key.NewBinding(
 			key.WithKeys("T"),
 			key.WithHelp("T", "open link in new tab"),
@@ -118,7 +123,7 @@ func (km readerKeyMap) FullHelp() [][]key.Binding {
 		// Search & View
 		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.ToggleRaw, km.ToggleOriginalHTML, km.ToggleReadabilityHTML},
 		// Tabs & General
-		{km.NextTab, km.PrevTab, km.CloseTab, km.NewTab, km.OpenFileNewTab, km.Help, km.Quit},
+		{km.NextTab, km.PrevTab, km.CloseTab, km.CloseAllTabs, km.NewTab, km.OpenFileNewTab, km.Help, km.Quit},
 	}
 }
 
@@ -322,10 +327,16 @@ func (r *markdownReader) prevTab() {
 	r.updateHTMLKeyBindings()
 }
 
-// closeTab closes the tab at the given index. Returns true if the program should quit.
-func (r *markdownReader) closeTab(idx int) bool {
+// closeTab closes the tab at the given index.
+func (r *markdownReader) closeTab(idx int) {
 	if len(r.tabs) <= 1 {
-		return true // closing the last tab quits
+		// Last tab — reset to a blank tab and show the file picker.
+		r.tabs[0] = r.newTab()
+		r.activeTab = 0
+		r.showPicker = true
+		r.pickerStartup = true
+		r.updateHTMLKeyBindings()
+		return
 	}
 	r.tabs = append(r.tabs[:idx], r.tabs[idx+1:]...)
 	if r.activeTab >= len(r.tabs) {
@@ -335,7 +346,16 @@ func (r *markdownReader) closeTab(idx int) bool {
 	}
 	r.resizeAllViews()
 	r.updateHTMLKeyBindings()
-	return false
+}
+
+// closeAllTabs closes all tabs and shows the file picker.
+func (r *markdownReader) closeAllTabs() {
+	r.tabs = []tab{r.newTab()}
+	r.activeTab = 0
+	r.showPicker = true
+	r.pickerStartup = true
+	r.resizeAllViews()
+	r.updateHTMLKeyBindings()
 }
 
 // openNewTab creates a new tab with the given content and makes it active.
@@ -587,10 +607,14 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.prevTab()
 			return r, nil
 		case "ctrl+w":
-			if r.closeTab(r.activeTab) {
-				return r, tea.Quit
+			r.closeTab(r.activeTab)
+			if r.showPicker {
+				return r, r.picker.Init()
 			}
 			return r, nil
+		case "W":
+			r.closeAllTabs()
+			return r, r.picker.Init()
 		case "T":
 			link := at.view.FocusedLinkDestination()
 			if link != "" {
