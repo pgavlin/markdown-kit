@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"charm.land/bubbles/v2/filepicker"
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
@@ -218,7 +217,7 @@ type markdownReader struct {
 	errorURL  string // URL that failed, for "open in browser" fallback
 
 	// File picker state.
-	picker        filepicker.Model
+	picker        fuzzyPicker
 	showPicker    bool
 	pickerStartup bool // true when picker is shown at startup (no content loaded yet)
 	pickerNewTab  bool // true when the picker should open the selected file in a new tab
@@ -259,15 +258,8 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv 
 	helpModel := help.New()
 	helpModel.ShowAll = true
 
-	fp := filepicker.New()
-	fp.AllowedTypes = markdownExtsList()
-	fp.ShowHidden = false
-	fp.FileAllowed = true
-	fp.DirAllowed = false
-	fp.AutoHeight = false
-	if wd, err := fsys.Getwd(); err == nil {
-		fp.CurrentDirectory = wd
-	}
+	wd, _ := fsys.Getwd()
+	fp := newFuzzyPicker(wd, markdownExtsList(), fsys)
 
 	return markdownReader{
 		tabs: []tab{{
@@ -419,30 +411,43 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if r.showPicker {
 		if km, ok := msg.(tea.KeyPressMsg); ok {
 			switch km.String() {
-			case "q", "ctrl+c", "esc":
+			case "ctrl+c":
 				if r.pickerStartup {
 					return r, tea.Quit
 				}
 				r.showPicker = false
 				return r, nil
+			case "esc":
+				if r.picker.input.Value() == "" {
+					if r.pickerStartup {
+						return r, tea.Quit
+					}
+					r.showPicker = false
+					return r, nil
+				}
+				// Clear the filter text instead of dismissing.
+				r.picker.input.SetValue("")
+				r.picker.filter()
+				return r, nil
 			}
 		}
 		var cmd tea.Cmd
 		r.picker, cmd = r.picker.Update(msg)
-		if didSelect, path := r.picker.DidSelectFile(msg); didSelect {
+		if didSelect, path := r.picker.DidSelect(); didSelect {
 			r.showPicker = false
 			r.pickerStartup = false
 			r.loading = true
 			r.loadingURL = path
 			return r, tea.Batch(loadFilePage(path, r.pickerNewTab, r.fsys, r.logger), r.spinner.Tick)
 		}
-		// Also handle window size for picker height.
+		// Also handle window size for picker dimensions.
 		if ws, ok := msg.(tea.WindowSizeMsg); ok {
 			r.width = ws.Width
 			r.height = ws.Height
 			r.resizeAllViews()
 			r.helpModel.SetWidth(ws.Width)
 			r.picker.SetHeight(min(ws.Height-2, 20))
+			r.picker.SetWidth(ws.Width)
 		}
 		return r, cmd
 	}
@@ -502,6 +507,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.resizeAllViews()
 		r.helpModel.SetWidth(msg.Width)
 		r.picker.SetHeight(min(msg.Height-2, 20))
+		r.picker.SetWidth(msg.Width)
 		return r, nil
 
 	case tea.KeyPressMsg:
