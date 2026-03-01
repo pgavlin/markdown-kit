@@ -105,14 +105,21 @@ func (km readerKeyMap) ShortHelp() []key.Binding {
 }
 
 // FullHelp returns the full set of key bindings for the expanded help view.
+// We build the layout from scratch (rather than appending to the view's
+// FullHelp) so that all 37 bindings fit into 5 balanced columns.
 func (km readerKeyMap) FullHelp() [][]key.Binding {
-	groups := km.KeyMap.FullHelp()
-	groups = append(groups,
-		[]key.Binding{km.NextTab, km.PrevTab, km.CloseTab, km.NewTab, km.OpenFileNewTab},
-		[]key.Binding{km.ToggleRaw, km.ToggleOriginalHTML, km.ToggleReadabilityHTML, km.OpenBrowser},
-		[]key.Binding{km.OpenFile, km.Help, km.Quit},
-	)
-	return groups
+	return [][]key.Binding{
+		// Movement
+		{km.Up, km.Down, km.PageUp, km.PageDown, km.GotoTop, km.GotoEnd, km.Left, km.Right},
+		// Navigation
+		{km.Home, km.End, km.NextLink, km.PrevLink, km.NextHeading, km.PrevHeading, km.NextCodeBlock, km.PrevCodeBlock},
+		// Actions
+		{km.FollowLink, km.GoBack, km.CopySelection, km.OpenFile, km.OpenBrowser, km.DecreaseWidth, km.IncreaseWidth},
+		// Search & View
+		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.ToggleRaw, km.ToggleOriginalHTML, km.ToggleReadabilityHTML},
+		// Tabs & General
+		{km.NextTab, km.PrevTab, km.CloseTab, km.NewTab, km.OpenFileNewTab, km.Help, km.Quit},
+	}
 }
 
 func openInBrowser(url string, logger *slog.Logger) error {

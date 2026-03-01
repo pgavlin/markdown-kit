@@ -160,13 +160,14 @@ func TestShortHelp(t *testing.T) {
 func TestFullHelp(t *testing.T) {
 	km := defaultReaderKeyMap()
 	groups := km.FullHelp()
-	if len(groups) == 0 {
-		t.Fatal("expected non-empty full help groups")
+	if len(groups) != 5 {
+		t.Fatalf("expected 5 help groups, got %d", len(groups))
 	}
-	// Last group should include reader-specific bindings.
-	last := groups[len(groups)-1]
-	if len(last) < 3 {
-		t.Errorf("expected last group to have at least 3 bindings, got %d", len(last))
+	// All columns should be balanced (7-8 items each).
+	for i, g := range groups {
+		if len(g) < 7 || len(g) > 8 {
+			t.Errorf("group %d has %d bindings, want 7-8", i, len(g))
+		}
 	}
 }
 
