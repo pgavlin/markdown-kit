@@ -603,11 +603,13 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.showPicker = true
 			r.pickerStartup = false
 			r.pickerNewTab = false
+			r.picker.selected = ""
 			return r, r.picker.Init()
 		case "ctrl+n":
 			r.showPicker = true
 			r.pickerStartup = false
 			r.pickerNewTab = true
+			r.picker.selected = ""
 			return r, r.picker.Init()
 		case "shift+enter":
 			link := at.view.FocusedLinkDestination()
