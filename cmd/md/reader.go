@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/alecthomas/chroma"
@@ -29,6 +30,7 @@ type readerKeyMap struct {
 	OpenFile              key.Binding
 	OpenBrowser           key.Binding
 	OpenFileNewTab        key.Binding
+	OpenURL               key.Binding
 	NextTab               key.Binding
 	PrevTab               key.Binding
 	CloseTab              key.Binding
@@ -72,6 +74,10 @@ func defaultReaderKeyMap() readerKeyMap {
 			key.WithKeys("ctrl+n"),
 			key.WithHelp("ctrl+n", "open file in new tab"),
 		),
+		OpenURL: key.NewBinding(
+			key.WithKeys("ctrl+l"),
+			key.WithHelp("ctrl+l", "open URL"),
+		),
 		NextTab: key.NewBinding(
 			key.WithKeys("tab"),
 			key.WithHelp("tab", "next tab"),
@@ -105,7 +111,7 @@ func defaultReaderKeyMap() readerKeyMap {
 
 // ShortHelp returns a short list of key bindings for the compact help view.
 func (km readerKeyMap) ShortHelp() []key.Binding {
-	return append(km.KeyMap.ShortHelp(), km.OpenFile, km.ToggleRaw, km.Help, km.Quit)
+	return append(km.KeyMap.ShortHelp(), km.OpenFile, km.OpenURL, km.ToggleRaw, km.Help, km.Quit)
 }
 
 // FullHelp returns the full set of key bindings for the expanded help view.
@@ -118,7 +124,7 @@ func (km readerKeyMap) FullHelp() [][]key.Binding {
 		// Navigation
 		{km.Home, km.End, km.NextLink, km.PrevLink, km.NextHeading, km.PrevHeading, km.NextCodeBlock, km.PrevCodeBlock},
 		// Actions
-		{km.FollowLink, km.GoBack, km.CopySelection, km.OpenFile, km.OpenBrowser, km.DecreaseWidth, km.IncreaseWidth},
+		{km.FollowLink, km.GoBack, km.CopySelection, km.OpenFile, km.OpenURL, km.OpenBrowser, km.DecreaseWidth, km.IncreaseWidth},
 		// Search & View
 		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.ToggleRaw, km.ToggleOriginalHTML, km.ToggleReadabilityHTML},
 		// Tabs & General
@@ -224,6 +230,11 @@ type markdownReader struct {
 	showPicker    bool
 	pickerStartup bool // true when picker is shown at startup (no content loaded yet)
 	pickerNewTab  bool // true when the picker should open the selected file in a new tab
+
+	// URL input state.
+	showURLInput bool
+	urlInput     textinput.Model
+	urlNewTab    bool
 }
 
 // active returns a pointer to the active tab.
@@ -462,6 +473,28 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, cmd
 	}
 
+	// Handle URL input modal.
+	if r.showURLInput {
+		if km, ok := msg.(tea.KeyPressMsg); ok {
+			switch km.String() {
+			case "esc":
+				r.showURLInput = false
+				return r, nil
+			case "enter":
+				url := r.urlInput.Value()
+				newTab := r.urlNewTab
+				r.showURLInput = false
+				if url != "" {
+					return r, r.handleLinkNavigation(url, newTab)
+				}
+				return r, nil
+			}
+		}
+		var cmd tea.Cmd
+		r.urlInput, cmd = r.urlInput.Update(msg)
+		return r, cmd
+	}
+
 	switch msg := msg.(type) {
 	case mdk.OpenLinkMsg:
 		return r, r.handleLinkNavigation(msg.URL, false)
@@ -611,6 +644,13 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.pickerNewTab = true
 			r.picker.selected = ""
 			return r, r.picker.Init()
+		case "ctrl+l":
+			r.showURLInput = true
+			r.urlNewTab = false
+			r.urlInput = textinput.New()
+			r.urlInput.Prompt = "  URL: "
+			r.urlInput.Placeholder = "https://..."
+			return r, r.urlInput.Focus()
 		case "shift+enter":
 			link := at.view.FocusedLinkDestination()
 			if err := openInBrowser(link, r.logger); err != nil {
@@ -745,6 +785,14 @@ func (r markdownReader) View() tea.View {
 		}
 		maxH := r.height * 3 / 4
 		result = r.renderFixedOverlay(base, pickerView, fixedW, maxH)
+	} else if r.showURLInput {
+		header := lipgloss.NewStyle().Bold(true).Render("Open URL")
+		inputView := header + "\n\n" + r.urlInput.View()
+		fixedW := r.width * 3 / 4
+		if fixedW < 40 {
+			fixedW = min(r.width-4, 40)
+		}
+		result = r.renderFixedOverlay(base, inputView, fixedW, 5)
 	} else if r.loading {
 		loadingText := r.spinner.View() + " Loading..."
 		if r.loadingURL != "" {

@@ -49,6 +49,8 @@ func keyMsg(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl}
 	case "ctrl+n":
 		return tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}
+	case "ctrl+l":
+		return tea.KeyPressMsg{Code: 'l', Mod: tea.ModCtrl}
 	case "ctrl+w":
 		return tea.KeyPressMsg{Code: 'w', Mod: tea.ModCtrl}
 	case "tab":
@@ -164,10 +166,10 @@ func TestFullHelp(t *testing.T) {
 	if len(groups) != 5 {
 		t.Fatalf("expected 5 help groups, got %d", len(groups))
 	}
-	// All columns should be balanced (7-8 items each).
+	// All columns should be balanced (7-9 items each).
 	for i, g := range groups {
-		if len(g) < 7 || len(g) > 8 {
-			t.Errorf("group %d has %d bindings, want 7-8", i, len(g))
+		if len(g) < 7 || len(g) > 9 {
+			t.Errorf("group %d has %d bindings, want 7-9", i, len(g))
 		}
 	}
 }
@@ -1221,5 +1223,96 @@ func TestRenderOverlay_TruncatesLongContent(t *testing.T) {
 	// Result should not contain all 50 lines.
 	if strings.Contains(result, "line 49") {
 		t.Error("expected content to be truncated")
+	}
+}
+
+// --- URL input tests ---
+
+func TestUpdate_OpenURL_CtrlL(t *testing.T) {
+	r := testReader("test", "# Hello", "")
+	m, cmd := r.Update(keyMsg("ctrl+l"))
+	reader := m.(markdownReader)
+	if !reader.showURLInput {
+		t.Error("expected showURLInput=true after ctrl+l")
+	}
+	if reader.urlNewTab {
+		t.Error("expected urlNewTab=false after ctrl+l")
+	}
+	if cmd == nil {
+		t.Error("expected non-nil command (focus)")
+	}
+}
+
+func TestUpdate_URLInput_Dismiss_Esc(t *testing.T) {
+	r := testReader("test", "# Hello", "")
+	r.showURLInput = true
+	m, _ := r.Update(keyMsg("esc"))
+	reader := m.(markdownReader)
+	if reader.showURLInput {
+		t.Error("expected showURLInput=false after esc")
+	}
+}
+
+func TestUpdate_URLInput_Enter_WithURL(t *testing.T) {
+	fs := newMemFS()
+	r := testReader("test", "# Hello", "")
+	r.fsys = fs
+	r.showURLInput = true
+	r.urlInput.SetValue("https://example.com/page.md")
+
+	m, cmd := r.Update(keyMsg("enter"))
+	reader := m.(markdownReader)
+	if reader.showURLInput {
+		t.Error("expected showURLInput=false after enter")
+	}
+	if !reader.loading {
+		t.Error("expected loading=true after entering a URL")
+	}
+	if cmd == nil {
+		t.Error("expected non-nil command for URL navigation")
+	}
+}
+
+func TestUpdate_URLInput_Enter_Empty(t *testing.T) {
+	r := testReader("test", "# Hello", "")
+	r.showURLInput = true
+	// urlInput value is empty by default.
+	m, cmd := r.Update(keyMsg("enter"))
+	reader := m.(markdownReader)
+	if reader.showURLInput {
+		t.Error("expected showURLInput=false after enter")
+	}
+	if reader.loading {
+		t.Error("expected loading=false for empty URL")
+	}
+	if cmd != nil {
+		t.Error("expected nil command for empty URL")
+	}
+}
+
+func TestUpdate_URLInput_SwallowsOtherKeys(t *testing.T) {
+	r := testReader("test", "# Hello", "")
+	r.showURLInput = true
+	m, _ := r.Update(keyMsg("q"))
+	reader := m.(markdownReader)
+	// Should not quit — key is forwarded to the text input.
+	if !reader.showURLInput {
+		t.Error("expected showURLInput to remain true for non-esc/enter key")
+	}
+}
+
+func TestView_URLInputOverlay(t *testing.T) {
+	r := testReader("test", "# Hello", "")
+	r.width = 80
+	r.height = 24
+	r.resizeAllViews()
+	r.showURLInput = true
+
+	v := r.View()
+	if v.Content == "" {
+		t.Error("expected non-empty body with URL input overlay")
+	}
+	if !strings.Contains(v.Content, "Open URL") {
+		t.Error("expected 'Open URL' header in view")
 	}
 }
