@@ -28,6 +28,7 @@ type readerKeyMap struct {
 	ToggleReadabilityHTML key.Binding
 	OpenFile              key.Binding
 	OpenBrowser           key.Binding
+	OpenFileNewTab        key.Binding
 	NextTab               key.Binding
 	PrevTab               key.Binding
 	CloseTab              key.Binding
@@ -66,6 +67,10 @@ func defaultReaderKeyMap() readerKeyMap {
 			key.WithKeys("ctrl+o"),
 			key.WithHelp("ctrl+o", "open in browser"),
 		),
+		OpenFileNewTab: key.NewBinding(
+			key.WithKeys("ctrl+n"),
+			key.WithHelp("ctrl+n", "open file in new tab"),
+		),
 		NextTab: key.NewBinding(
 			key.WithKeys("tab"),
 			key.WithHelp("tab", "next tab"),
@@ -102,7 +107,7 @@ func (km readerKeyMap) ShortHelp() []key.Binding {
 func (km readerKeyMap) FullHelp() [][]key.Binding {
 	groups := km.KeyMap.FullHelp()
 	groups = append(groups, []key.Binding{
-		km.OpenFile, km.ToggleRaw, km.ToggleOriginalHTML, km.ToggleReadabilityHTML,
+		km.OpenFile, km.OpenFileNewTab, km.ToggleRaw, km.ToggleOriginalHTML, km.ToggleReadabilityHTML,
 		km.OpenBrowser, km.NextTab, km.PrevTab, km.CloseTab, km.NewTab,
 		km.Help, km.Quit,
 	})
@@ -191,6 +196,7 @@ type markdownReader struct {
 	picker        filepicker.Model
 	showPicker    bool
 	pickerStartup bool // true when picker is shown at startup (no content loaded yet)
+	pickerNewTab  bool // true when the picker should open the selected file in a new tab
 }
 
 // active returns a pointer to the active tab.
@@ -388,7 +394,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.pickerStartup = false
 			r.loading = true
 			r.loadingURL = path
-			return r, tea.Batch(loadFilePage(path, false, r.fsys, r.logger), r.spinner.Tick)
+			return r, tea.Batch(loadFilePage(path, r.pickerNewTab, r.fsys, r.logger), r.spinner.Tick)
 		}
 		// Also handle window size for picker height.
 		if ws, ok := msg.(tea.WindowSizeMsg); ok {
@@ -540,6 +546,12 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+f":
 			r.showPicker = true
 			r.pickerStartup = false
+			r.pickerNewTab = false
+			return r, r.picker.Init()
+		case "ctrl+n":
+			r.showPicker = true
+			r.pickerStartup = false
+			r.pickerNewTab = true
 			return r, r.picker.Init()
 		case "ctrl+o":
 			link := at.view.FocusedLinkDestination()

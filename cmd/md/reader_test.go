@@ -44,6 +44,10 @@ func keyMsg(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}
 	case "ctrl+o":
 		return tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl}
+	case "ctrl+f":
+		return tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl}
+	case "ctrl+n":
+		return tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}
 	case "ctrl+w":
 		return tea.KeyPressMsg{Code: 'w', Mod: tea.ModCtrl}
 	case "tab":
@@ -929,6 +933,31 @@ func TestTabBarHeight(t *testing.T) {
 	r.openNewTab("page2", "# Page 2", "/page2.md")
 	if r.tabBarHeight() != 1 {
 		t.Errorf("expected tabBarHeight=1 for multiple tabs, got %d", r.tabBarHeight())
+	}
+}
+
+func TestUpdate_OpenFileSetsPickerNewTabFalse(t *testing.T) {
+	r := testReader("test", "# Hello", "")
+	r.pickerNewTab = true // start with true to verify it gets cleared
+	m, _ := r.Update(keyMsg("ctrl+f"))
+	reader := m.(markdownReader)
+	if !reader.showPicker {
+		t.Error("expected showPicker=true after ctrl+f")
+	}
+	if reader.pickerNewTab {
+		t.Error("expected pickerNewTab=false after ctrl+f")
+	}
+}
+
+func TestUpdate_OpenFileNewTabSetsPickerNewTab(t *testing.T) {
+	r := testReader("test", "# Hello", "")
+	m, _ := r.Update(keyMsg("ctrl+n"))
+	reader := m.(markdownReader)
+	if !reader.showPicker {
+		t.Error("expected showPicker=true after ctrl+n")
+	}
+	if !reader.pickerNewTab {
+		t.Error("expected pickerNewTab=true after ctrl+n")
 	}
 }
 
