@@ -709,19 +709,15 @@ func (r markdownReader) View() tea.View {
 		}
 		result = r.overlayDialog(base, "Loading", loadingText)
 	} else if r.showHelp {
-		// Use a wider overlay for the columnar help layout.
-		maxW := r.width * 3 / 4
-		if maxW < 40 {
-			maxW = min(r.width-4, 40)
-		}
 		maxH := r.height * 3 / 4
 
-		// Render help at the dialog's inner width so columns fit.
-		r.helpModel.SetWidth(maxW - 4) // account for border + padding
+		// Give the help model enough width to render all columns, then
+		// let the overlay size itself to the actual rendered content.
+		r.helpModel.SetWidth(r.width - 4) // account for border + padding
 		content := r.helpModel.View(r.keys)
 
 		// Skip wordWrap — help.Model already formats its own columns.
-		result = r.renderOverlay(base, content, maxW, maxH)
+		result = r.renderOverlay(base, content, r.width-2, maxH)
 	} else if r.showError {
 		result = r.overlayDialog(base, "Error", r.errorText)
 	} else {
