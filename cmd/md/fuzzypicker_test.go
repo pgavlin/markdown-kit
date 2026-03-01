@@ -463,3 +463,211 @@ func TestFuzzyPicker_PageDown(t *testing.T) {
 		t.Errorf("expected cursor to advance on pgdown, got %d", fp.cursor)
 	}
 }
+
+// --- Path mode tests ---
+
+// applyPathInput types text into the picker character-by-character. After each
+// character that puts the picker into path mode with a new directory, it
+// synchronously executes the path directory read so entries are available for
+// subsequent filtering.
+func applyPathInput(fp fuzzyPicker, text string) fuzzyPicker {
+	for _, ch := range text {
+		fp, _ = fp.Update(tea.KeyPressMsg{Code: -1, Text: string(ch)})
+		if fp.isPathMode() {
+			resolvedDir, _ := fp.splitPathInput()
+			if resolvedDir != fp.pathDir {
+				cmd := fp.pathReadDir(resolvedDir)
+				msg := cmd()
+				fp, _ = fp.Update(msg)
+			}
+		}
+	}
+	return fp
+}
+
+func TestFuzzyPicker_PathMode_ShowsDirContents(t *testing.T) {
+	fp, _ := testFuzzyPicker()
+	fp = applyReadDir(fp)
+
+	// Type "subdir/" — should show contents of /testdir/subdir.
+	fp = applyPathInput(fp, "subdir/")
+
+	names := make([]string, len(fp.filtered))
+	for i, e := range fp.filtered {
+		names[i] = e.Name()
+	}
+	if len(fp.filtered) != 2 {
+		t.Fatalf("expected 2 entries (.. and nested.md), got %d: %v", len(fp.filtered), names)
+	}
+	if fp.filtered[0].Name() != ".." {
+		t.Errorf("expected first entry '..', got %q", fp.filtered[0].Name())
+	}
+	if fp.filtered[1].Name() != "nested.md" {
+		t.Errorf("expected second entry 'nested.md', got %q", fp.filtered[1].Name())
+	}
+}
+
+func TestFuzzyPicker_PathMode_FilterInDir(t *testing.T) {
+	fp, _ := testFuzzyPicker()
+	fp = applyReadDir(fp)
+
+	// Type "subdir/ne" — should filter subdir contents to "nested.md".
+	fp = applyPathInput(fp, "subdir/ne")
+
+	if len(fp.filtered) != 1 {
+		names := make([]string, len(fp.filtered))
+		for i, e := range fp.filtered {
+			names[i] = e.Name()
+		}
+		t.Fatalf("expected 1 match for 'ne' in subdir, got %d: %v", len(fp.filtered), names)
+	}
+	if fp.filtered[0].Name() != "nested.md" {
+		t.Errorf("expected 'nested.md', got %q", fp.filtered[0].Name())
+	}
+}
+
+func TestFuzzyPicker_PathMode_SelectFile(t *testing.T) {
+	fp, _ := testFuzzyPicker()
+	fp = applyReadDir(fp)
+
+	// Type "subdir/" then navigate to nested.md.
+	fp = applyPathInput(fp, "subdir/")
+
+	for fp.cursor < len(fp.filtered)-1 && fp.filtered[fp.cursor].Name() != "nested.md" {
+		fp, _ = fp.Update(keyMsg("down"))
+	}
+	if fp.filtered[fp.cursor].Name() != "nested.md" {
+		t.Fatalf("expected cursor on 'nested.md', got %q", fp.filtered[fp.cursor].Name())
+	}
+
+	fp, _ = fp.Update(keyMsg("enter"))
+	didSelect, path := fp.DidSelect()
+	if !didSelect {
+		t.Fatal("expected selection in path mode")
+	}
+	if path != "/testdir/subdir/nested.md" {
+		t.Errorf("selected path = %q, want %q", path, "/testdir/subdir/nested.md")
+	}
+}
+
+func TestFuzzyPicker_PathMode_EnterOnDirUpdatesInput(t *testing.T) {
+	fp, fs := testFuzzyPicker()
+	fs.files["/testdir/subdir/deep/file.md"] = []byte("deep")
+	fp = applyReadDir(fp)
+
+	fp = applyPathInput(fp, "subdir/")
+
+	// Find "deep" directory.
+	for fp.cursor < len(fp.filtered)-1 && fp.filtered[fp.cursor].Name() != "deep" {
+		fp, _ = fp.Update(keyMsg("down"))
+	}
+	if fp.filtered[fp.cursor].Name() != "deep" {
+		t.Fatalf("expected cursor on 'deep', got %q", fp.filtered[fp.cursor].Name())
+	}
+
+	// Press enter — should update input to "subdir/deep/".
+	fp, cmd := fp.Update(keyMsg("enter"))
+	if fp.input.Value() != "subdir/deep/" {
+		t.Errorf("expected input='subdir/deep/', got %q", fp.input.Value())
+	}
+
+	// Execute the path read command.
+	if cmd != nil {
+		msg := cmd()
+		fp, _ = fp.Update(msg)
+	}
+
+	// Should see "file.md" in deep directory.
+	found := false
+	for _, e := range fp.filtered {
+		if e.Name() == "file.md" {
+			found = true
+		}
+	}
+	if !found {
+		names := make([]string, len(fp.filtered))
+		for i, e := range fp.filtered {
+			names[i] = e.Name()
+		}
+		t.Errorf("expected 'file.md' in deep dir listing, got %v", names)
+	}
+}
+
+func TestFuzzyPicker_PathMode_ParentUpdatesInput(t *testing.T) {
+	fp, _ := testFuzzyPicker()
+	fp = applyReadDir(fp)
+
+	fp = applyPathInput(fp, "subdir/")
+
+	// ".." should be first entry.
+	if fp.filtered[0].Name() != ".." {
+		t.Fatalf("expected first entry '..', got %q", fp.filtered[0].Name())
+	}
+	fp.cursor = 0
+
+	// Press enter on ".." — should remove "subdir/", leaving empty input.
+	fp, _ = fp.Update(keyMsg("enter"))
+	if fp.input.Value() != "" {
+		t.Errorf("expected input='', got %q", fp.input.Value())
+	}
+}
+
+func TestFuzzyPicker_PathMode_AbsolutePath(t *testing.T) {
+	fp, fs := testFuzzyPicker()
+	fs.files["/other/doc.md"] = []byte("# Other")
+	fp = applyReadDir(fp)
+
+	fp = applyPathInput(fp, "/other/")
+
+	found := false
+	for _, e := range fp.filtered {
+		if e.Name() == "doc.md" {
+			found = true
+		}
+	}
+	if !found {
+		names := make([]string, len(fp.filtered))
+		for i, e := range fp.filtered {
+			names[i] = e.Name()
+		}
+		t.Fatalf("expected 'doc.md' in /other/ listing, got %v", names)
+	}
+}
+
+func TestFuzzyPicker_PathMode_BadDirShowsEmpty(t *testing.T) {
+	fp, _ := testFuzzyPicker()
+	fp = applyReadDir(fp)
+
+	fp = applyPathInput(fp, "nonexistent/")
+
+	// Should show only ".." (parent entry for the resolved non-existent dir).
+	if len(fp.filtered) != 1 || fp.filtered[0].Name() != ".." {
+		names := make([]string, len(fp.filtered))
+		for i, e := range fp.filtered {
+			names[i] = e.Name()
+		}
+		t.Errorf("expected only '..' for bad dir, got %v", names)
+	}
+}
+
+func TestFuzzyPicker_PathMode_ExitReturnsToNormal(t *testing.T) {
+	fp, _ := testFuzzyPicker()
+	fp = applyReadDir(fp)
+	originalCount := len(fp.filtered)
+
+	// Enter path mode.
+	fp = applyPathInput(fp, "subdir/")
+	if len(fp.filtered) == originalCount {
+		t.Fatal("expected different entry count in path mode")
+	}
+
+	// Delete characters to remove the separator and all text.
+	for i := 0; i < len("subdir/"); i++ {
+		fp, _ = fp.Update(keyMsg("backspace"))
+	}
+
+	// Should be back in normal mode showing original entries.
+	if len(fp.filtered) != originalCount {
+		t.Errorf("expected %d entries after exiting path mode, got %d", originalCount, len(fp.filtered))
+	}
+}
