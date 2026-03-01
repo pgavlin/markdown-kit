@@ -61,12 +61,12 @@ func defaultReaderKeyMap() readerKeyMap {
 			key.WithDisabled(),
 		),
 		OpenFile: key.NewBinding(
-			key.WithKeys("ctrl+f"),
-			key.WithHelp("ctrl+f", "open file"),
+			key.WithKeys("ctrl+o"),
+			key.WithHelp("ctrl+o", "open file"),
 		),
 		OpenBrowser: key.NewBinding(
-			key.WithKeys("ctrl+o"),
-			key.WithHelp("ctrl+o", "open in browser"),
+			key.WithKeys("shift+enter"),
+			key.WithHelp("shift+enter", "open in browser"),
 		),
 		OpenFileNewTab: key.NewBinding(
 			key.WithKeys("ctrl+n"),
@@ -563,7 +563,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				at.showRaw = true
 			}
 			return r, nil
-		case "ctrl+f":
+		case "ctrl+o":
 			r.showPicker = true
 			r.pickerStartup = false
 			r.pickerNewTab = false
@@ -573,7 +573,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.pickerStartup = false
 			r.pickerNewTab = true
 			return r, r.picker.Init()
-		case "ctrl+o":
+		case "shift+enter":
 			link := at.view.FocusedLinkDestination()
 			if err := openInBrowser(link, r.logger); err != nil {
 				r.showError = true

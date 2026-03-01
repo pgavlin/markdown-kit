@@ -42,10 +42,10 @@ func keyMsg(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}
 	case "ctrl+t":
 		return tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}
+	case "shift+enter":
+		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}
 	case "ctrl+o":
 		return tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl}
-	case "ctrl+f":
-		return tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl}
 	case "ctrl+n":
 		return tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}
 	case "ctrl+w":
@@ -967,13 +967,13 @@ func TestTabDisplayName(t *testing.T) {
 func TestUpdate_OpenFileSetsPickerNewTabFalse(t *testing.T) {
 	r := testReader("test", "# Hello", "")
 	r.pickerNewTab = true // start with true to verify it gets cleared
-	m, _ := r.Update(keyMsg("ctrl+f"))
+	m, _ := r.Update(keyMsg("ctrl+o"))
 	reader := m.(markdownReader)
 	if !reader.showPicker {
-		t.Error("expected showPicker=true after ctrl+f")
+		t.Error("expected showPicker=true after ctrl+o")
 	}
 	if reader.pickerNewTab {
-		t.Error("expected pickerNewTab=false after ctrl+f")
+		t.Error("expected pickerNewTab=false after ctrl+o")
 	}
 }
 
