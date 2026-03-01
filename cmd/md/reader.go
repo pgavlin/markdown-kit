@@ -107,11 +107,11 @@ func (km readerKeyMap) ShortHelp() []key.Binding {
 // FullHelp returns the full set of key bindings for the expanded help view.
 func (km readerKeyMap) FullHelp() [][]key.Binding {
 	groups := km.KeyMap.FullHelp()
-	groups = append(groups, []key.Binding{
-		km.OpenFile, km.OpenFileNewTab, km.ToggleRaw, km.ToggleOriginalHTML, km.ToggleReadabilityHTML,
-		km.OpenBrowser, km.NextTab, km.PrevTab, km.CloseTab, km.NewTab,
-		km.Help, km.Quit,
-	})
+	groups = append(groups,
+		[]key.Binding{km.NextTab, km.PrevTab, km.CloseTab, km.NewTab, km.OpenFileNewTab},
+		[]key.Binding{km.ToggleRaw, km.ToggleOriginalHTML, km.ToggleReadabilityHTML, km.OpenBrowser},
+		[]key.Binding{km.OpenFile, km.Help, km.Quit},
+	)
 	return groups
 }
 
