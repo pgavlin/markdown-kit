@@ -442,7 +442,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.height = ws.Height
 			r.resizeAllViews()
 			r.helpModel.SetWidth(ws.Width)
-			r.picker.SetHeight(ws.Height - 2)
+			r.picker.SetHeight(min(ws.Height-2, 20))
 		}
 		return r, cmd
 	}
@@ -501,7 +501,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.height = msg.Height
 		r.resizeAllViews()
 		r.helpModel.SetWidth(msg.Width)
-		r.picker.SetHeight(msg.Height - 2)
+		r.picker.SetHeight(min(msg.Height-2, 20))
 		return r, nil
 
 	case tea.KeyPressMsg:
@@ -712,20 +712,14 @@ func (r markdownReader) View() tea.View {
 
 	var result string
 	if r.showPicker {
-		pickerView := r.picker.View()
-		if r.pickerStartup {
-			// Full-screen picker with header when no content loaded.
-			header := lipgloss.NewStyle().Bold(true).Padding(0, 1).Render("Select a Markdown file")
-			result = header + "\n" + pickerView
-		} else {
-			// Overlay picker on top of existing content.
-			maxW := r.width * 3 / 4
-			if maxW < 40 {
-				maxW = min(r.width-4, 40)
-			}
-			maxH := r.height * 3 / 4
-			result = r.renderOverlay(base, pickerView, maxW, maxH)
+		header := lipgloss.NewStyle().Bold(true).Render("Select a Markdown file")
+		pickerView := header + "\n\n" + r.picker.View()
+		fixedW := r.width * 3 / 4
+		if fixedW < 40 {
+			fixedW = min(r.width-4, 40)
 		}
+		maxH := r.height * 3 / 4
+		result = r.renderFixedOverlay(base, pickerView, fixedW, maxH)
 	} else if r.loading {
 		loadingText := r.spinner.View() + " Loading..."
 		if r.loadingURL != "" {
@@ -764,6 +758,30 @@ func (r markdownReader) overlayDialog(base, _, content string) string {
 
 	wrapped := wordWrap(content, maxW-4) // account for border + padding
 	return r.renderOverlay(base, wrapped, maxW, maxH)
+}
+
+// renderFixedOverlay renders content in a bordered dialog with a fixed width, centered over base.
+func (r markdownReader) renderFixedOverlay(base, content string, fixedW, maxH int) string {
+	innerW := fixedW - 4 // border + padding
+	lines := strings.Split(content, "\n")
+	if len(lines) > maxH-2 {
+		lines = lines[:maxH-2]
+	}
+	for i, line := range lines {
+		if ansi.StringWidth(line) > innerW {
+			lines[i] = ansi.Truncate(line, innerW-1, "\u2026")
+		}
+	}
+	content = strings.Join(lines, "\n")
+
+	dialogStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Padding(0, 1).
+		Width(fixedW)
+
+	dialog := dialogStyle.Render(content)
+	return placeOverlay(r.width, r.height, dialog, base)
 }
 
 // renderOverlay renders pre-formatted content in a bordered dialog centered over base.
