@@ -36,7 +36,7 @@ A tabbed, interactive Markdown reader with:
 - Configurable key bindings and color themes
 - External format converters for non-Markdown files (e.g. reStructuredText, AsciiDoc)
 
-```bash
+```console
 go install github.com/pgavlin/markdown-kit/cmd/md@latest
 md README.md
 md https://example.com/doc.md
@@ -47,14 +47,14 @@ md https://example.com/doc.md
 Renders colorized Markdown to stdout with optional image display (Kitty
 graphics protocol).
 
-```bash
+```console
 go install github.com/pgavlin/markdown-kit/cmd/mdcat@latest
 mdcat README.md
 ```
 
 ### `md2odt` — Convert Markdown to OpenDocument Text
 
-```bash
+```console
 go install github.com/pgavlin/markdown-kit/cmd/md2odt@latest
 md2odt input.md -o output.odt
 ```
@@ -63,7 +63,7 @@ md2odt input.md -o output.odt
 
 Requires **Go 1.24+**.
 
-```bash
+```console
 git clone https://github.com/pgavlin/markdown-kit.git
 cd markdown-kit
 go build ./...
