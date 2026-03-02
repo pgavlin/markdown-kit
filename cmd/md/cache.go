@@ -48,7 +48,7 @@ func openCache() *conversionCache {
 		return nil
 	}
 	dir := filepath.Join(userCache, "md")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil && !os.IsExist(err) {
 		return nil
 	}
 	return &conversionCache{dir: dir, fs: osFileSystem{}}
