@@ -1588,6 +1588,121 @@ func (r *Renderer) RenderWhitespace(w util.BufWriter, source []byte, node ast.No
 	return ast.WalkContinue, nil
 }
 
+// sanitizeWrappedLines post-processes lines produced by ansi.Wrap so that
+// each line is self-contained with respect to ANSI SGR state. ansi.Wrap
+// inserts line breaks without resetting or re-applying active styles, so a
+// styled region that spans a break leaks into subsequent lines (or is lost
+// if something else resets it). This function appends a reset (\033[0m) to
+// any line that ends with active styles and prepends the carried-over style
+// sequences to the following line.
+func sanitizeWrappedLines(lines []string) []string {
+	if len(lines) <= 1 {
+		return lines
+	}
+
+	out := make([]string, len(lines))
+
+	// Track which SGR sequences are "active" at the end of each line by
+	// collecting the raw escape sequences and replaying them to determine
+	// the terminal state.
+	var carry string // SGR sequences to prepend to the next line
+	for i, line := range lines {
+		// Prepend carried-over style to this line.
+		out[i] = carry + line
+
+		// Scan the line (with carry applied) to find the active SGR state
+		// at the end. We collect all SGR sequences and track a simplified
+		// attribute set: bold, italic, underline, fg color, bg color.
+		var (
+			bold, italic, underline bool
+			fg, bg                  string // raw SGR parameter strings
+		)
+
+		src := out[i]
+		j := 0
+		for j < len(src) {
+			if src[j] == '\033' && j+1 < len(src) && src[j+1] == '[' {
+				end := strings.IndexByte(src[j:], 'm')
+				if end < 0 {
+					break
+				}
+				params := src[j+2 : j+end]
+				j += end + 1
+
+				// Parse semicolon-separated SGR parameters.
+				parts := strings.Split(params, ";")
+				for k := 0; k < len(parts); k++ {
+					switch parts[k] {
+					case "0":
+						bold, italic, underline = false, false, false
+						fg, bg = "", ""
+					case "1":
+						bold = true
+					case "22":
+						bold = false
+					case "3":
+						italic = true
+					case "23":
+						italic = false
+					case "4":
+						underline = true
+					case "24":
+						underline = false
+					case "38":
+						// Foreground color: consume the rest as the full sequence.
+						fg = "38;" + strings.Join(parts[k+1:], ";")
+						k = len(parts) // consumed all remaining
+					case "39":
+						fg = ""
+					case "48":
+						// Background color: consume the rest as the full sequence.
+						bg = "48;" + strings.Join(parts[k+1:], ";")
+						k = len(parts) // consumed all remaining
+					case "49":
+						bg = ""
+					}
+				}
+			} else {
+				j++
+			}
+		}
+
+		// Build the carry string for the next line.
+		hasState := bold || italic || underline || fg != "" || bg != ""
+		if hasState {
+			// Append reset to the current line.
+			out[i] += "\033[0m"
+
+			// Build the re-application sequence.
+			var sb strings.Builder
+			if bg != "" {
+				sb.WriteString("\033[")
+				sb.WriteString(bg)
+				sb.WriteString("m")
+			}
+			if fg != "" {
+				sb.WriteString("\033[")
+				sb.WriteString(fg)
+				sb.WriteString("m")
+			}
+			if bold {
+				sb.WriteString("\033[1m")
+			}
+			if underline {
+				sb.WriteString("\033[4m")
+			}
+			if italic {
+				sb.WriteString("\033[3m")
+			}
+			carry = sb.String()
+		} else {
+			carry = ""
+		}
+	}
+
+	return out
+}
+
 func (r *Renderer) renderTableBorder(w util.BufWriter, left, join, right rune) error {
 	state := &r.tableStack[len(r.tableStack)-1]
 	horizontal := borders.horizontal()
@@ -1774,7 +1889,7 @@ func (r *Renderer) RenderTable(w util.BufWriter, source []byte, node ast.Node, e
 				if content == "" {
 					lines = []string{""}
 				} else {
-					lines = strings.Split(content, "\n")
+					lines = sanitizeWrappedLines(strings.Split(content, "\n"))
 				}
 				rowCells = append(rowCells, cellData{lines: lines})
 			}
@@ -1837,6 +1952,16 @@ func (r *Renderer) RenderTable(w util.BufWriter, source []byte, node ast.Node, e
 					}
 					lineWidth := ansi.StringWidth(cellLine)
 					if _, err := r.WriteString(w, cellLine); err != nil {
+						return ast.WalkStop, err
+					}
+					// The pre-rendered cell content may contain raw ANSI
+					// sequences that leave the terminal in an unknown SGR
+					// state. Reset and re-apply the row style so that
+					// padding and PopStyle work correctly.
+					if err := r.writeSGR(w, "0"); err != nil {
+						return ast.WalkStop, err
+					}
+					if err := r.reapplyStyle(w); err != nil {
 						return ast.WalkStop, err
 					}
 					// Pad to column width.

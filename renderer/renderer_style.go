@@ -102,6 +102,17 @@ func (r *Renderer) resolveStyle(token chroma.TokenType) (chroma.StyleEntry, bool
 	return tokenStyle, true
 }
 
+// reapplyStyle writes the ANSI sequences needed to re-establish the current
+// top of the style stack. This is used after an SGR reset (0) to restore the
+// active style when inline ANSI sequences from pre-rendered content may have
+// left the terminal in an unknown state.
+func (r *Renderer) reapplyStyle(w io.Writer) error {
+	if len(r.styles) == 0 {
+		return nil
+	}
+	return r.writeDelta(w, chroma.StyleEntry{}, r.styles[len(r.styles)-1])
+}
+
 func (r *Renderer) PushStyle(w io.Writer, token chroma.TokenType) error {
 	resolved, ok := r.resolveStyle(token)
 	if !ok {

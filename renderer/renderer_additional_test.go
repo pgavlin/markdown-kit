@@ -897,3 +897,91 @@ func TestTableWrapping_NarrowTableUnchanged(t *testing.T) {
 
 	assert.Equal(t, outputNoWrap, outputWithWrap, "narrow table should render identically with or without wrap width")
 }
+
+// TestTableWrapping_StyledCellNoStyleLeak verifies that styled text (e.g. link
+// underline) in a wrapped table cell does not leak into padding or adjacent columns.
+func TestTableWrapping_StyledCellNoStyleLeak(t *testing.T) {
+	// Use a link with inline code in the first column and a long description
+	// in the second so that ansi.Wrap splits the content across lines.
+	input := "| Package | Description |\n|---------|-------------|\n| [`renderer`](https://pkg.go.dev/github.com/pgavlin/markdown-kit/renderer) | Terminal renderer with ANSI colorization, word wrapping, table rendering (Unicode box-drawing), image encoding (Kitty graphics protocol, ANSI), and document span tracking. |\n"
+
+	output, _ := renderMarkdownWithTables(t, input, WithWordWrap(183), WithTheme(styles.GlamourDark), WithHyperlinks(true), WithSoftBreak(true))
+	assertNoUnderlineLeak(t, output)
+}
+
+// TestTableWrapping_StyledCellStyleContinuity verifies that when cell content
+// wraps, continuation lines preserve the row background color for padding.
+func TestTableWrapping_StyledCellStyleContinuity(t *testing.T) {
+	input := "| Package | Description |\n|---------|-------------|\n| [`renderer`](https://pkg.go.dev/github.com/pgavlin/markdown-kit/renderer) | Terminal renderer with ANSI colorization, word wrapping, table rendering (Unicode box-drawing), image encoding (Kitty graphics protocol, ANSI), and document span tracking. |\n"
+
+	output, _ := renderMarkdownWithTables(t, input, WithWordWrap(183), WithTheme(styles.GlamourDark), WithHyperlinks(true), WithSoftBreak(true))
+
+	lines := strings.Split(output, "\n")
+	// Find the data row continuation line (second line of the first data row).
+	// The data row starts after the header separator (├...┤). Look for the
+	// second │-delimited line after that.
+	var dataLines []string
+	pastSep := false
+	for _, line := range lines {
+		stripped := ansi.Strip(line)
+		if strings.ContainsRune(stripped, '├') {
+			pastSep = true
+			continue
+		}
+		if strings.ContainsRune(stripped, '╰') {
+			break
+		}
+		if pastSep && strings.ContainsRune(stripped, '│') {
+			dataLines = append(dataLines, line)
+		}
+	}
+
+	require.True(t, len(dataLines) >= 2, "expected at least 2 data lines (wrapped content), got %d", len(dataLines))
+
+	// The continuation line (dataLines[1]) should contain background color
+	// sequences (48;2;...) for the row style, ensuring padding is styled.
+	assert.True(t, strings.Contains(dataLines[1], "\033[48;2;"),
+		"continuation line should have row background color for padding")
+}
+
+// assertNoUnderlineLeak checks that no output line ends with underline active.
+// When ansi.Wrap splits styled content across lines, inline styles (like link
+// underline) can leak if the renderer doesn't reset them at cell boundaries.
+func assertNoUnderlineLeak(t *testing.T, output string) {
+	t.Helper()
+
+	for i, line := range strings.Split(output, "\n") {
+		if line == "" {
+			continue
+		}
+
+		underline := false
+		j := 0
+		for j < len(line) {
+			if line[j] == '\033' && j+1 < len(line) && line[j+1] == '[' {
+				end := strings.IndexByte(line[j:], 'm')
+				if end < 0 {
+					break
+				}
+				params := line[j+2 : j+end]
+				j += end + 1
+				for _, p := range strings.Split(params, ";") {
+					switch p {
+					case "0":
+						underline = false
+					case "4":
+						underline = true
+					case "24":
+						underline = false
+					}
+				}
+			} else {
+				j++
+			}
+		}
+
+		if underline {
+			t.Errorf("line %d ends with underline active", i)
+		}
+	}
+}
