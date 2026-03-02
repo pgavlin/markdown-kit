@@ -610,9 +610,12 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.loadingURL = ""
 
 		// Index the document in the background.
+		// Use the view's resolved name (extracted from the first heading)
+		// rather than msg.name, which is often empty for local files.
 		var cmds []tea.Cmd
 		if r.searchIndex != nil && msg.source != "" {
-			cmds = append(cmds, indexDocument(r.searchIndex, msg.source, msg.name, msg.markdown))
+			title := r.active().view.GetName()
+			cmds = append(cmds, indexDocument(r.searchIndex, msg.source, title, msg.markdown))
 		}
 		if len(cmds) > 0 {
 			return r, tea.Batch(cmds...)
@@ -794,11 +797,12 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if r.searchIndex == nil || !r.searchIndex.HasEmbedder() {
 				return r, nil
 			}
-			source := r.active().currentSource
-			if source == "" {
+			at := r.active()
+			content := string(at.view.GetMarkdown())
+			if content == "" {
 				return r, nil
 			}
-			return r, findSimilar(r.searchIndex, source)
+			return r, findSimilar(r.searchIndex, content, at.currentSource)
 		case "?":
 			r.showHelp = true
 			return r, nil

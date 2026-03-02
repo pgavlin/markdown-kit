@@ -224,38 +224,29 @@ func (idx *Index) SearchSemantic(ctx context.Context, query string, limit int) (
 	return scanResults(rows)
 }
 
-// FindSimilar returns documents most similar to the document at the given path,
+// FindSimilar returns documents most similar to the given content,
 // using vector embedding cosine similarity. Requires an embedder.
-func (idx *Index) FindSimilar(ctx context.Context, path string, limit int) ([]Result, error) {
+// The document at excludePath (if non-empty) is excluded from results.
+func (idx *Index) FindSimilar(ctx context.Context, content, excludePath string, limit int) ([]Result, error) {
 	if idx.embedder == nil {
 		return nil, fmt.Errorf("find similar requires an embedder")
 	}
 
-	// Look up the document's embedding.
-	var docID int64
-	err := idx.db.QueryRowContext(ctx,
-		`SELECT id FROM documents WHERE path = ?`, path,
-	).Scan(&docID)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
+	// Embed the current document's content directly.
+	embedding, err := idx.embedder.Embed(ctx, content)
 	if err != nil {
-		return nil, fmt.Errorf("looking up document: %w", err)
+		return nil, fmt.Errorf("embedding content: %w", err)
 	}
 
-	var embeddingBlob []byte
-	err = idx.db.QueryRowContext(ctx,
-		`SELECT embedding FROM documents_vec WHERE document_id = ?`, docID,
-	).Scan(&embeddingBlob)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("looking up embedding: %w", err)
+	// Look up the document ID to exclude (if it exists in the index).
+	var excludeID int64 = -1
+	if excludePath != "" {
+		_ = idx.db.QueryRowContext(ctx,
+			`SELECT id FROM documents WHERE path = ?`, excludePath,
+		).Scan(&excludeID)
 	}
 
 	// Search for similar documents, excluding the source document.
-	// We request limit+1 because the source doc may be in the results.
 	rows, err := idx.db.QueryContext(ctx, `
 		SELECT d.path, d.title, d.last_opened, v.distance
 		FROM documents_vec v
@@ -264,7 +255,7 @@ func (idx *Index) FindSimilar(ctx context.Context, path string, limit int) ([]Re
 		AND k = ?
 		AND v.document_id != ?
 		ORDER BY v.distance
-	`, embeddingBlob, limit+1, docID)
+	`, serializeFloat32s(embedding), limit+1, excludeID)
 	if err != nil {
 		return nil, fmt.Errorf("finding similar: %w", err)
 	}

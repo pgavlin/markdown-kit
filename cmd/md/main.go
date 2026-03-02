@@ -105,7 +105,7 @@ func main() {
 					model = newMarkdownReader("", result.markdown, result.source, theme, conv, registry, cache, httpCl, fsys, searchIndex, logger)
 					// Index the initial document.
 					if searchIndex != nil {
-						searchIndex.Add(ctx, result.source, result.name, result.markdown)
+						searchIndex.Add(ctx, result.source, model.active().view.GetName(), result.markdown)
 					}
 				} else if isConvertibleFile(arg, registry) {
 					source, err := fsys.ReadFile(arg)
@@ -125,7 +125,7 @@ func main() {
 					model = newMarkdownReader("", cr.markdown, absPath, theme, conv, registry, cache, httpCl, fsys, searchIndex, logger)
 					// Index the initial document.
 					if searchIndex != nil {
-						searchIndex.Add(ctx, absPath, cr.name, cr.markdown)
+						searchIndex.Add(ctx, absPath, model.active().view.GetName(), cr.markdown)
 					}
 				} else {
 					source, err := fsys.ReadFile(arg)
@@ -139,7 +139,7 @@ func main() {
 					model = newMarkdownReader("", string(source), absPath, theme, conv, registry, cache, httpCl, fsys, searchIndex, logger)
 					// Index the initial document.
 					if searchIndex != nil {
-						searchIndex.Add(ctx, absPath, "", string(source))
+						searchIndex.Add(ctx, absPath, model.active().view.GetName(), string(source))
 					}
 				}
 			}

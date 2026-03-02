@@ -192,7 +192,8 @@ func TestFindSimilarWithEmbedder(t *testing.T) {
 	err = idx.Add(ctx, "/tmp/c.md", "Doc C", "Very different content")
 	require.NoError(t, err)
 
-	results, err := idx.FindSimilar(ctx, "/tmp/a.md", 2)
+	// Find similar to Doc A's content, excluding Doc A itself.
+	results, err := idx.FindSimilar(ctx, "Similar content A", "/tmp/a.md", 2)
 	require.NoError(t, err)
 	assert.NotEmpty(t, results)
 	// First result should be the most similar doc (Doc B).
@@ -201,14 +202,15 @@ func TestFindSimilarWithEmbedder(t *testing.T) {
 	}
 }
 
-func TestFindSimilarUnknownDoc(t *testing.T) {
+func TestFindSimilarNoIndexedDocs(t *testing.T) {
 	ctx := context.Background()
 	embedder := newMockEmbedder(4)
 	idx, err := Open(testDBPath(t), embedder)
 	require.NoError(t, err)
 	defer idx.Close()
 
-	results, err := idx.FindSimilar(ctx, "/tmp/nonexistent.md", 10)
+	// No documents indexed — should return empty results (not error).
+	results, err := idx.FindSimilar(ctx, "some content", "", 10)
 	require.NoError(t, err)
 	assert.Empty(t, results)
 }

@@ -312,10 +312,10 @@ type findSimilarResultsMsg struct {
 	results []docsearch.Result
 }
 
-// findSimilar returns a tea.Cmd that finds documents similar to the one at path.
-func findSimilar(index *docsearch.Index, path string) tea.Cmd {
+// findSimilar returns a tea.Cmd that finds documents similar to the given content.
+func findSimilar(index *docsearch.Index, content, excludePath string) tea.Cmd {
 	return func() tea.Msg {
-		results, err := index.FindSimilar(context.Background(), path, 20)
+		results, err := index.FindSimilar(context.Background(), content, excludePath, 20)
 		if err != nil {
 			return findSimilarResultsMsg{results: nil}
 		}
