@@ -694,7 +694,12 @@ func (r *Renderer) OpenBlock(w util.BufWriter, source []byte, node ast.Node) err
 
 // CloseBlock marks the current block as closed.
 func (r *Renderer) CloseBlock(w io.Writer) error {
-	if !r.atNewline {
+	// Check both atNewline and the word buffer: when word wrapping is active,
+	// short content (e.g. bold text with no spaces) can remain entirely in
+	// the word buffer without ever being flushed to output. In that case
+	// atNewline is stale (still true from a prior newline). WriteByte('\n')
+	// will flush the buffer as part of its normal Write path.
+	if !r.atNewline || r.wordBuffer.Len() > 0 {
 		if err := r.WriteByte(w, '\n'); err != nil {
 			return err
 		}
