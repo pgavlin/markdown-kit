@@ -13,7 +13,7 @@ explains how to get started.
 
 ### Setup
 
-```bash
+```console
 git clone https://github.com/pgavlin/markdown-kit.git
 cd markdown-kit
 go build ./...
@@ -29,17 +29,17 @@ go test ./...
 ### Code style
 
 - Format code with **gofumpt** (enforced in CI):
-  ```bash
+  ```console
   gofumpt -w .
   ```
 - Run `go vet`:
-  ```bash
+  ```console
   go vet ./...
   ```
 
 ### Running tests
 
-```bash
+```console
 go test ./...                             # all tests
 go test ./renderer                        # single package
 go test ./renderer -run TestSpec          # single test
