@@ -40,9 +40,9 @@ go test ./...
 ### Running tests
 
 ```bash
-go test ./...                          # all tests
-go test ./renderer                     # single package
-go test ./renderer -run TestSpec       # single test
+go test ./...                             # all tests
+go test ./renderer                        # single package
+go test ./renderer -run TestSpec          # single test
 go test ./... -coverprofile=coverage.out  # with coverage
 ```
 
