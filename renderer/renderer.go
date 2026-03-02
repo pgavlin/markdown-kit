@@ -632,6 +632,31 @@ func (r *Renderer) CloseSpan() {
 	span.End = r.byteOffset
 }
 
+// insertSpan creates a finalized span (with known Start/End) and inserts it
+// into the span tree as a child of the current parent span without pushing it
+// onto the span stack. This is used for spans whose content has already been
+// written (e.g. pre-rendered table cell content in the wrapping path).
+func (r *Renderer) insertSpan(node ast.Node, start, end int) {
+	span := &NodeSpan{
+		Start: start,
+		End:   end,
+		Node:  node,
+	}
+
+	if len(r.spanStack) != 0 {
+		span.Parent = r.spanStack[len(r.spanStack)-1]
+		span.Parent.Children = append(span.Parent.Children, span)
+	} else if r.rootSpan == nil {
+		r.rootSpan = span
+	}
+
+	if r.lastSpan != nil {
+		span.Prev = r.lastSpan
+		span.Prev.Next = span
+	}
+	r.lastSpan = span
+}
+
 // OpenBlock ensures that each block begins on a new line, and that blank lines are inserted before blocks as
 // indicated by node.HasPreviousBlankLines.
 func (r *Renderer) OpenBlock(w util.BufWriter, source []byte, node ast.Node) error {
@@ -1588,6 +1613,21 @@ func (r *Renderer) RenderWhitespace(w util.BufWriter, source []byte, node ast.No
 	return ast.WalkContinue, nil
 }
 
+// collectLinks walks an AST subtree and returns all Link and AutoLink nodes.
+func collectLinks(node ast.Node) []ast.Node {
+	var links []ast.Node
+	_ = ast.Walk(node, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if entering {
+			switch n.Kind() {
+			case ast.KindLink, ast.KindAutoLink:
+				links = append(links, n)
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	return links
+}
+
 // sanitizeWrappedLines post-processes lines produced by ansi.Wrap so that
 // each line is self-contained with respect to ANSI SGR state. ansi.Wrap
 // inserts line breaks without resetting or re-applying active styles, so a
@@ -1834,7 +1874,8 @@ func (r *Renderer) RenderTable(w util.BufWriter, source []byte, node ast.Node, e
 		// Pre-render all cells with word wrapping applied at the constrained widths.
 		numCols := len(constrainedWidths)
 		type cellData struct {
-			lines []string // rendered lines for this cell
+			lines []string    // rendered lines for this cell
+			links []ast.Node  // Link/AutoLink nodes in this cell
 		}
 		var rows [][]cellData // rows[rowIdx][colIdx]
 
@@ -1891,7 +1932,7 @@ func (r *Renderer) RenderTable(w util.BufWriter, source []byte, node ast.Node, e
 				} else {
 					lines = sanitizeWrappedLines(strings.Split(content, "\n"))
 				}
-				rowCells = append(rowCells, cellData{lines: lines})
+				rowCells = append(rowCells, cellData{lines: lines, links: collectLinks(cell)})
 			}
 			// Pad with empty cells if row has fewer columns.
 			for len(rowCells) < numCols {
@@ -1950,9 +1991,20 @@ func (r *Renderer) RenderTable(w util.BufWriter, source []byte, node ast.Node, e
 					if lineIdx < len(cell.lines) {
 						cellLine = cell.lines[lineIdx]
 					}
+					contentStart := r.byteOffset
 					lineWidth := ansi.StringWidth(cellLine)
 					if _, err := r.WriteString(w, cellLine); err != nil {
 						return ast.WalkStop, err
+					}
+					// Insert spans for links in this cell so they
+					// appear in the span tree for navigation. The
+					// wrapping path skips the normal AST walk, so
+					// link spans must be created manually here.
+					if lineIdx == 0 {
+						contentEnd := r.byteOffset
+						for _, link := range cell.links {
+							r.insertSpan(link, contentStart, contentEnd)
+						}
 					}
 					// The pre-rendered cell content may contain raw ANSI
 					// sequences that leave the terminal in an unknown SGR

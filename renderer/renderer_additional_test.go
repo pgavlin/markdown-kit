@@ -944,6 +944,37 @@ func TestTableWrapping_StyledCellStyleContinuity(t *testing.T) {
 		"continuation line should have row background color for padding")
 }
 
+// TestTableWrapping_LinksInSpanTree verifies that links inside wrapped table
+// cells appear in the renderer's span tree so they are navigable.
+func TestTableWrapping_LinksInSpanTree(t *testing.T) {
+	input := `| Package | Description |
+|---------|-------------|
+| [renderer](https://pkg.go.dev/renderer) | Terminal renderer |
+| [view](https://pkg.go.dev/view) | Interactive model |
+`
+
+	_, r := renderMarkdownWithTables(t, input, WithWordWrap(60), WithTheme(styles.GlamourDark), WithHyperlinks(true), WithSoftBreak(true))
+
+	tree := r.SpanTree()
+	require.NotNil(t, tree, "span tree should not be nil")
+
+	// Walk the span tree and collect Link nodes.
+	var links []*NodeSpan
+	for span := tree; span != nil; span = span.Next {
+		if span.Node.Kind() == ast.KindLink {
+			links = append(links, span)
+		}
+	}
+
+	assert.Len(t, links, 2, "should find 2 link spans in the span tree")
+	for i, link := range links {
+		assert.True(t, link.Start < link.End, "link span %d should have positive width (start=%d, end=%d)", i, link.Start, link.End)
+		l, ok := link.Node.(*ast.Link)
+		require.True(t, ok, "link span %d should reference an ast.Link", i)
+		assert.NotEmpty(t, string(l.Destination), "link span %d should have a destination", i)
+	}
+}
+
 // assertNoUnderlineLeak checks that no output line ends with underline active.
 // When ansi.Wrap splits styled content across lines, inline styles (like link
 // underline) can leak if the renderer doesn't reset them at cell boundaries.
