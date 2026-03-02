@@ -49,6 +49,8 @@ func keyMsg(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl}
 	case "ctrl+n":
 		return tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}
+	case "ctrl+h":
+		return tea.KeyPressMsg{Code: 'h', Mod: tea.ModCtrl}
 	case "ctrl+l":
 		return tea.KeyPressMsg{Code: 'l', Mod: tea.ModCtrl}
 	case "ctrl+w":
@@ -1314,5 +1316,135 @@ func TestView_URLInputOverlay(t *testing.T) {
 	}
 	if !strings.Contains(v.Content, "Open URL") {
 		t.Error("expected 'Open URL' header in view")
+	}
+}
+
+// --- History picker integration tests ---
+
+func TestUpdate_CtrlH_WithStack(t *testing.T) {
+	r := testReader("initial", "# Initial", "/doc.md")
+	// Push a page to create a non-empty stack.
+	m, _ := r.Update(pageLoadedMsg{name: "second", markdown: "# Second", source: "/second.md"})
+	reader := m.(markdownReader)
+
+	m, cmd := reader.Update(keyMsg("ctrl+h"))
+	reader = m.(markdownReader)
+	if !reader.showHistory {
+		t.Error("expected showHistory=true after ctrl+h with non-empty stack")
+	}
+	if cmd == nil {
+		t.Error("expected non-nil command (focus)")
+	}
+}
+
+func TestUpdate_CtrlH_EmptyStack(t *testing.T) {
+	r := testReader("test", "# Hello", "")
+	m, cmd := r.Update(keyMsg("ctrl+h"))
+	reader := m.(markdownReader)
+	if reader.showHistory {
+		t.Error("expected showHistory=false after ctrl+h with empty stack")
+	}
+	if cmd != nil {
+		t.Error("expected nil command for empty stack")
+	}
+}
+
+func TestUpdate_History_Dismiss_Esc(t *testing.T) {
+	r := testReader("initial", "# Initial", "/doc.md")
+	m, _ := r.Update(pageLoadedMsg{name: "second", markdown: "# Second", source: "/second.md"})
+	reader := m.(markdownReader)
+
+	m, _ = reader.Update(keyMsg("ctrl+h"))
+	reader = m.(markdownReader)
+
+	m, _ = reader.Update(keyMsg("esc"))
+	reader = m.(markdownReader)
+	if reader.showHistory {
+		t.Error("expected showHistory=false after esc")
+	}
+}
+
+func TestUpdate_History_SelectEntry(t *testing.T) {
+	r := testReader("page1", "# Page 1", "/page1.md")
+	// Navigate to page2.
+	m, _ := r.Update(pageLoadedMsg{name: "page2", markdown: "# Page 2", source: "/page2.md"})
+	reader := m.(markdownReader)
+	// Navigate to page3.
+	m, _ = reader.Update(pageLoadedMsg{name: "page3", markdown: "# Page 3", source: "/page3.md"})
+	reader = m.(markdownReader)
+
+	if len(reader.active().pageStack) != 2 {
+		t.Fatalf("pageStack length = %d, want 2", len(reader.active().pageStack))
+	}
+
+	// Open history.
+	m, _ = reader.Update(keyMsg("ctrl+h"))
+	reader = m.(markdownReader)
+
+	// Move cursor to the last entry (page1, index 0 — oldest).
+	// Cursor starts at top (current page). Move down twice to get to index 0.
+	m, _ = reader.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	reader = m.(markdownReader)
+	m, _ = reader.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	reader = m.(markdownReader)
+
+	// Select.
+	m, _ = reader.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	reader = m.(markdownReader)
+
+	if reader.showHistory {
+		t.Error("expected showHistory=false after selection")
+	}
+	if reader.active().currentSource != "/page1.md" {
+		t.Errorf("currentSource = %q, want /page1.md", reader.active().currentSource)
+	}
+	if len(reader.active().pageStack) != 0 {
+		t.Errorf("pageStack length = %d, want 0 (truncated)", len(reader.active().pageStack))
+	}
+}
+
+func TestUpdate_History_SelectCurrentPage(t *testing.T) {
+	r := testReader("initial", "# Initial", "/doc.md")
+	m, _ := r.Update(pageLoadedMsg{name: "second", markdown: "# Second", source: "/second.md"})
+	reader := m.(markdownReader)
+
+	// Open history.
+	m, _ = reader.Update(keyMsg("ctrl+h"))
+	reader = m.(markdownReader)
+
+	// Cursor is on current page. Press enter.
+	m, _ = reader.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	reader = m.(markdownReader)
+
+	if reader.showHistory {
+		t.Error("expected showHistory=false after selecting current page")
+	}
+	// Stack should be unchanged.
+	if len(reader.active().pageStack) != 1 {
+		t.Errorf("pageStack length = %d, want 1 (unchanged)", len(reader.active().pageStack))
+	}
+	if reader.active().currentSource != "/second.md" {
+		t.Errorf("currentSource = %q, want /second.md (unchanged)", reader.active().currentSource)
+	}
+}
+
+func TestView_HistoryOverlay(t *testing.T) {
+	r := testReader("initial", "# Initial", "/doc.md")
+	r.width = 80
+	r.height = 24
+	r.resizeAllViews()
+
+	m, _ := r.Update(pageLoadedMsg{name: "second", markdown: "# Second", source: "/second.md"})
+	reader := m.(markdownReader)
+
+	m, _ = reader.Update(keyMsg("ctrl+h"))
+	reader = m.(markdownReader)
+
+	v := reader.View()
+	if v.Content == "" {
+		t.Error("expected non-empty body with history overlay")
+	}
+	if !strings.Contains(v.Content, "History") {
+		t.Error("expected 'History' header in view")
 	}
 }

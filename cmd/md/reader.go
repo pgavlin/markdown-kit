@@ -36,6 +36,7 @@ type readerKeyMap struct {
 	CloseTab              key.Binding
 	CloseAllTabs          key.Binding
 	NewTab                key.Binding
+	History               key.Binding
 	Help                  key.Binding
 	Quit                  key.Binding
 }
@@ -98,6 +99,10 @@ func defaultReaderKeyMap() readerKeyMap {
 			key.WithKeys("T"),
 			key.WithHelp("T", "open link in new tab"),
 		),
+		History: key.NewBinding(
+			key.WithKeys("ctrl+h"),
+			key.WithHelp("ctrl+h", "history"),
+		),
 		Help: key.NewBinding(
 			key.WithKeys("?"),
 			key.WithHelp("?", "toggle help"),
@@ -124,7 +129,7 @@ func (km readerKeyMap) FullHelp() [][]key.Binding {
 		// Navigation
 		{km.Home, km.End, km.NextLink, km.PrevLink, km.NextHeading, km.PrevHeading, km.NextCodeBlock, km.PrevCodeBlock},
 		// Actions
-		{km.FollowLink, km.GoBack, km.CopySelection, km.OpenFile, km.OpenURL, km.OpenBrowser, km.DecreaseWidth, km.IncreaseWidth},
+		{km.FollowLink, km.GoBack, km.History, km.CopySelection, km.OpenFile, km.OpenURL, km.OpenBrowser, km.DecreaseWidth, km.IncreaseWidth},
 		// Search & View
 		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.ToggleRaw, km.ToggleOriginalHTML, km.ToggleReadabilityHTML},
 		// Tabs & General
@@ -235,6 +240,10 @@ type markdownReader struct {
 	showURLInput bool
 	urlInput     textinput.Model
 	urlNewTab    bool
+
+	// History picker state.
+	showHistory   bool
+	historyPicker historyPicker
 }
 
 // active returns a pointer to the active tab.
@@ -495,6 +504,35 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, cmd
 	}
 
+	// Handle history picker modal.
+	if r.showHistory {
+		var cmd tea.Cmd
+		r.historyPicker, cmd = r.historyPicker.Update(msg)
+		if r.historyPicker.dismissed {
+			r.showHistory = false
+			return r, nil
+		}
+		if didSelect, idx := r.historyPicker.DidSelect(); didSelect {
+			r.showHistory = false
+			if idx != -1 {
+				// Navigate to the selected stack entry.
+				at := r.active()
+				at.showRaw = false
+				prev := at.pageStack[idx]
+				at.pageStack = at.pageStack[:idx]
+				at.view.SetText(prev.name, prev.markdown)
+				at.currentSource = prev.source
+				at.currentOriginalHTML = prev.originalHTML
+				at.currentReadabilityHTML = prev.readabilityHTML
+				r.updateHTMLKeyBindings()
+				at.view.SetLineOffset(prev.lineOffset)
+				at.view.SetColumnOffset(prev.columnOffset)
+			}
+			return r, nil
+		}
+		return r, cmd
+	}
+
 	switch msg := msg.(type) {
 	case mdk.OpenLinkMsg:
 		return r, r.handleLinkNavigation(msg.URL, false)
@@ -650,6 +688,12 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.urlInput = textinput.New()
 			r.urlInput.Prompt = "  URL: "
 			r.urlInput.Placeholder = "https://..."
+			fixedW := r.width * 3 / 4
+			if fixedW < 40 {
+				fixedW = min(r.width-4, 40)
+			}
+			innerW := fixedW - 4 // account for border + padding
+			r.urlInput.SetWidth(innerW - lipgloss.Width(r.urlInput.Prompt) - 1)
 			return r, r.urlInput.Focus()
 		case "shift+enter":
 			link := at.view.FocusedLinkDestination()
@@ -679,6 +723,18 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return r, r.handleLinkNavigation(link, true)
 			}
 			return r, nil
+		case "ctrl+h":
+			at := r.active()
+			if len(at.pageStack) == 0 {
+				return r, nil
+			}
+			r.showHistory = true
+			r.historyPicker = newHistoryPicker(
+				at.pageStack,
+				at.view.GetName(), at.currentSource,
+				min(r.height*3/4, 20), r.width*3/4,
+			)
+			return r, r.historyPicker.input.Focus()
 		case "?":
 			r.showHelp = true
 			return r, nil
@@ -785,6 +841,15 @@ func (r markdownReader) View() tea.View {
 		}
 		maxH := r.height * 3 / 4
 		result = r.renderFixedOverlay(base, pickerView, fixedW, maxH)
+	} else if r.showHistory {
+		header := lipgloss.NewStyle().Bold(true).Render("History")
+		historyView := header + "\n\n" + r.historyPicker.View()
+		fixedW := r.width * 3 / 4
+		if fixedW < 40 {
+			fixedW = min(r.width-4, 40)
+		}
+		maxH := r.height * 3 / 4
+		result = r.renderFixedOverlay(base, historyView, fixedW, maxH)
 	} else if r.showURLInput {
 		header := lipgloss.NewStyle().Bold(true).Render("Open URL")
 		inputView := header + "\n\n" + r.urlInput.View()
