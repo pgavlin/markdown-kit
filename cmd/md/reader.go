@@ -50,18 +50,8 @@ func defaultReaderKeyMap() readerKeyMap {
 	return readerKeyMap{
 		KeyMap: km,
 		ToggleRaw: key.NewBinding(
-			key.WithKeys("ctrl+r"),
-			key.WithHelp("ctrl+r", "toggle raw"),
-		),
-		ToggleOriginalHTML: key.NewBinding(
-			key.WithKeys("ctrl+e"),
-			key.WithHelp("ctrl+e", "view original HTML"),
-			key.WithDisabled(),
-		),
-		ToggleReadabilityHTML: key.NewBinding(
-			key.WithKeys("ctrl+t"),
-			key.WithHelp("ctrl+t", "view readability HTML"),
-			key.WithDisabled(),
+			key.WithKeys("ctrl+u"),
+			key.WithHelp("ctrl+u", "view source"),
 		),
 		OpenFile: key.NewBinding(
 			key.WithKeys("ctrl+o"),
@@ -72,8 +62,8 @@ func defaultReaderKeyMap() readerKeyMap {
 			key.WithHelp("shift+enter", "open in browser"),
 		),
 		OpenFileNewTab: key.NewBinding(
-			key.WithKeys("ctrl+n"),
-			key.WithHelp("ctrl+n", "open file in new tab"),
+			key.WithKeys("ctrl+t"),
+			key.WithHelp("ctrl+t", "open file in new tab"),
 		),
 		OpenURL: key.NewBinding(
 			key.WithKeys("ctrl+l"),
@@ -100,8 +90,8 @@ func defaultReaderKeyMap() readerKeyMap {
 			key.WithHelp("T", "open link in new tab"),
 		),
 		History: key.NewBinding(
-			key.WithKeys("ctrl+h"),
-			key.WithHelp("ctrl+h", "history"),
+			key.WithKeys("H"),
+			key.WithHelp("H", "history"),
 		),
 		Help: key.NewBinding(
 			key.WithKeys("?"),
@@ -131,7 +121,7 @@ func (km readerKeyMap) FullHelp() [][]key.Binding {
 		// Actions
 		{km.FollowLink, km.GoBack, km.History, km.CopySelection, km.OpenFile, km.OpenURL, km.OpenBrowser, km.DecreaseWidth, km.IncreaseWidth},
 		// Search & View
-		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.ToggleRaw, km.ToggleOriginalHTML, km.ToggleReadabilityHTML},
+		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.ToggleRaw},
 		// Tabs & General
 		{km.NextTab, km.PrevTab, km.CloseTab, km.CloseAllTabs, km.NewTab, km.OpenFileNewTab, km.Help, km.Quit},
 	}
@@ -154,25 +144,21 @@ func sendToClipboard(value string, logger *slog.Logger) {
 
 // page stores the state of a viewed page for the back stack.
 type page struct {
-	name            string
-	markdown        string
-	source          string
-	originalHTML    string
-	readabilityHTML string
-	lineOffset      int
-	columnOffset    int
+	name         string
+	markdown     string
+	source       string
+	lineOffset   int
+	columnOffset int
 }
 
 // tab holds all per-document state for a single tab.
 type tab struct {
-	view                   mdk.Model
-	currentSource          string
-	currentOriginalHTML    string
-	currentReadabilityHTML string
-	pageStack              []page
-	showRaw                bool
-	rawOrigName            string
-	rawOrigMarkdown        string
+	view            mdk.Model
+	currentSource   string
+	pageStack       []page
+	showRaw         bool
+	rawOrigName     string
+	rawOrigMarkdown string
 }
 
 // displayName returns the tab's display name: the document heading if available,
@@ -331,7 +317,6 @@ func (r *markdownReader) nextTab() {
 		return
 	}
 	r.activeTab = (r.activeTab + 1) % len(r.tabs)
-	r.updateHTMLKeyBindings()
 }
 
 // prevTab switches to the previous tab (wrapping around).
@@ -340,7 +325,6 @@ func (r *markdownReader) prevTab() {
 		return
 	}
 	r.activeTab = (r.activeTab - 1 + len(r.tabs)) % len(r.tabs)
-	r.updateHTMLKeyBindings()
 }
 
 // closeTab closes the tab at the given index.
@@ -351,7 +335,6 @@ func (r *markdownReader) closeTab(idx int) {
 		r.activeTab = 0
 		r.showPicker = true
 		r.pickerStartup = true
-		r.updateHTMLKeyBindings()
 		return
 	}
 	r.tabs = append(r.tabs[:idx], r.tabs[idx+1:]...)
@@ -361,7 +344,6 @@ func (r *markdownReader) closeTab(idx int) {
 		r.activeTab--
 	}
 	r.resizeAllViews()
-	r.updateHTMLKeyBindings()
 }
 
 // closeAllTabs closes all tabs and shows the file picker.
@@ -371,7 +353,6 @@ func (r *markdownReader) closeAllTabs() {
 	r.showPicker = true
 	r.pickerStartup = true
 	r.resizeAllViews()
-	r.updateHTMLKeyBindings()
 }
 
 // openNewTab creates a new tab with the given content and makes it active.
@@ -386,7 +367,6 @@ func (r *markdownReader) openNewTab(name, markdown, source string) {
 		// Tab bar just appeared — resize all views to account for it.
 		r.resizeAllViews()
 	}
-	r.updateHTMLKeyBindings()
 }
 
 // renderTabBar renders the tab bar when multiple tabs are open.
@@ -522,9 +502,6 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				at.pageStack = at.pageStack[:idx]
 				at.view.SetText(prev.name, prev.markdown)
 				at.currentSource = prev.source
-				at.currentOriginalHTML = prev.originalHTML
-				at.currentReadabilityHTML = prev.readabilityHTML
-				r.updateHTMLKeyBindings()
 				at.view.SetLineOffset(prev.lineOffset)
 				at.view.SetColumnOffset(prev.columnOffset)
 			}
@@ -545,10 +522,6 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pageLoadedMsg:
 		if msg.newTab {
 			r.openNewTab(msg.name, msg.markdown, msg.source)
-			at := r.active()
-			at.currentOriginalHTML = msg.originalHTML
-			at.currentReadabilityHTML = msg.readabilityHTML
-			r.updateHTMLKeyBindings()
 		} else {
 			at := r.active()
 			at.showRaw = false
@@ -558,9 +531,6 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			at.view.SetText(msg.name, msg.markdown)
 			at.currentSource = msg.source
-			at.currentOriginalHTML = msg.originalHTML
-			at.currentReadabilityHTML = msg.readabilityHTML
-			r.updateHTMLKeyBindings()
 		}
 		r.loading = false
 		r.loadingURL = ""
@@ -634,7 +604,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return r, tea.Quit
-		case "ctrl+r":
+		case "ctrl+u":
 			if at.showRaw {
 				at.view.SetText(at.rawOrigName, at.rawOrigMarkdown)
 				at.showRaw = false
@@ -644,39 +614,13 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				at.showRaw = true
 			}
 			return r, nil
-		case "ctrl+e":
-			if at.currentOriginalHTML == "" {
-				return r, nil
-			}
-			if at.showRaw {
-				at.view.SetText(at.rawOrigName, at.rawOrigMarkdown)
-				at.showRaw = false
-			} else {
-				r.saveRawState()
-				at.view.SetText(at.rawOrigName, fenceHTML(at.currentOriginalHTML))
-				at.showRaw = true
-			}
-			return r, nil
-		case "ctrl+t":
-			if at.currentReadabilityHTML == "" {
-				return r, nil
-			}
-			if at.showRaw {
-				at.view.SetText(at.rawOrigName, at.rawOrigMarkdown)
-				at.showRaw = false
-			} else {
-				r.saveRawState()
-				at.view.SetText(at.rawOrigName, fenceHTML(at.currentReadabilityHTML))
-				at.showRaw = true
-			}
-			return r, nil
 		case "ctrl+o":
 			r.showPicker = true
 			r.pickerStartup = false
 			r.pickerNewTab = false
 			r.picker.selected = ""
 			return r, r.picker.Init()
-		case "ctrl+n":
+		case "ctrl+t":
 			r.showPicker = true
 			r.pickerStartup = false
 			r.pickerNewTab = true
@@ -723,7 +667,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return r, r.handleLinkNavigation(link, true)
 			}
 			return r, nil
-		case "ctrl+h":
+		case "H":
 			at := r.active()
 			if len(at.pageStack) == 0 {
 				return r, nil
@@ -783,13 +727,11 @@ func (r *markdownReader) handleLinkNavigation(rawURL string, newTab bool) tea.Cm
 func (r *markdownReader) pushCurrentPage() {
 	at := r.active()
 	at.pageStack = append(at.pageStack, page{
-		name:            at.view.GetName(),
-		markdown:        string(at.view.GetMarkdown()),
-		source:          at.currentSource,
-		originalHTML:    at.currentOriginalHTML,
-		readabilityHTML: at.currentReadabilityHTML,
-		lineOffset:      at.view.LineOffset(),
-		columnOffset:    at.view.ColumnOffset(),
+		name:         at.view.GetName(),
+		markdown:     string(at.view.GetMarkdown()),
+		source:       at.currentSource,
+		lineOffset:   at.view.LineOffset(),
+		columnOffset: at.view.ColumnOffset(),
 	})
 }
 
@@ -803,19 +745,8 @@ func (r *markdownReader) popPage() {
 	at.pageStack = at.pageStack[:len(at.pageStack)-1]
 	at.view.SetText(prev.name, prev.markdown)
 	at.currentSource = prev.source
-	at.currentOriginalHTML = prev.originalHTML
-	at.currentReadabilityHTML = prev.readabilityHTML
-	r.updateHTMLKeyBindings()
 	at.view.SetLineOffset(prev.lineOffset)
 	at.view.SetColumnOffset(prev.columnOffset)
-}
-
-// updateHTMLKeyBindings enables or disables the HTML view key bindings
-// based on whether the current page has HTML content.
-func (r *markdownReader) updateHTMLKeyBindings() {
-	hasHTML := r.active().currentOriginalHTML != ""
-	r.keys.ToggleOriginalHTML.SetEnabled(hasHTML)
-	r.keys.ToggleReadabilityHTML.SetEnabled(hasHTML)
 }
 
 func (r markdownReader) View() tea.View {

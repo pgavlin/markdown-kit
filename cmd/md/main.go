@@ -87,9 +87,6 @@ func main() {
 						return fmt.Errorf("error fetching %v: %w", arg, err)
 					}
 					model = newMarkdownReader("", result.markdown, result.source, theme, conv, registry, cache, httpCl, fsys, logger)
-					model.active().currentOriginalHTML = result.originalHTML
-					model.active().currentReadabilityHTML = result.readabilityHTML
-					model.updateHTMLKeyBindings()
 				} else if isConvertibleFile(arg, registry) {
 					source, err := fsys.ReadFile(arg)
 					if err != nil {
@@ -105,7 +102,7 @@ func main() {
 					if err != nil {
 						return fmt.Errorf("error converting %v: %w", arg, err)
 					}
-					model = newMarkdownReader(cr.name, cr.markdown, absPath, theme, conv, registry, cache, httpCl, fsys, logger)
+					model = newMarkdownReader("", cr.markdown, absPath, theme, conv, registry, cache, httpCl, fsys, logger)
 				} else {
 					source, err := fsys.ReadFile(arg)
 					if err != nil {
@@ -131,8 +128,6 @@ func main() {
 						return fmt.Errorf("error fetching %v: %w", arg, err)
 					}
 					model.openNewTab("", result.markdown, result.source)
-					model.active().currentOriginalHTML = result.originalHTML
-					model.active().currentReadabilityHTML = result.readabilityHTML
 				} else if isConvertibleFile(arg, registry) {
 					source, err := fsys.ReadFile(arg)
 					if err != nil {
@@ -165,7 +160,6 @@ func main() {
 			// Activate the first tab when multiple were opened.
 			if cmd.Args().Len() > 1 {
 				model.activeTab = 0
-				model.updateHTMLKeyBindings()
 			}
 
 			p := tea.NewProgram(model)

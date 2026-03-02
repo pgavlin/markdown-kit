@@ -12,10 +12,10 @@ import (
 
 func TestResolveLink(t *testing.T) {
 	tests := []struct {
-		name    string
-		link    string
-		source  string
-		want    string
+		name   string
+		link   string
+		source string
+		want   string
 	}{
 		{"absolute_url", "https://other.com/page", "https://example.com/doc.md", "https://other.com/page"},
 		{"relative_to_url", "page2.md", "https://example.com/docs/page1.md", "https://example.com/docs/page2.md"},

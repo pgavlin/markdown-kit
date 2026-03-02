@@ -87,10 +87,18 @@ type memDirEntry struct {
 	size  int64
 }
 
-func (e *memDirEntry) Name() string               { return e.name }
-func (e *memDirEntry) IsDir() bool                 { return e.isDir }
-func (e *memDirEntry) Type() fs.FileMode           { if e.isDir { return fs.ModeDir }; return 0 }
-func (e *memDirEntry) Info() (fs.FileInfo, error)   { return &memFileInfo{name: e.name, isDir: e.isDir, size: e.size}, nil }
+func (e *memDirEntry) Name() string { return e.name }
+func (e *memDirEntry) IsDir() bool  { return e.isDir }
+func (e *memDirEntry) Type() fs.FileMode {
+	if e.isDir {
+		return fs.ModeDir
+	}
+	return 0
+}
+
+func (e *memDirEntry) Info() (fs.FileInfo, error) {
+	return &memFileInfo{name: e.name, isDir: e.isDir, size: e.size}, nil
+}
 
 // memFileInfo implements fs.FileInfo for in-memory testing.
 type memFileInfo struct {
@@ -99,12 +107,17 @@ type memFileInfo struct {
 	size  int64
 }
 
-func (fi *memFileInfo) Name() string      { return path.Base(fi.name) }
-func (fi *memFileInfo) Size() int64       { return fi.size }
-func (fi *memFileInfo) Mode() fs.FileMode { if fi.isDir { return fs.ModeDir | 0o755 }; return 0o644 }
+func (fi *memFileInfo) Name() string { return path.Base(fi.name) }
+func (fi *memFileInfo) Size() int64  { return fi.size }
+func (fi *memFileInfo) Mode() fs.FileMode {
+	if fi.isDir {
+		return fs.ModeDir | 0o755
+	}
+	return 0o644
+}
 func (fi *memFileInfo) ModTime() time.Time { return time.Time{} }
-func (fi *memFileInfo) IsDir() bool       { return fi.isDir }
-func (fi *memFileInfo) Sys() any          { return nil }
+func (fi *memFileInfo) IsDir() bool        { return fi.isDir }
+func (fi *memFileInfo) Sys() any           { return nil }
 
 // fakeHTTPClient wraps a handler function as an httpClient.
 type fakeHTTPClient struct {

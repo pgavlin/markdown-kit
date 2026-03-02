@@ -32,9 +32,9 @@ type shellRunner interface {
 // osFileSystem delegates to the os package.
 type osFileSystem struct{}
 
-func (osFileSystem) Getwd() (string, error)                          { return os.Getwd() }
-func (osFileSystem) ReadDir(name string) ([]os.DirEntry, error)      { return os.ReadDir(name) }
-func (osFileSystem) ReadFile(name string) ([]byte, error)            { return os.ReadFile(name) }
+func (osFileSystem) Getwd() (string, error)                     { return os.Getwd() }
+func (osFileSystem) ReadDir(name string) ([]os.DirEntry, error) { return os.ReadDir(name) }
+func (osFileSystem) ReadFile(name string) ([]byte, error)       { return os.ReadFile(name) }
 func (osFileSystem) WriteFile(name string, data []byte, perm fs.FileMode) error {
 	return os.WriteFile(name, data, perm)
 }

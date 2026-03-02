@@ -20,9 +20,9 @@ func testReader(name, markdown, source string) markdownReader {
 		name, markdown, source,
 		styles.GlamourDark,
 		&fakeConverter{},
-		nil,                // no registry
-		nil,                // no cache
-		&fakeHTTPClient{},  // unused default
+		nil,               // no registry
+		nil,               // no cache
+		&fakeHTTPClient{}, // unused default
 		newMemFS(),
 		discardLogger(),
 	)
@@ -35,22 +35,16 @@ func keyMsg(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: tea.KeyEscape}
 	case "enter":
 		return tea.KeyPressMsg{Code: tea.KeyEnter}
-	case "ctrl+r":
-		return tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl}
+	case "ctrl+u":
+		return tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}
 	case "ctrl+c":
 		return tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
-	case "ctrl+e":
-		return tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}
 	case "ctrl+t":
 		return tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}
 	case "shift+enter":
 		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}
 	case "ctrl+o":
 		return tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl}
-	case "ctrl+n":
-		return tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}
-	case "ctrl+h":
-		return tea.KeyPressMsg{Code: 'h', Mod: tea.ModCtrl}
 	case "ctrl+l":
 		return tea.KeyPressMsg{Code: 'l', Mod: tea.ModCtrl}
 	case "ctrl+w":
@@ -168,10 +162,10 @@ func TestFullHelp(t *testing.T) {
 	if len(groups) != 5 {
 		t.Fatalf("expected 5 help groups, got %d", len(groups))
 	}
-	// All columns should be balanced (7-9 items each).
+	// Columns range from 5-9 items each.
 	for i, g := range groups {
-		if len(g) < 7 || len(g) > 9 {
-			t.Errorf("group %d has %d bindings, want 7-9", i, len(g))
+		if len(g) < 5 || len(g) > 9 {
+			t.Errorf("group %d has %d bindings, want 5-9", i, len(g))
 		}
 	}
 }
@@ -314,83 +308,26 @@ func TestUpdate_ToggleRaw(t *testing.T) {
 	}
 
 	// Toggle on.
-	m, _ := r.Update(keyMsg("ctrl+r"))
+	m, _ := r.Update(keyMsg("ctrl+u"))
 	reader := m.(markdownReader)
 	if !reader.active().showRaw {
-		t.Error("expected showRaw=true after ctrl+r")
+		t.Error("expected showRaw=true after ctrl+u")
 	}
 
 	// Toggle off.
-	m, _ = reader.Update(keyMsg("ctrl+r"))
+	m, _ = reader.Update(keyMsg("ctrl+u"))
 	reader = m.(markdownReader)
 	if reader.active().showRaw {
 		t.Error("expected showRaw=false after second ctrl+r")
 	}
 }
 
-func TestUpdate_ToggleOriginalHTML_NoHTML(t *testing.T) {
-	r := testReader("test", "# Hello", "")
-	// No HTML content — ctrl+e should be a no-op.
-	m, _ := r.Update(keyMsg("ctrl+e"))
-	reader := m.(markdownReader)
-	if reader.active().showRaw {
-		t.Error("expected showRaw=false when no originalHTML")
-	}
-}
-
-func TestUpdate_ToggleOriginalHTML_WithHTML(t *testing.T) {
-	r := testReader("test", "# Hello", "")
-	r.active().currentOriginalHTML = "<html><body>test</body></html>"
-
-	// Toggle on.
-	m, _ := r.Update(keyMsg("ctrl+e"))
-	reader := m.(markdownReader)
-	if !reader.active().showRaw {
-		t.Error("expected showRaw=true after ctrl+e with HTML")
-	}
-
-	// Toggle off.
-	m, _ = reader.Update(keyMsg("ctrl+e"))
-	reader = m.(markdownReader)
-	if reader.active().showRaw {
-		t.Error("expected showRaw=false after second ctrl+e")
-	}
-}
-
-func TestUpdate_ToggleReadabilityHTML_NoHTML(t *testing.T) {
-	r := testReader("test", "# Hello", "")
-	m, _ := r.Update(keyMsg("ctrl+t"))
-	reader := m.(markdownReader)
-	if reader.active().showRaw {
-		t.Error("expected showRaw=false when no readabilityHTML")
-	}
-}
-
-func TestUpdate_ToggleReadabilityHTML_WithHTML(t *testing.T) {
-	r := testReader("test", "# Hello", "")
-	r.active().currentReadabilityHTML = "<article>content</article>"
-
-	m, _ := r.Update(keyMsg("ctrl+t"))
-	reader := m.(markdownReader)
-	if !reader.active().showRaw {
-		t.Error("expected showRaw=true after ctrl+t with readability HTML")
-	}
-
-	m, _ = reader.Update(keyMsg("ctrl+t"))
-	reader = m.(markdownReader)
-	if reader.active().showRaw {
-		t.Error("expected showRaw=false after second ctrl+t")
-	}
-}
-
 func TestUpdate_PageLoadedMsg(t *testing.T) {
 	r := testReader("initial", "# Initial", "/doc.md")
 	msg := pageLoadedMsg{
-		name:            "new page",
-		markdown:        "# New",
-		source:          "http://example.com/new",
-		originalHTML:    "<html>orig</html>",
-		readabilityHTML: "<article>read</article>",
+		name:     "new page",
+		markdown: "# New",
+		source:   "http://example.com/new",
 	}
 
 	m, _ := r.Update(msg)
@@ -398,12 +335,6 @@ func TestUpdate_PageLoadedMsg(t *testing.T) {
 
 	if reader.active().currentSource != "http://example.com/new" {
 		t.Errorf("currentSource = %q", reader.active().currentSource)
-	}
-	if reader.active().currentOriginalHTML != "<html>orig</html>" {
-		t.Errorf("currentOriginalHTML = %q", reader.active().currentOriginalHTML)
-	}
-	if reader.active().currentReadabilityHTML != "<article>read</article>" {
-		t.Errorf("currentReadabilityHTML = %q", reader.active().currentReadabilityHTML)
 	}
 	if reader.loading {
 		t.Error("expected loading=false")
@@ -619,8 +550,6 @@ func TestHandleLinkNavigation_NonMarkdownFile(t *testing.T) {
 
 func TestPushPopPage(t *testing.T) {
 	r := testReader("page1", "# Page 1", "/page1.md")
-	r.active().currentOriginalHTML = "<html>1</html>"
-	r.active().currentReadabilityHTML = "<article>1</article>"
 
 	// Push current page.
 	r.pushCurrentPage()
@@ -630,15 +559,10 @@ func TestPushPopPage(t *testing.T) {
 	if r.active().pageStack[0].source != "/page1.md" {
 		t.Errorf("pageStack[0].source = %q", r.active().pageStack[0].source)
 	}
-	if r.active().pageStack[0].originalHTML != "<html>1</html>" {
-		t.Errorf("pageStack[0].originalHTML = %q", r.active().pageStack[0].originalHTML)
-	}
 
 	// Simulate navigating to page 2.
 	r.active().view.SetText("page2", "# Page 2")
 	r.active().currentSource = "/page2.md"
-	r.active().currentOriginalHTML = ""
-	r.active().currentReadabilityHTML = ""
 
 	// Pop back to page 1.
 	r.popPage()
@@ -647,9 +571,6 @@ func TestPushPopPage(t *testing.T) {
 	}
 	if r.active().currentSource != "/page1.md" {
 		t.Errorf("currentSource = %q, want /page1.md", r.active().currentSource)
-	}
-	if r.active().currentOriginalHTML != "<html>1</html>" {
-		t.Errorf("currentOriginalHTML = %q", r.active().currentOriginalHTML)
 	}
 }
 
@@ -690,22 +611,6 @@ func TestPushPopPage_MultiLevel(t *testing.T) {
 	r.popPage() // empty stack — no-op
 	if r.active().currentSource != "/page1.md" {
 		t.Errorf("after third pop: currentSource = %q", r.active().currentSource)
-	}
-}
-
-func TestUpdateHTMLKeyBindings(t *testing.T) {
-	r := testReader("test", "# Hello", "")
-
-	r.active().currentOriginalHTML = "<html>yes</html>"
-	r.updateHTMLKeyBindings()
-	if !r.keys.ToggleOriginalHTML.Enabled() {
-		t.Error("expected ToggleOriginalHTML enabled when HTML present")
-	}
-
-	r.active().currentOriginalHTML = ""
-	r.updateHTMLKeyBindings()
-	if r.keys.ToggleOriginalHTML.Enabled() {
-		t.Error("expected ToggleOriginalHTML disabled when no HTML")
 	}
 }
 
@@ -1031,13 +936,13 @@ func TestUpdate_OpenFileSetsPickerNewTabFalse(t *testing.T) {
 
 func TestUpdate_OpenFileNewTabSetsPickerNewTab(t *testing.T) {
 	r := testReader("test", "# Hello", "")
-	m, _ := r.Update(keyMsg("ctrl+n"))
+	m, _ := r.Update(keyMsg("ctrl+t"))
 	reader := m.(markdownReader)
 	if !reader.showPicker {
-		t.Error("expected showPicker=true after ctrl+n")
+		t.Error("expected showPicker=true after ctrl+t")
 	}
 	if !reader.pickerNewTab {
-		t.Error("expected pickerNewTab=true after ctrl+n")
+		t.Error("expected pickerNewTab=true after ctrl+t")
 	}
 }
 
@@ -1327,10 +1232,10 @@ func TestUpdate_CtrlH_WithStack(t *testing.T) {
 	m, _ := r.Update(pageLoadedMsg{name: "second", markdown: "# Second", source: "/second.md"})
 	reader := m.(markdownReader)
 
-	m, cmd := reader.Update(keyMsg("ctrl+h"))
+	m, cmd := reader.Update(keyMsg("H"))
 	reader = m.(markdownReader)
 	if !reader.showHistory {
-		t.Error("expected showHistory=true after ctrl+h with non-empty stack")
+		t.Error("expected showHistory=true after H with non-empty stack")
 	}
 	if cmd == nil {
 		t.Error("expected non-nil command (focus)")
@@ -1339,10 +1244,10 @@ func TestUpdate_CtrlH_WithStack(t *testing.T) {
 
 func TestUpdate_CtrlH_EmptyStack(t *testing.T) {
 	r := testReader("test", "# Hello", "")
-	m, cmd := r.Update(keyMsg("ctrl+h"))
+	m, cmd := r.Update(keyMsg("H"))
 	reader := m.(markdownReader)
 	if reader.showHistory {
-		t.Error("expected showHistory=false after ctrl+h with empty stack")
+		t.Error("expected showHistory=false after H with empty stack")
 	}
 	if cmd != nil {
 		t.Error("expected nil command for empty stack")
@@ -1354,7 +1259,7 @@ func TestUpdate_History_Dismiss_Esc(t *testing.T) {
 	m, _ := r.Update(pageLoadedMsg{name: "second", markdown: "# Second", source: "/second.md"})
 	reader := m.(markdownReader)
 
-	m, _ = reader.Update(keyMsg("ctrl+h"))
+	m, _ = reader.Update(keyMsg("H"))
 	reader = m.(markdownReader)
 
 	m, _ = reader.Update(keyMsg("esc"))
@@ -1378,7 +1283,7 @@ func TestUpdate_History_SelectEntry(t *testing.T) {
 	}
 
 	// Open history.
-	m, _ = reader.Update(keyMsg("ctrl+h"))
+	m, _ = reader.Update(keyMsg("H"))
 	reader = m.(markdownReader)
 
 	// Move cursor to the last entry (page1, index 0 — oldest).
@@ -1409,7 +1314,7 @@ func TestUpdate_History_SelectCurrentPage(t *testing.T) {
 	reader := m.(markdownReader)
 
 	// Open history.
-	m, _ = reader.Update(keyMsg("ctrl+h"))
+	m, _ = reader.Update(keyMsg("H"))
 	reader = m.(markdownReader)
 
 	// Cursor is on current page. Press enter.
@@ -1437,7 +1342,7 @@ func TestView_HistoryOverlay(t *testing.T) {
 	m, _ := r.Update(pageLoadedMsg{name: "second", markdown: "# Second", source: "/second.md"})
 	reader := m.(markdownReader)
 
-	m, _ = reader.Update(keyMsg("ctrl+h"))
+	m, _ = reader.Update(keyMsg("H"))
 	reader = m.(markdownReader)
 
 	v := reader.View()

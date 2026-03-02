@@ -30,13 +30,13 @@ type fuzzyPathReadDirMsg struct {
 type fuzzyPicker struct {
 	input        textinput.Model
 	fsys         fileSystem
-	wd           string          // program working directory (for resolving relative paths in path mode)
-	dir          string          // current browsing directory
-	allEntries   []os.DirEntry   // full dir listing (dirs first, sorted)
-	filtered     []os.DirEntry   // fuzzy-matched subset
-	cursor       int             // index into filtered
-	minIdx       int             // first visible index
-	maxIdx       int             // last visible index
+	wd           string        // program working directory (for resolving relative paths in path mode)
+	dir          string        // current browsing directory
+	allEntries   []os.DirEntry // full dir listing (dirs first, sorted)
+	filtered     []os.DirEntry // fuzzy-matched subset
+	cursor       int           // index into filtered
+	minIdx       int           // first visible index
+	maxIdx       int           // last visible index
 	height       int
 	width        int
 	allowedTypes []string
@@ -57,19 +57,19 @@ type fuzzyPicker struct {
 // parentDirEntry is a synthetic os.DirEntry for the ".." parent directory.
 type parentDirEntry struct{}
 
-func (parentDirEntry) Name() string             { return ".." }
-func (parentDirEntry) IsDir() bool              { return true }
-func (parentDirEntry) Type() os.FileMode        { return os.ModeDir }
+func (parentDirEntry) Name() string               { return ".." }
+func (parentDirEntry) IsDir() bool                { return true }
+func (parentDirEntry) Type() os.FileMode          { return os.ModeDir }
 func (parentDirEntry) Info() (os.FileInfo, error) { return parentFileInfo{}, nil }
 
 type parentFileInfo struct{}
 
-func (parentFileInfo) Name() string        { return ".." }
-func (parentFileInfo) Size() int64         { return 0 }
-func (parentFileInfo) Mode() os.FileMode   { return os.ModeDir | 0o755 }
-func (parentFileInfo) ModTime() time.Time  { return time.Time{} }
-func (parentFileInfo) IsDir() bool         { return true }
-func (parentFileInfo) Sys() any            { return nil }
+func (parentFileInfo) Name() string       { return ".." }
+func (parentFileInfo) Size() int64        { return 0 }
+func (parentFileInfo) Mode() os.FileMode  { return os.ModeDir | 0o755 }
+func (parentFileInfo) ModTime() time.Time { return time.Time{} }
+func (parentFileInfo) IsDir() bool        { return true }
+func (parentFileInfo) Sys() any           { return nil }
 
 // Style constants matching filepicker's defaults.
 var (

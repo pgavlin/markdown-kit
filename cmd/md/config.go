@@ -64,9 +64,9 @@ func (c formatConverterConfig) validate() error {
 }
 
 type config struct {
-	Theme      string                 `toml:"theme"`
-	Keys       map[string]any         `toml:"keys"`
-	Converter  converterConfig        `toml:"converter"`
+	Theme      string                  `toml:"theme"`
+	Keys       map[string]any          `toml:"keys"`
+	Converter  converterConfig         `toml:"converter"`
 	Converters []formatConverterConfig `toml:"converters"`
 }
 
@@ -175,20 +175,18 @@ func (c config) applyKeys(km *readerKeyMap) {
 		"prev_match":      &km.PrevMatch,
 		"clear_search":    &km.ClearSearch,
 		// Reader keys
-		"toggle_raw":              &km.ToggleRaw,
-		"toggle_original_html":    &km.ToggleOriginalHTML,
-		"toggle_readability_html": &km.ToggleReadabilityHTML,
-		"open_url":                &km.OpenURL,
-		"open_browser":            &km.OpenBrowser,
-		"open_file_new_tab":       &km.OpenFileNewTab,
-		"next_tab":                &km.NextTab,
-		"prev_tab":                &km.PrevTab,
-		"close_tab":               &km.CloseTab,
-		"close_all_tabs":          &km.CloseAllTabs,
-		"new_tab":                 &km.NewTab,
-		"history":                 &km.History,
-		"help":                    &km.Help,
-		"quit":                    &km.Quit,
+		"toggle_raw":        &km.ToggleRaw,
+		"open_url":          &km.OpenURL,
+		"open_browser":      &km.OpenBrowser,
+		"open_file_new_tab": &km.OpenFileNewTab,
+		"next_tab":          &km.NextTab,
+		"prev_tab":          &km.PrevTab,
+		"close_tab":         &km.CloseTab,
+		"close_all_tabs":    &km.CloseAllTabs,
+		"new_tab":           &km.NewTab,
+		"history":           &km.History,
+		"help":              &km.Help,
+		"quit":              &km.Quit,
 	}
 
 	for name, val := range c.Keys {

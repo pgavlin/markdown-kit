@@ -27,7 +27,7 @@ type historyPicker struct {
 	maxIdx    int
 	height    int
 	width     int
-	selected  int  // selected entry index value (-2 = no selection)
+	selected  int // selected entry index value (-2 = no selection)
 	dismissed bool
 }
 
