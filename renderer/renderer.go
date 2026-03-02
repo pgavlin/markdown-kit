@@ -1854,24 +1854,60 @@ func (r *Renderer) RenderTable(w util.BufWriter, source []byte, node ast.Node, e
 		}
 
 		constrainedWidths := make([]int, len(columnWidths))
+		frozen := make([]bool, len(columnWidths))
 		remaining := available
-		for i, w := range columnWidths {
-			constrainedWidths[i] = w * available / naturalTotal
-			if constrainedWidths[i] < 1 {
-				constrainedWidths[i] = 1
+		numUnfrozen := len(columnWidths)
+
+		// Iteratively freeze columns whose natural width fits within a fair share.
+		for {
+			fairShare := remaining / numUnfrozen
+			newlyFrozen := 0
+			for i, w := range columnWidths {
+				if !frozen[i] && w <= fairShare {
+					frozen[i] = true
+					constrainedWidths[i] = w
+					remaining -= w
+					numUnfrozen--
+					newlyFrozen++
+				}
 			}
-			remaining -= constrainedWidths[i]
+			if newlyFrozen == 0 {
+				break
+			}
 		}
-		// Distribute rounding remainder to the naturally widest columns.
-		for remaining > 0 {
-			widest := 0
-			for i := 1; i < len(columnWidths); i++ {
-				if columnWidths[i] > columnWidths[widest] {
+
+		// Distribute remaining space among unfrozen columns proportionally.
+		unfrozenTotal := 0
+		for i, w := range columnWidths {
+			if !frozen[i] {
+				unfrozenTotal += w
+			}
+		}
+		distributed := 0
+		for i, w := range columnWidths {
+			if !frozen[i] {
+				constrainedWidths[i] = w * remaining / unfrozenTotal
+				if constrainedWidths[i] < 1 {
+					constrainedWidths[i] = 1
+				}
+				distributed += constrainedWidths[i]
+			}
+		}
+
+		// Distribute rounding remainder to the naturally widest unfrozen columns.
+		leftover := remaining - distributed
+		for leftover > 0 {
+			widest := -1
+			for i := range columnWidths {
+				if !frozen[i] && (widest == -1 || columnWidths[i] > columnWidths[widest]) {
 					widest = i
 				}
 			}
+			if widest == -1 {
+				break
+			}
 			constrainedWidths[widest]++
-			remaining--
+			leftover--
 			// Mark as used so next iteration picks another column if needed.
 			columnWidths[widest] = 0
 		}

@@ -975,6 +975,55 @@ func TestTableWrapping_LinksInSpanTree(t *testing.T) {
 	}
 }
 
+// TestTableWrapping_ColumnWidthDistribution verifies that narrow columns keep
+// their natural width while wide columns absorb all the shrinkage.
+func TestTableWrapping_ColumnWidthDistribution(t *testing.T) {
+	// Column "ID" is narrow (natural width ~2), column "Description" is very wide.
+	input := "| ID | Description |\n| -- | ----------- |\n| 42 | This is an extremely long description that will definitely need to be wrapped when rendered in a narrow terminal width |\n"
+
+	output, _ := renderMarkdownWithTables(t, input, WithWordWrap(40), WithSoftBreak(true))
+	stripped := ansi.Strip(output)
+
+	// Find data row lines (between ├ separator and ╰ bottom border).
+	lines := strings.Split(strings.TrimRight(stripped, "\n"), "\n")
+	var dataLines []string
+	inData := false
+	for _, line := range lines {
+		if strings.ContainsRune(line, '├') {
+			inData = true
+			continue
+		}
+		if strings.ContainsRune(line, '╰') {
+			break
+		}
+		if inData && strings.ContainsRune(line, '│') {
+			dataLines = append(dataLines, line)
+		}
+	}
+	require.True(t, len(dataLines) >= 1, "should have at least one data line")
+
+	// The narrow "ID" column should keep its natural width — the value "42"
+	// should appear on the first data line without being wrapped.
+	// Extract the first cell content (between the first and second │).
+	first := dataLines[0]
+	parts := strings.SplitN(first, "│", 3)
+	require.True(t, len(parts) >= 3, "data line should have at least 2 columns separated by │")
+	narrowCell := strings.TrimSpace(parts[1])
+	assert.Equal(t, "42", narrowCell, "narrow column should keep its natural width and show '42' without wrapping")
+
+	// The wide column should have been wrapped (multiple data lines).
+	assert.True(t, len(dataLines) > 1, "wide column should cause the data row to span multiple lines, got %d", len(dataLines))
+
+	// On continuation lines, the narrow column cell should be empty (just spaces).
+	for i := 1; i < len(dataLines); i++ {
+		contParts := strings.SplitN(dataLines[i], "│", 3)
+		if len(contParts) >= 3 {
+			contNarrow := strings.TrimSpace(contParts[1])
+			assert.Empty(t, contNarrow, "narrow column on continuation line %d should be empty (just padding)", i)
+		}
+	}
+}
+
 // assertNoUnderlineLeak checks that no output line ends with underline active.
 // When ansi.Wrap splits styled content across lines, inline styles (like link
 // underline) can leak if the renderer doesn't reset them at cell boundaries.
