@@ -1,17 +1,43 @@
 package indexer
 
 import (
+	"bytes"
 	"regexp"
 	"strings"
 
 	"github.com/pgavlin/goldmark/ast"
+	"golang.org/x/net/html"
 )
 
 var gfmPunctuationRegexp = regexp.MustCompile(`[^\w\- ]`)
 
-// anchorIDRegexp matches <a id="..." > or <a name="..." > (with optional self-close)
-// and captures the attribute value. Both single and double quotes are supported.
-var anchorIDRegexp = regexp.MustCompile(`(?i)<a\s+(?:id|name)\s*=\s*["']([^"']+)["'][^>]*>`)
+// anchorID extracts the id or name attribute from an <a> tag in raw HTML.
+// Returns the attribute value and true if found, or ("", false) otherwise.
+func anchorID(data []byte) (string, bool) {
+	z := html.NewTokenizer(bytes.NewReader(data))
+	for {
+		tt := z.Next()
+		switch tt {
+		case html.ErrorToken:
+			return "", false
+		case html.StartTagToken, html.SelfClosingTagToken:
+			tn, hasAttr := z.TagName()
+			if !hasAttr || !bytes.EqualFold(tn, []byte("a")) {
+				continue
+			}
+			for hasAttr {
+				var key, val []byte
+				key, val, hasAttr = z.TagAttr()
+				k := string(key)
+				if k == "id" || k == "name" {
+					if v := string(val); v != "" {
+						return v, true
+					}
+				}
+			}
+		}
+	}
+}
 
 // GitHubFlavoredMarkdown is an AnchorFunc that transforms heading text into GitHub Flavored
 // Markdown anchors. Heading text is converted to a GFM anchor by first converting all text
@@ -65,9 +91,9 @@ func (i *indexer) walk(n ast.Node, enter bool) (ast.WalkStatus, error) {
 		segs := raw.Segments
 		for j := 0; j < segs.Len(); j++ {
 			seg := segs.At(j)
-			if m := anchorIDRegexp.FindSubmatch(seg.Value(i.source)); m != nil {
+			if id, ok := anchorID(seg.Value(i.source)); ok {
 				i.pendingAnchors = append(i.pendingAnchors, pendingAnchor{
-					id:   string(m[1]),
+					id:   id,
 					node: raw,
 				})
 			}

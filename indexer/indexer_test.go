@@ -572,6 +572,28 @@ func TestIndex_HTMLAnchorMultipleBeforeHeading(t *testing.T) {
 	}
 }
 
+func TestIndex_HTMLAnchorWithOtherAttributes(t *testing.T) {
+	// id is not the first attribute — the old regex couldn't handle this.
+	source := []byte("<a class=\"ref\" id=\"other-attrs\"></a>\n\n# Heading\n")
+	doc := parseMarkdown(t, source)
+	idx := Index(doc, source)
+
+	sections, ok := idx.Lookup("other-attrs")
+	require.True(t, ok, "anchor with preceding attributes should be found")
+	require.Len(t, sections, 1)
+	assert.Equal(t, 1, sections[0].Level)
+}
+
+func TestIndex_HTMLAnchorUnquoted(t *testing.T) {
+	source := []byte("<a id=unquoted></a>\n\n# Heading\n")
+	doc := parseMarkdown(t, source)
+	idx := Index(doc, source)
+
+	sections, ok := idx.Lookup("unquoted")
+	require.True(t, ok, "unquoted anchor should be found")
+	require.Len(t, sections, 1)
+}
+
 func TestIndex_DeeplyNested(t *testing.T) {
 	source := []byte("# L1\n\n## L2\n\n### L3\n\n#### L4\n\n##### L5\n\n###### L6\n")
 	doc := parseMarkdown(t, source)
