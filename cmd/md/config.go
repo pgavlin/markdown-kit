@@ -13,6 +13,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/alecthomas/chroma"
 	chromaStyles "github.com/alecthomas/chroma/styles"
+	"github.com/pgavlin/markdown-kit/docsearch"
 	"github.com/pgavlin/markdown-kit/styles"
 )
 
@@ -63,11 +64,71 @@ func (c formatConverterConfig) validate() error {
 	return nil
 }
 
+type apiEmbedderConfig struct {
+	URL        string `toml:"url"`         // default: "https://api.openai.com/v1/embeddings"
+	Model      string `toml:"model"`       // default: "text-embedding-3-small"
+	APIKeyEnv  string `toml:"api_key_env"` // env var name, default: "OPENAI_API_KEY"
+	Dimensions int    `toml:"dimensions"`  // required
+}
+
+type ollamaEmbedderConfig struct {
+	URL        string `toml:"url"`        // default: "http://localhost:11434"
+	Model      string `toml:"model"`      // default: "nomic-embed-text"
+	Dimensions int    `toml:"dimensions"` // required
+}
+
+type commandEmbedderConfig struct {
+	Command    string `toml:"command"`    // shell command
+	Dimensions int    `toml:"dimensions"` // required
+}
+
+type searchConfig struct {
+	Embedder string                `toml:"embedder"` // "api", "ollama", "command", or "" (FTS-only)
+	API      apiEmbedderConfig     `toml:"api"`
+	Ollama   ollamaEmbedderConfig  `toml:"ollama"`
+	Command  commandEmbedderConfig `toml:"command"`
+}
+
+func (c searchConfig) newEmbedder() docsearch.Embedder {
+	switch c.Embedder {
+	case "api":
+		url := c.API.URL
+		if url == "" {
+			url = "https://api.openai.com/v1/embeddings"
+		}
+		model := c.API.Model
+		if model == "" {
+			model = "text-embedding-3-small"
+		}
+		keyEnv := c.API.APIKeyEnv
+		if keyEnv == "" {
+			keyEnv = "OPENAI_API_KEY"
+		}
+		apiKey := os.Getenv(keyEnv)
+		return docsearch.NewAPIEmbedder(url, model, apiKey, c.API.Dimensions)
+	case "ollama":
+		url := c.Ollama.URL
+		if url == "" {
+			url = "http://localhost:11434"
+		}
+		model := c.Ollama.Model
+		if model == "" {
+			model = "nomic-embed-text"
+		}
+		return docsearch.NewOllamaEmbedder(url, model, c.Ollama.Dimensions)
+	case "command":
+		return docsearch.NewCommandEmbedder(c.Command.Command, c.Command.Dimensions)
+	default:
+		return nil
+	}
+}
+
 type config struct {
 	Theme      string                  `toml:"theme"`
 	Keys       map[string]any          `toml:"keys"`
 	Converter  converterConfig         `toml:"converter"`
 	Converters []formatConverterConfig `toml:"converters"`
+	Search     searchConfig            `toml:"search"`
 }
 
 func configPath() (string, error) {
@@ -120,6 +181,26 @@ const defaultConfig = `# md configuration file
 # extensions = [".rst"]
 # mime_types = ["text/x-rst"]
 # command = "pandoc -f rst -t markdown $MD_INPUT -o $MD_OUTPUT"
+
+# Document search. Opened documents are indexed for full-text search.
+# To enable semantic (vector) search, configure an embedder.
+# [search]
+# embedder = "ollama"   # "api", "ollama", "command", or "" (FTS-only)
+#
+# [search.api]
+# url = "https://api.openai.com/v1/embeddings"
+# model = "text-embedding-3-small"
+# api_key_env = "OPENAI_API_KEY"
+# dimensions = 1536
+#
+# [search.ollama]
+# url = "http://localhost:11434"
+# model = "nomic-embed-text"
+# dimensions = 768
+#
+# [search.command]
+# command = "my-embed-tool"
+# dimensions = 384
 
 # Custom key bindings. Each key accepts a string or array of strings.
 # [keys]
@@ -185,9 +266,11 @@ func (c config) applyKeys(km *readerKeyMap) {
 		"close_all_tabs":    &km.CloseAllTabs,
 		"new_tab":           &km.NewTab,
 		"reload":            &km.Reload,
-		"history":           &km.History,
-		"help":              &km.Help,
-		"quit":              &km.Quit,
+		"history":            &km.History,
+		"search_documents":   &km.SearchDocuments,
+		"find_similar":       &km.FindSimilar,
+		"help":               &km.Help,
+		"quit":               &km.Quit,
 	}
 
 	for name, val := range c.Keys {

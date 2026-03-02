@@ -24,6 +24,7 @@ func testReader(name, markdown, source string) markdownReader {
 		nil,               // no cache
 		&fakeHTTPClient{}, // unused default
 		newMemFS(),
+		nil, // no search index
 		discardLogger(),
 	)
 }
@@ -164,10 +165,10 @@ func TestFullHelp(t *testing.T) {
 	if len(groups) != 5 {
 		t.Fatalf("expected 5 help groups, got %d", len(groups))
 	}
-	// Columns range from 5-10 items each.
+	// Columns range from 5-12 items each.
 	for i, g := range groups {
-		if len(g) < 5 || len(g) > 10 {
-			t.Errorf("group %d has %d bindings, want 5-10", i, len(g))
+		if len(g) < 5 || len(g) > 12 {
+			t.Errorf("group %d has %d bindings, want 5-12", i, len(g))
 		}
 	}
 }

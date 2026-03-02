@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/BurntSushi/toml"
+	"github.com/pgavlin/markdown-kit/docsearch"
 	"github.com/urfave/cli/v3"
 )
 
@@ -72,10 +73,25 @@ func main() {
 			cache := openCache()
 			httpCl := http.DefaultClient
 
+			// Open the document search index.
+			var searchIndex *docsearch.Index
+			if dd, err := dataDir(); err == nil {
+				if err := os.MkdirAll(dd, 0o755); err == nil {
+					dbPath := filepath.Join(dd, "index.db")
+					embedder := cfg.Search.newEmbedder()
+					if idx, err := docsearch.Open(dbPath, embedder); err == nil {
+						searchIndex = idx
+						defer idx.Close()
+					} else {
+						logger.Error("search_index_open_error", "path", dbPath, "error", err)
+					}
+				}
+			}
+
 			var model markdownReader
 			if cmd.Args().Len() == 0 {
 				// No args — start with file picker.
-				model = newMarkdownReader("", "", "", theme, conv, registry, cache, httpCl, fsys, logger)
+				model = newMarkdownReader("", "", "", theme, conv, registry, cache, httpCl, fsys, searchIndex, logger)
 				model.showPicker = true
 				model.pickerStartup = true
 			} else {
@@ -86,7 +102,11 @@ func main() {
 					if err != nil {
 						return fmt.Errorf("error fetching %v: %w", arg, err)
 					}
-					model = newMarkdownReader("", result.markdown, result.source, theme, conv, registry, cache, httpCl, fsys, logger)
+					model = newMarkdownReader("", result.markdown, result.source, theme, conv, registry, cache, httpCl, fsys, searchIndex, logger)
+					// Index the initial document.
+					if searchIndex != nil {
+						searchIndex.Add(ctx, result.source, result.name, result.markdown)
+					}
 				} else if isConvertibleFile(arg, registry) {
 					source, err := fsys.ReadFile(arg)
 					if err != nil {
@@ -102,7 +122,11 @@ func main() {
 					if err != nil {
 						return fmt.Errorf("error converting %v: %w", arg, err)
 					}
-					model = newMarkdownReader("", cr.markdown, absPath, theme, conv, registry, cache, httpCl, fsys, logger)
+					model = newMarkdownReader("", cr.markdown, absPath, theme, conv, registry, cache, httpCl, fsys, searchIndex, logger)
+					// Index the initial document.
+					if searchIndex != nil {
+						searchIndex.Add(ctx, absPath, cr.name, cr.markdown)
+					}
 				} else {
 					source, err := fsys.ReadFile(arg)
 					if err != nil {
@@ -112,7 +136,11 @@ func main() {
 					if err != nil {
 						absPath = arg
 					}
-					model = newMarkdownReader("", string(source), absPath, theme, conv, registry, cache, httpCl, fsys, logger)
+					model = newMarkdownReader("", string(source), absPath, theme, conv, registry, cache, httpCl, fsys, searchIndex, logger)
+					// Index the initial document.
+					if searchIndex != nil {
+						searchIndex.Add(ctx, absPath, "", string(source))
+					}
 				}
 			}
 

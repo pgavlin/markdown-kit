@@ -15,6 +15,7 @@ import (
 	"github.com/alecthomas/chroma"
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/pgavlin/markdown-kit/docsearch"
 	mdk "github.com/pgavlin/markdown-kit/view"
 	"github.com/skratchdot/open-golang/open"
 )
@@ -38,6 +39,8 @@ type readerKeyMap struct {
 	NewTab                key.Binding
 	Reload                key.Binding
 	History               key.Binding
+	SearchDocuments       key.Binding
+	FindSimilar           key.Binding
 	Help                  key.Binding
 	Quit                  key.Binding
 }
@@ -98,6 +101,14 @@ func defaultReaderKeyMap() readerKeyMap {
 			key.WithKeys("H"),
 			key.WithHelp("H", "history"),
 		),
+		SearchDocuments: key.NewBinding(
+			key.WithKeys("S"),
+			key.WithHelp("S", "search documents"),
+		),
+		FindSimilar: key.NewBinding(
+			key.WithKeys("F"),
+			key.WithHelp("F", "find similar"),
+		),
 		Help: key.NewBinding(
 			key.WithKeys("?"),
 			key.WithHelp("?", "toggle help"),
@@ -124,7 +135,7 @@ func (km readerKeyMap) FullHelp() [][]key.Binding {
 		// Navigation
 		{km.Home, km.End, km.NextLink, km.PrevLink, km.NextHeading, km.PrevHeading, km.NextCodeBlock, km.PrevCodeBlock},
 		// Actions
-		{km.FollowLink, km.GoBack, km.History, km.Reload, km.CopySelection, km.OpenFile, km.OpenURL, km.OpenBrowser, km.DecreaseWidth, km.IncreaseWidth},
+		{km.FollowLink, km.GoBack, km.History, km.SearchDocuments, km.FindSimilar, km.Reload, km.CopySelection, km.OpenFile, km.OpenURL, km.OpenBrowser, km.DecreaseWidth, km.IncreaseWidth},
 		// Search & View
 		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.ToggleRaw},
 		// Tabs & General
@@ -235,6 +246,17 @@ type markdownReader struct {
 	// History picker state.
 	showHistory   bool
 	historyPicker historyPicker
+
+	// Search index for document search.
+	searchIndex *docsearch.Index
+
+	// Search picker state.
+	showSearch   bool
+	searchPicker searchPicker
+
+	// Similar documents picker state.
+	showSimilar   bool
+	similarPicker searchPicker
 }
 
 // active returns a pointer to the active tab.
@@ -258,7 +280,7 @@ func (r *markdownReader) newTab() tab {
 	return tab{view: view}
 }
 
-func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv converter, registry *converterRegistry, cache *conversionCache, client httpClient, fsys fileSystem, logger *slog.Logger) markdownReader {
+func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv converter, registry *converterRegistry, cache *conversionCache, client httpClient, fsys fileSystem, searchIndex *docsearch.Index, logger *slog.Logger) markdownReader {
 	keys := defaultReaderKeyMap()
 
 	view := mdk.NewModel(
@@ -280,18 +302,19 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv 
 			view:          view,
 			currentSource: source,
 		}},
-		activeTab: 0,
-		theme:     theme,
-		logger:    logger,
-		converter: conv,
-		registry:  registry,
-		cache:     cache,
-		client:    client,
-		fsys:      fsys,
-		keys:      keys,
-		helpModel: helpModel,
-		spinner:   spinner.New(spinner.WithSpinner(spinner.Dot)),
-		picker:    fp,
+		activeTab:   0,
+		theme:       theme,
+		logger:      logger,
+		converter:   conv,
+		registry:    registry,
+		cache:       cache,
+		client:      client,
+		fsys:        fsys,
+		keys:        keys,
+		helpModel:   helpModel,
+		spinner:     spinner.New(spinner.WithSpinner(spinner.Dot)),
+		picker:      fp,
+		searchIndex: searchIndex,
 	}
 }
 
@@ -515,6 +538,52 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, cmd
 	}
 
+	// Handle search picker modal.
+	if r.showSearch {
+		var cmd tea.Cmd
+		r.searchPicker, cmd = r.searchPicker.Update(msg)
+		if r.searchPicker.dismissed {
+			r.showSearch = false
+			return r, nil
+		}
+		if didSelect, path := r.searchPicker.DidSelect(); didSelect {
+			r.showSearch = false
+			if path != "" {
+				r.loading = true
+				r.loadingURL = path
+				if isConvertibleFile(path, r.registry) {
+					return r, tea.Batch(loadConvertFilePage(path, false, r.registry, r.cache, r.fsys, r.logger), r.spinner.Tick)
+				}
+				return r, tea.Batch(loadFilePage(path, false, r.fsys, r.logger), r.spinner.Tick)
+			}
+			return r, nil
+		}
+		return r, cmd
+	}
+
+	// Handle similar documents picker modal.
+	if r.showSimilar {
+		var cmd tea.Cmd
+		r.similarPicker, cmd = r.similarPicker.Update(msg)
+		if r.similarPicker.dismissed {
+			r.showSimilar = false
+			return r, nil
+		}
+		if didSelect, path := r.similarPicker.DidSelect(); didSelect {
+			r.showSimilar = false
+			if path != "" {
+				r.loading = true
+				r.loadingURL = path
+				if isConvertibleFile(path, r.registry) {
+					return r, tea.Batch(loadConvertFilePage(path, false, r.registry, r.cache, r.fsys, r.logger), r.spinner.Tick)
+				}
+				return r, tea.Batch(loadFilePage(path, false, r.fsys, r.logger), r.spinner.Tick)
+			}
+			return r, nil
+		}
+		return r, cmd
+	}
+
 	switch msg := msg.(type) {
 	case mdk.OpenLinkMsg:
 		return r, r.handleLinkNavigation(msg.URL, false)
@@ -539,6 +608,31 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		r.loading = false
 		r.loadingURL = ""
+
+		// Index the document in the background.
+		var cmds []tea.Cmd
+		if r.searchIndex != nil && msg.source != "" {
+			cmds = append(cmds, indexDocument(r.searchIndex, msg.source, msg.name, msg.markdown))
+		}
+		if len(cmds) > 0 {
+			return r, tea.Batch(cmds...)
+		}
+		return r, nil
+
+	case findSimilarResultsMsg:
+		r.showSimilar = true
+		r.similarPicker = newSimilarPicker(
+			r.searchIndex, msg.results,
+			min(r.height*3/4, 20), r.width*3/4,
+		)
+		return r, r.similarPicker.input.Focus()
+
+	case indexDocumentMsg:
+		// Indexing completed successfully — nothing to do.
+		return r, nil
+
+	case indexDocumentErrorMsg:
+		r.logger.Error("index_error", "error", msg.err)
 		return r, nil
 
 	case pageLoadErrorMsg:
@@ -686,6 +780,25 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				min(r.height*3/4, 20), r.width*3/4,
 			)
 			return r, r.historyPicker.input.Focus()
+		case "S":
+			if r.searchIndex == nil {
+				return r, nil
+			}
+			r.showSearch = true
+			r.searchPicker = newSearchPicker(
+				r.searchIndex,
+				min(r.height*3/4, 20), r.width*3/4,
+			)
+			return r, tea.Batch(r.searchPicker.input.Focus(), r.searchPicker.doSearch())
+		case "F":
+			if r.searchIndex == nil || !r.searchIndex.HasEmbedder() {
+				return r, nil
+			}
+			source := r.active().currentSource
+			if source == "" {
+				return r, nil
+			}
+			return r, findSimilar(r.searchIndex, source)
 		case "?":
 			r.showHelp = true
 			return r, nil
@@ -807,6 +920,24 @@ func (r markdownReader) View() tea.View {
 		}
 		maxH := r.height * 3 / 4
 		result = r.renderFixedOverlay(base, pickerView, fixedW, maxH)
+	} else if r.showSearch {
+		header := lipgloss.NewStyle().Bold(true).Render("Search Documents")
+		searchView := header + "\n\n" + r.searchPicker.View()
+		fixedW := r.width * 3 / 4
+		if fixedW < 40 {
+			fixedW = min(r.width-4, 40)
+		}
+		maxH := r.height * 3 / 4
+		result = r.renderFixedOverlay(base, searchView, fixedW, maxH)
+	} else if r.showSimilar {
+		header := lipgloss.NewStyle().Bold(true).Render("Similar Documents")
+		similarView := header + "\n\n" + r.similarPicker.View()
+		fixedW := r.width * 3 / 4
+		if fixedW < 40 {
+			fixedW = min(r.width-4, 40)
+		}
+		maxH := r.height * 3 / 4
+		result = r.renderFixedOverlay(base, similarView, fixedW, maxH)
 	} else if r.showHistory {
 		header := lipgloss.NewStyle().Bold(true).Render("History")
 		historyView := header + "\n\n" + r.historyPicker.View()
