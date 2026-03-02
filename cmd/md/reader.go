@@ -36,6 +36,7 @@ type readerKeyMap struct {
 	CloseTab              key.Binding
 	CloseAllTabs          key.Binding
 	NewTab                key.Binding
+	Reload                key.Binding
 	History               key.Binding
 	Help                  key.Binding
 	Quit                  key.Binding
@@ -89,6 +90,10 @@ func defaultReaderKeyMap() readerKeyMap {
 			key.WithKeys("T"),
 			key.WithHelp("T", "open link in new tab"),
 		),
+		Reload: key.NewBinding(
+			key.WithKeys("ctrl+r"),
+			key.WithHelp("ctrl+r", "reload"),
+		),
 		History: key.NewBinding(
 			key.WithKeys("H"),
 			key.WithHelp("H", "history"),
@@ -119,7 +124,7 @@ func (km readerKeyMap) FullHelp() [][]key.Binding {
 		// Navigation
 		{km.Home, km.End, km.NextLink, km.PrevLink, km.NextHeading, km.PrevHeading, km.NextCodeBlock, km.PrevCodeBlock},
 		// Actions
-		{km.FollowLink, km.GoBack, km.History, km.CopySelection, km.OpenFile, km.OpenURL, km.OpenBrowser, km.DecreaseWidth, km.IncreaseWidth},
+		{km.FollowLink, km.GoBack, km.History, km.Reload, km.CopySelection, km.OpenFile, km.OpenURL, km.OpenBrowser, km.DecreaseWidth, km.IncreaseWidth},
 		// Search & View
 		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.ToggleRaw},
 		// Tabs & General
@@ -525,8 +530,8 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			at := r.active()
 			at.showRaw = false
-			// Don't push an empty page onto the stack (e.g. first load from picker).
-			if at.view.GetName() != "" || len(at.view.GetMarkdown()) > 0 {
+			// Don't push to the stack on reload or when the page is empty.
+			if !msg.reload && (at.view.GetName() != "" || len(at.view.GetMarkdown()) > 0) {
 				r.pushCurrentPage()
 			}
 			at.view.SetText(msg.name, msg.markdown)
@@ -667,6 +672,8 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return r, r.handleLinkNavigation(link, true)
 			}
 			return r, nil
+		case "ctrl+r":
+			return r, r.reloadCurrentPage()
 		case "H":
 			at := r.active()
 			if len(at.pageStack) == 0 {
@@ -691,6 +698,34 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return r, nil
+}
+
+// reloadCurrentPage re-fetches and re-converts the current tab's source.
+func (r *markdownReader) reloadCurrentPage() tea.Cmd {
+	source := r.active().currentSource
+	if source == "" {
+		return nil
+	}
+
+	r.loading = true
+	r.loadingURL = source
+
+	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
+		r.cache.evictHTTP(source, r.logger)
+		return tea.Batch(reloadURLPage(source, r.converter, r.registry, r.cache, r.client, r.logger), r.spinner.Tick)
+	}
+
+	if isMarkdownFile(source) {
+		return tea.Batch(reloadFilePage(source, r.fsys, r.logger), r.spinner.Tick)
+	}
+
+	if isConvertibleFile(source, r.registry) {
+		return tea.Batch(reloadConvertFilePage(source, r.registry, r.cache, r.fsys, r.logger), r.spinner.Tick)
+	}
+
+	r.loading = false
+	r.loadingURL = ""
+	return nil
 }
 
 // handleLinkNavigation resolves and navigates to a link.

@@ -47,6 +47,8 @@ func keyMsg(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl}
 	case "ctrl+l":
 		return tea.KeyPressMsg{Code: 'l', Mod: tea.ModCtrl}
+	case "ctrl+r":
+		return tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl}
 	case "ctrl+w":
 		return tea.KeyPressMsg{Code: 'w', Mod: tea.ModCtrl}
 	case "tab":
@@ -162,10 +164,10 @@ func TestFullHelp(t *testing.T) {
 	if len(groups) != 5 {
 		t.Fatalf("expected 5 help groups, got %d", len(groups))
 	}
-	// Columns range from 5-9 items each.
+	// Columns range from 5-10 items each.
 	for i, g := range groups {
-		if len(g) < 5 || len(g) > 9 {
-			t.Errorf("group %d has %d bindings, want 5-9", i, len(g))
+		if len(g) < 5 || len(g) > 10 {
+			t.Errorf("group %d has %d bindings, want 5-10", i, len(g))
 		}
 	}
 }
@@ -1351,5 +1353,73 @@ func TestView_HistoryOverlay(t *testing.T) {
 	}
 	if !strings.Contains(v.Content, "History") {
 		t.Error("expected 'History' header in view")
+	}
+}
+
+// --- Reload tests ---
+
+func TestUpdate_CtrlR_WithSource(t *testing.T) {
+	r := testReader("doc", "# Doc", "/doc.md")
+	r.width, r.height = 80, 24
+	r.resizeAllViews()
+
+	m, cmd := r.Update(keyMsg("ctrl+r"))
+	reader := m.(markdownReader)
+
+	if !reader.loading {
+		t.Error("expected loading=true after ctrl+r")
+	}
+	if reader.loadingURL != "/doc.md" {
+		t.Errorf("loadingURL = %q, want /doc.md", reader.loadingURL)
+	}
+	if cmd == nil {
+		t.Error("expected non-nil cmd")
+	}
+}
+
+func TestUpdate_CtrlR_NoSource(t *testing.T) {
+	r := testReader("doc", "# Doc", "")
+	r.width, r.height = 80, 24
+	r.resizeAllViews()
+
+	m, cmd := r.Update(keyMsg("ctrl+r"))
+	reader := m.(markdownReader)
+
+	if reader.loading {
+		t.Error("expected loading=false when source is empty")
+	}
+	if cmd != nil {
+		t.Error("expected nil cmd when source is empty")
+	}
+}
+
+func TestUpdate_PageLoadedMsg_Reload_DoesNotPushStack(t *testing.T) {
+	r := testReader("initial", "# Initial", "/doc.md")
+
+	// Navigate to a new page first, so the stack has one entry.
+	m, _ := r.Update(pageLoadedMsg{name: "second", markdown: "# Second", source: "/second.md"})
+	reader := m.(markdownReader)
+
+	if len(reader.active().pageStack) != 1 {
+		t.Fatalf("pageStack length = %d, want 1", len(reader.active().pageStack))
+	}
+
+	// Now reload — stack should stay at 1.
+	m, _ = reader.Update(pageLoadedMsg{
+		name:     "second-reloaded",
+		markdown: "# Second Reloaded",
+		source:   "/second.md",
+		reload:   true,
+	})
+	reader = m.(markdownReader)
+
+	if len(reader.active().pageStack) != 1 {
+		t.Errorf("pageStack length = %d after reload, want 1", len(reader.active().pageStack))
+	}
+	if reader.active().currentSource != "/second.md" {
+		t.Errorf("currentSource = %q, want /second.md", reader.active().currentSource)
+	}
+	if string(reader.active().view.GetMarkdown()) != "# Second Reloaded" {
+		t.Error("expected reloaded content")
 	}
 }

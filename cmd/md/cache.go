@@ -150,6 +150,17 @@ func (c *conversionCache) lookupHTTP(rawURL string, logger *slog.Logger) (*cache
 	return entry, false
 }
 
+// evictHTTP removes the HTTP cache entry for the given URL.
+func (c *conversionCache) evictHTTP(rawURL string, logger *slog.Logger) {
+	if c == nil {
+		return
+	}
+	path := c.entryPath(rawURL)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		logger.Error("cache_evict_error", "url", rawURL, "error", err)
+	}
+}
+
 // storeHTTP writes an HTTP cache entry to disk.
 func (c *conversionCache) storeHTTP(rawURL string, entry cacheEntry, logger *slog.Logger) {
 	if c == nil {

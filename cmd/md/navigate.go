@@ -21,6 +21,7 @@ type pageLoadedMsg struct {
 	originalHTML    string // non-empty for pages fetched from HTML
 	readabilityHTML string // non-empty for pages fetched from HTML
 	newTab          bool   // when true, open in a new tab instead of current tab
+	reload          bool   // when true, replace current content without pushing to back stack
 }
 
 // pageLoadErrorMsg is sent when a page fails to load.
@@ -342,6 +343,90 @@ func fetchURLPage(rawURL string, newTab bool, conv converter, registry *converte
 			originalHTML:    result.originalHTML,
 			readabilityHTML: result.readabilityHTML,
 			newTab:          newTab,
+		}
+	}
+}
+
+// reloadFilePage re-reads a local markdown file and returns a reload pageLoadedMsg.
+func reloadFilePage(path string, fsys fileSystem, logger *slog.Logger) tea.Cmd {
+	return func() tea.Msg {
+		data, err := fsys.ReadFile(path)
+		if err != nil {
+			logger.Error("file_read_error", "path", path, "error", err)
+			return pageLoadErrorMsg{url: path, err: err}
+		}
+		logger.Info("file_reload", "path", path, "size", len(data))
+		return pageLoadedMsg{
+			markdown: string(data),
+			source:   path,
+			reload:   true,
+		}
+	}
+}
+
+// reloadConvertFilePage re-reads and re-converts a local file, returning a reload pageLoadedMsg.
+func reloadConvertFilePage(path string, registry *converterRegistry, cache *conversionCache, fsys fileSystem, logger *slog.Logger) tea.Cmd {
+	return func() tea.Msg {
+		data, err := fsys.ReadFile(path)
+		if err != nil {
+			logger.Error("file_read_error", "path", path, "error", err)
+			return pageLoadErrorMsg{url: path, err: err}
+		}
+
+		ext := strings.ToLower(filepath.Ext(path))
+		conv := registry.forExtension(ext)
+		if conv == nil {
+			return pageLoadErrorMsg{url: path, err: fmt.Errorf("no converter for extension %q", ext)}
+		}
+
+		// Check cache — content hash ensures stale conversions are skipped.
+		if cached, ok := cache.lookupFile(path, data, logger); ok {
+			logger.Info("cache_hit", "path", path)
+			return pageLoadedMsg{
+				name:     cached.Name,
+				markdown: cached.Markdown,
+				source:   path,
+				reload:   true,
+			}
+		}
+
+		logger.Info("converting_file", "path", path, "ext", ext)
+		cr, err := conv.convert(data, nil, logger)
+		if err != nil {
+			logger.Error("file_convert_error", "path", path, "error", err)
+			return pageLoadErrorMsg{url: path, err: err}
+		}
+
+		entry := cacheEntry{
+			Name:     cr.name,
+			Markdown: cr.markdown,
+		}
+		cache.storeFile(path, data, entry, logger)
+		logger.Info("cache_store", "path", path)
+
+		return pageLoadedMsg{
+			name:     cr.name,
+			markdown: cr.markdown,
+			source:   path,
+			reload:   true,
+		}
+	}
+}
+
+// reloadURLPage fetches a URL and returns a reload pageLoadedMsg.
+func reloadURLPage(rawURL string, conv converter, registry *converterRegistry, cache *conversionCache, client httpClient, logger *slog.Logger) tea.Cmd {
+	return func() tea.Msg {
+		result, err := fetchURL(rawURL, conv, registry, cache, client, logger)
+		if err != nil {
+			return pageLoadErrorMsg{url: rawURL, err: err}
+		}
+		return pageLoadedMsg{
+			name:            result.name,
+			markdown:        result.markdown,
+			source:          result.source,
+			originalHTML:    result.originalHTML,
+			readabilityHTML: result.readabilityHTML,
+			reload:          true,
 		}
 	}
 }
