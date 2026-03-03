@@ -1024,6 +1024,40 @@ func TestTableWrapping_ColumnWidthDistribution(t *testing.T) {
 	}
 }
 
+// TestTableWrapping_ExactWidth verifies that a table whose natural width
+// (columns + borders) exactly equals the word wrap width renders correctly.
+// This is a regression test: when the table width equaled wordWrap, the
+// non-constraining path was taken and the renderer's word wrapping caused
+// the trailing │ border to be pushed onto the next line.
+func TestTableWrapping_ExactWidth(t *testing.T) {
+	// Build a table whose natural width exactly equals the wrap width.
+	// Col 1: 7 chars ("Header1"), Col 2: 7 chars ("Header2"), borders: 3 │.
+	// Total = 7 + 7 + 3 = 17. Wrap at 17.
+	input := "| Header1 | Header2 |\n| ------- | ------- |\n| AAAAAAA | BBBBBBB |\n"
+
+	output, _ := renderMarkdownWithTables(t, input, WithWordWrap(17), WithSoftBreak(true))
+	stripped := ansi.Strip(output)
+
+	lines := strings.Split(strings.TrimRight(stripped, "\n"), "\n")
+	for i, line := range lines {
+		w := ansi.StringWidth(line)
+		assert.LessOrEqual(t, w, 17, "line %d should not exceed wrap width 17, got width %d: %q", i, w, line)
+	}
+
+	// Every content row (not border rows) should start and end with │.
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "╭") || strings.HasPrefix(trimmed, "├") || strings.HasPrefix(trimmed, "╰") {
+			continue // border rows
+		}
+		assert.True(t, strings.HasPrefix(trimmed, "│"), "line %d should start with │: %q", i, trimmed)
+		assert.True(t, strings.HasSuffix(trimmed, "│"), "line %d should end with │: %q", i, trimmed)
+	}
+}
+
 // assertNoUnderlineLeak checks that no output line ends with underline active.
 // When ansi.Wrap splits styled content across lines, inline styles (like link
 // underline) can leak if the renderer doesn't reset them at cell boundaries.

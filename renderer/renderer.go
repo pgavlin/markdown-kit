@@ -1846,7 +1846,7 @@ func (r *Renderer) RenderTable(w util.BufWriter, source []byte, node ast.Node, e
 	}
 	totalTableWidth := borderWidth + naturalTotal
 
-	if r.wordWrap > 0 && totalTableWidth > r.wordWrap {
+	if r.wordWrap > 0 && totalTableWidth >= r.wordWrap {
 		// Proportionally shrink columns to fit within the wrap width.
 		available := r.wordWrap - borderWidth
 		if available < len(columnWidths) {
@@ -1859,7 +1859,7 @@ func (r *Renderer) RenderTable(w util.BufWriter, source []byte, node ast.Node, e
 		numUnfrozen := len(columnWidths)
 
 		// Iteratively freeze columns whose natural width fits within a fair share.
-		for {
+		for numUnfrozen > 0 {
 			fairShare := remaining / numUnfrozen
 			newlyFrozen := 0
 			for i, w := range columnWidths {

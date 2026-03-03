@@ -219,6 +219,7 @@ file has been edited externally.
 |-----|--------|
 | {{.Help}} | Toggle the key binding overlay |
 | {{.UserGuide}} | Open this user guide in a new tab |
+| {{.BugReport}} | Copy a bug report to clipboard |
 
 Press {{.Help}} to show a quick-reference overlay of all key bindings. Press
 {{.Help}} again or `Esc` to dismiss it.
@@ -356,7 +357,7 @@ Available binding names: `up`, `down`, `page_up`, `page_down`, `goto_top`,
 `copy_selection`, `search`, `next_match`, `prev_match`, `clear_search`,
 `toggle_raw`, `open_url`, `open_browser`, `open_file_new_tab`, `next_tab`,
 `prev_tab`, `close_tab`, `close_all_tabs`, `new_tab`, `reload`, `history`,
-`search_documents`, `find_similar`, `user_guide`, `help`, `quit`.
+`search_documents`, `find_similar`, `user_guide`, `bug_report`, `help`, `quit`.
 
 ## Subcommands
 

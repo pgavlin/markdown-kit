@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"charm.land/bubbles/v2/help"
@@ -42,6 +44,7 @@ type readerKeyMap struct {
 	SearchDocuments       key.Binding
 	FindSimilar           key.Binding
 	UserGuide             key.Binding
+	BugReport             key.Binding
 	Help                  key.Binding
 	Quit                  key.Binding
 }
@@ -114,6 +117,10 @@ func defaultReaderKeyMap() readerKeyMap {
 			key.WithKeys("M"),
 			key.WithHelp("M", "user guide"),
 		),
+		BugReport: key.NewBinding(
+			key.WithKeys("ctrl+b"),
+			key.WithHelp("ctrl+b", "bug report"),
+		),
 		Help: key.NewBinding(
 			key.WithKeys("?"),
 			key.WithHelp("?", "toggle help"),
@@ -144,7 +151,7 @@ func (km readerKeyMap) FullHelp() [][]key.Binding {
 		// Search & View
 		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.ToggleRaw},
 		// Tabs & General
-		{km.NextTab, km.PrevTab, km.CloseTab, km.CloseAllTabs, km.NewTab, km.OpenFileNewTab, km.UserGuide, km.Help, km.Quit},
+		{km.NextTab, km.PrevTab, km.CloseTab, km.CloseAllTabs, km.NewTab, km.OpenFileNewTab, km.UserGuide, km.BugReport, km.Help, km.Quit},
 	}
 }
 
@@ -264,6 +271,11 @@ type markdownReader struct {
 	// Similar documents picker state.
 	showSimilar   bool
 	similarPicker searchPicker
+
+	// Bug report state.
+	showBugReport    bool
+	bugReportInput   textinput.Model
+	bugReportCapture bugReportData
 }
 
 // active returns a pointer to the active tab.
@@ -579,6 +591,25 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, cmd
 	}
 
+	// Handle bug report input modal.
+	if r.showBugReport {
+		if km, ok := msg.(tea.KeyPressMsg); ok {
+			switch km.String() {
+			case "esc":
+				r.showBugReport = false
+				return r, nil
+			case "enter":
+				desc := r.bugReportInput.Value()
+				report := r.bugReportCapture.formatBugReport(desc)
+				r.showBugReport = false
+				return r, tea.SetClipboard(report)
+			}
+		}
+		var cmd tea.Cmd
+		r.bugReportInput, cmd = r.bugReportInput.Update(msg)
+		return r, cmd
+	}
+
 	// Handle history picker modal.
 	if r.showHistory {
 		var cmd tea.Cmd
@@ -880,6 +911,21 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return r, nil
 		}
 
+		if key.Matches(msg, r.keys.BugReport) {
+			r.captureBugReport()
+			r.bugReportInput = textinput.New()
+			r.bugReportInput.Prompt = "  Description: "
+			r.bugReportInput.Placeholder = "Describe the issue..."
+			fixedW := r.width * 3 / 4
+			if fixedW < 40 {
+				fixedW = min(r.width-4, 40)
+			}
+			innerW := fixedW - 4
+			r.bugReportInput.SetWidth(innerW - lipgloss.Width(r.bugReportInput.Prompt) - 1)
+			r.showBugReport = true
+			return r, r.bugReportInput.Focus()
+		}
+
 		// Pass other keys to the view.
 		var cmd tea.Cmd
 		at.view, cmd = at.view.Update(msg)
@@ -1031,6 +1077,14 @@ func (r markdownReader) View() tea.View {
 	} else if r.showURLInput {
 		header := lipgloss.NewStyle().Bold(true).Render("Open URL")
 		inputView := header + "\n\n" + r.urlInput.View()
+		fixedW := r.width * 3 / 4
+		if fixedW < 40 {
+			fixedW = min(r.width-4, 40)
+		}
+		result = r.renderFixedOverlay(base, inputView, fixedW, 5)
+	} else if r.showBugReport {
+		header := lipgloss.NewStyle().Bold(true).Render("Bug Report")
+		inputView := header + "\n\n" + r.bugReportInput.View()
 		fixedW := r.width * 3 / 4
 		if fixedW < 40 {
 			fixedW = min(r.width-4, 40)
@@ -1229,6 +1283,105 @@ func wordWrap(text string, width int) string {
 		}
 	}
 	return result.String()
+}
+
+// bugReportData holds all captured state for a bug report.
+type bugReportData struct {
+	documentName   string
+	source         string
+	renderedView   string
+	rawMarkdown    string
+	viewportWidth  int
+	viewportHeight int
+	effectiveWidth int
+	contentWidth   int
+	lineOffset     int
+	columnOffset   int
+	totalLines     int
+	visibleLines   int
+	scrollPct      float64
+	termWidth      int
+	termHeight     int
+	termEnv        string
+	colorTerm      string
+	themeName      string
+	showRaw        bool
+	tabCount       int
+	activeTab      int
+	goVersion      string
+}
+
+// captureBugReport populates bugReportCapture from the active tab state.
+func (r *markdownReader) captureBugReport() {
+	at := r.active()
+	v := &at.view
+	r.bugReportCapture = bugReportData{
+		documentName:   v.GetName(),
+		source:         at.currentSource,
+		renderedView:   v.View(),
+		rawMarkdown:    string(v.GetMarkdown()),
+		viewportWidth:  v.Width(),
+		viewportHeight: v.Height(),
+		effectiveWidth: v.EffectiveWidth(),
+		contentWidth:   v.ContentWidth(),
+		lineOffset:     v.LineOffset(),
+		columnOffset:   v.ColumnOffset(),
+		totalLines:     v.TotalLineCount(),
+		visibleLines:   v.VisibleLineCount(),
+		scrollPct:      v.ScrollPercent(),
+		termWidth:      r.width,
+		termHeight:     r.height,
+		termEnv:        os.Getenv("TERM"),
+		colorTerm:      os.Getenv("COLORTERM"),
+		themeName:      r.theme.Name,
+		showRaw:        at.showRaw,
+		tabCount:       len(r.tabs),
+		activeTab:      r.activeTab,
+		goVersion:      runtime.Version(),
+	}
+}
+
+// formatBugReport formats the captured data and user description into clipboard text.
+func (d bugReportData) formatBugReport(description string) string {
+	var b strings.Builder
+	b.WriteString("## Bug Report\n\n")
+	b.WriteString("### Description\n")
+	b.WriteString(description)
+	b.WriteString("\n\n")
+
+	b.WriteString("### Environment\n")
+	fmt.Fprintf(&b, "- Go: %s\n", d.goVersion)
+	fmt.Fprintf(&b, "- Theme: %s\n", d.themeName)
+	fmt.Fprintf(&b, "- TERM: %s\n", d.termEnv)
+	fmt.Fprintf(&b, "- COLORTERM: %s\n", d.colorTerm)
+	fmt.Fprintf(&b, "- Terminal size: %dx%d\n", d.termWidth, d.termHeight)
+	b.WriteString("\n")
+
+	b.WriteString("### Document\n")
+	fmt.Fprintf(&b, "- Name: %s\n", d.documentName)
+	fmt.Fprintf(&b, "- Source: %s\n", d.source)
+	fmt.Fprintf(&b, "- Tab: %d/%d\n", d.activeTab+1, d.tabCount)
+	fmt.Fprintf(&b, "- Raw mode: %v\n", d.showRaw)
+	b.WriteString("\n")
+
+	b.WriteString("### Viewport\n")
+	fmt.Fprintf(&b, "- Viewport: %dx%d\n", d.viewportWidth, d.viewportHeight)
+	fmt.Fprintf(&b, "- Effective width: %d\n", d.effectiveWidth)
+	fmt.Fprintf(&b, "- Content width: %d\n", d.contentWidth)
+	fmt.Fprintf(&b, "- Scroll: line %d/%d (%.0f%%)\n", d.lineOffset, d.totalLines, d.scrollPct*100)
+	fmt.Fprintf(&b, "- Column offset: %d\n", d.columnOffset)
+	fmt.Fprintf(&b, "- Visible lines: %d\n", d.visibleLines)
+	b.WriteString("\n")
+
+	b.WriteString("### Rendered Output\n```\n")
+	b.WriteString(d.renderedView)
+	b.WriteString("\n```\n\n")
+
+	b.WriteString("### Raw Markdown\n```markdown\n")
+	b.WriteString(d.rawMarkdown)
+	b.WriteString("\n```\n")
+
+	return b.String()
 }
 
 // saveRawState saves the current view state for toggling back from a raw view.

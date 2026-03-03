@@ -72,6 +72,7 @@ func renderHelpPage(km readerKeyMap) string {
 		"SearchDocuments": fmtKey(km.SearchDocuments),
 		"FindSimilar":     fmtKey(km.FindSimilar),
 		"UserGuide":       fmtKey(km.UserGuide),
+		"BugReport":       fmtKey(km.BugReport),
 		"Help":            fmtKey(km.Help),
 		"Quit":            fmtKey(km.Quit),
 	}
