@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	mdk "github.com/pgavlin/markdown-kit/view"
@@ -170,6 +171,37 @@ func TestFullHelp(t *testing.T) {
 		if len(g) < 5 || len(g) > 12 {
 			t.Errorf("group %d has %d bindings, want 5-12", i, len(g))
 		}
+	}
+}
+
+// --- renderHelpPage ---
+
+func TestRenderHelpPage(t *testing.T) {
+	km := defaultReaderKeyMap()
+	result := renderHelpPage(km)
+
+	// Template should have been executed — no leftover {{.Foo}} placeholders.
+	if strings.Contains(result, "{{.") {
+		t.Error("rendered help page still contains unresolved template placeholders")
+	}
+
+	// Should contain actual default key bindings rendered by fmtKey.
+	if !strings.Contains(result, "`j`") {
+		t.Error("expected rendered help page to contain default Down key `j`")
+	}
+	if !strings.Contains(result, "`q`") {
+		t.Error("expected rendered help page to contain default Quit key `q`")
+	}
+}
+
+func TestRenderHelpPageCustomKeys(t *testing.T) {
+	km := defaultReaderKeyMap()
+	km.Quit = key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "quit"))
+
+	result := renderHelpPage(km)
+
+	if !strings.Contains(result, "`x`") {
+		t.Error("expected rendered help page to contain custom Quit key `x`")
 	}
 }
 

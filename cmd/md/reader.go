@@ -41,6 +41,7 @@ type readerKeyMap struct {
 	History               key.Binding
 	SearchDocuments       key.Binding
 	FindSimilar           key.Binding
+	UserGuide             key.Binding
 	Help                  key.Binding
 	Quit                  key.Binding
 }
@@ -109,6 +110,10 @@ func defaultReaderKeyMap() readerKeyMap {
 			key.WithKeys("F"),
 			key.WithHelp("F", "find similar"),
 		),
+		UserGuide: key.NewBinding(
+			key.WithKeys("M"),
+			key.WithHelp("M", "user guide"),
+		),
 		Help: key.NewBinding(
 			key.WithKeys("?"),
 			key.WithHelp("?", "toggle help"),
@@ -139,7 +144,7 @@ func (km readerKeyMap) FullHelp() [][]key.Binding {
 		// Search & View
 		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.ToggleRaw},
 		// Tabs & General
-		{km.NextTab, km.PrevTab, km.CloseTab, km.CloseAllTabs, km.NewTab, km.OpenFileNewTab, km.Help, km.Quit},
+		{km.NextTab, km.PrevTab, km.CloseTab, km.CloseAllTabs, km.NewTab, km.OpenFileNewTab, km.UserGuide, km.Help, km.Quit},
 	}
 }
 
@@ -803,6 +808,9 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return r, nil
 			}
 			return r, findSimilar(r.searchIndex, content, at.currentSource)
+		case "M":
+			r.openNewTab("User Guide", renderHelpPage(r.keys), "")
+			return r, nil
 		case "?":
 			r.showHelp = true
 			return r, nil
