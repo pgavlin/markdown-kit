@@ -27,12 +27,12 @@ Markdown → goldmark parser → AST → backend renderer → output
 
 ### Packages
 
-- **`renderer`** — Terminal renderer with ANSI colorization, word wrapping, table rendering (Unicode box-drawing), image encoding (Kitty graphics protocol, ANSI), and document span tracking (`NodeSpan` tree maps AST nodes to byte offsets in output). Uses a style stack for nested formatting and Chroma for syntax highlighting.
+- **`renderer`** — Terminal renderer with ANSI colorization, word wrapping (code spans wrap as single words), table rendering (Unicode box-drawing), code block background padding, image encoding (Kitty graphics protocol, ANSI), and document span tracking (`NodeSpan` tree maps AST nodes to byte offsets in output). Uses a style stack for nested formatting and Chroma for syntax highlighting.
 - **`odt`** — Converts Markdown to OpenDocument Text (.odt). Generates ODF 1.3 compliant ZIP archives with manifest, mimetype, and content.xml.
-- **`view`** — Interactive Bubble Tea model (`MarkdownView`) for displaying and navigating Markdown in a terminal UI. Parses ANSI sequences for styled text, supports heading/URL navigation, code block navigation, and content copying.
+- **`view`** — Interactive Bubble Tea model (`MarkdownView`) for displaying and navigating Markdown in a terminal UI. Parses ANSI sequences for styled text, supports heading/URL navigation, code block navigation, content copying, and theme background fill within the content column.
 - **`docsearch`** — SQLite-backed document index supporting FTS5 keyword search and vector similarity search. Documents are chunked by heading sections, stripped of markdown formatting, and embedded individually for better match quality. Schema v2 stores chunks in a separate table with vectors keyed by chunk ID. Includes v1→v2 migration. Requires `sqlite_fts5` build tag for tests.
 - **`indexer`** — Builds a document index (table of contents) from headings with GFM-style anchor generation.
-- **`styles`** — Color theme definitions (e.g., `Pulumi` theme) and custom Chroma token types for tables.
+- **`styles`** — Color theme definitions (e.g., `Pulumi` theme), glamour `StyleConfig` conversion (`FromStyleConfig`, `ChromaStyleFromConfig`, `AutoTheme`), and custom Chroma token types for tables.
 - **`internal/kitty`** — Kitty terminal graphics protocol encoding/decoding.
 
 ### CLI tools (under `cmd/`)
@@ -43,6 +43,6 @@ Markdown → goldmark parser → AST → backend renderer → output
 
 ### Testing patterns
 
-- **Golden file testing**: `odt` tests compare output against saved `.odt` files in `internal/testdata/`.
+- **Golden file testing**: `odt` tests compare output against saved `.odt` files in `internal/testdata/`. `renderer` word wrap tests compare against `getting-started.wrapped.{80,120}.md`.
 - **Spec-based testing**: `renderer` validates against CommonMark spec.
 - **Test fixtures**: Markdown samples live in `internal/testdata/`.
