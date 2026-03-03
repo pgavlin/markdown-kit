@@ -216,12 +216,12 @@ func createDefaultConfig(path string, fsys fileSystem) error {
 }
 
 func (c config) theme() *chroma.Style {
-	if c.Theme == "" {
-		return styles.GlamourDark
+	if c.Theme == "" || c.Theme == "auto" {
+		return styles.AutoTheme()
 	}
 	s := chromaStyles.Get(c.Theme)
 	if s == chromaStyles.Fallback {
-		return styles.GlamourDark
+		return styles.AutoTheme()
 	}
 	return s
 }
@@ -266,12 +266,12 @@ func (c config) applyKeys(km *readerKeyMap) {
 		"close_all_tabs":    &km.CloseAllTabs,
 		"new_tab":           &km.NewTab,
 		"reload":            &km.Reload,
-		"history":            &km.History,
-		"search_documents":   &km.SearchDocuments,
-		"find_similar":       &km.FindSimilar,
-		"user_guide":         &km.UserGuide,
-		"help":               &km.Help,
-		"quit":               &km.Quit,
+		"history":           &km.History,
+		"search_documents":  &km.SearchDocuments,
+		"find_similar":      &km.FindSimilar,
+		"user_guide":        &km.UserGuide,
+		"help":              &km.Help,
+		"quit":              &km.Quit,
 	}
 
 	for name, val := range c.Keys {

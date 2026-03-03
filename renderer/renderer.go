@@ -559,9 +559,9 @@ func (r *Renderer) Write(w io.Writer, buf []byte) (int, error) {
 	return written, nil
 }
 
-// WriteByte writes a byte to an io.Writer, ensuring that appropriate indentation and prefices are added at the beginning
+// writeByte writes a byte to an io.Writer, ensuring that appropriate indentation and prefices are added at the beginning
 // of each line.
-func (r *Renderer) WriteByte(w io.Writer, c byte) error {
+func (r *Renderer) writeByte(w io.Writer, c byte) error {
 	_, err := r.Write(w, []byte{c})
 	return err
 }
@@ -676,7 +676,7 @@ func (r *Renderer) OpenBlock(w util.BufWriter, source []byte, node ast.Node) err
 	}
 
 	if hasBlankPreviousLines {
-		if err := r.WriteByte(w, '\n'); err != nil {
+		if err := r.writeByte(w, '\n'); err != nil {
 			return err
 		}
 	}
@@ -700,7 +700,7 @@ func (r *Renderer) CloseBlock(w io.Writer) error {
 	// atNewline is stale (still true from a prior newline). WriteByte('\n')
 	// will flush the buffer as part of its normal Write path.
 	if !r.atNewline || r.wordBuffer.Len() > 0 {
-		if err := r.WriteByte(w, '\n'); err != nil {
+		if err := r.writeByte(w, '\n'); err != nil {
 			return err
 		}
 	}
@@ -754,7 +754,7 @@ func (r *Renderer) RenderHeading(w util.BufWriter, source []byte, node ast.Node,
 			if _, err := r.WriteString(w, strings.Repeat("#", node.(*ast.Heading).Level)); err != nil {
 				return ast.WalkStop, err
 			}
-			if err := r.WriteByte(w, ' '); err != nil {
+			if err := r.writeByte(w, ' '); err != nil {
 				return ast.WalkStop, err
 			}
 		}
@@ -765,7 +765,7 @@ func (r *Renderer) RenderHeading(w util.BufWriter, source []byte, node ast.Node,
 				s = "---"
 			}
 			if !r.atNewline {
-				if err := r.WriteByte(w, '\n'); err != nil {
+				if err := r.writeByte(w, '\n'); err != nil {
 					return ast.WalkStop, err
 				}
 			}
@@ -778,7 +778,7 @@ func (r *Renderer) RenderHeading(w util.BufWriter, source []byte, node ast.Node,
 			return ast.WalkStop, err
 		}
 
-		if err := r.WriteByte(w, '\n'); err != nil {
+		if err := r.writeByte(w, '\n'); err != nil {
 			return ast.WalkStop, err
 		}
 
@@ -897,7 +897,7 @@ func (r *Renderer) RenderFencedCodeBlock(w util.BufWriter, source []byte, node a
 	if _, err := r.Write(w, language); err != nil {
 		return ast.WalkStop, err
 	}
-	if err := r.WriteByte(w, '\n'); err != nil {
+	if err := r.writeByte(w, '\n'); err != nil {
 		return ast.WalkStop, nil
 	}
 
@@ -913,7 +913,7 @@ func (r *Renderer) RenderFencedCodeBlock(w util.BufWriter, source []byte, node a
 	if _, err := r.Write(w, fence); err != nil {
 		return ast.WalkStop, err
 	}
-	if err := r.WriteByte(w, '\n'); err != nil {
+	if err := r.writeByte(w, '\n'); err != nil {
 		return ast.WalkStop, err
 	}
 
@@ -1050,7 +1050,7 @@ func (r *Renderer) RenderParagraph(w util.BufWriter, source []byte, node ast.Nod
 		// A paragraph that follows another paragraph or a blockquote must be preceded by a blank line.
 		if !node.HasBlankPreviousLines() {
 			if prev := node.PreviousSibling(); prev != nil && (prev.Kind() == ast.KindParagraph || prev.Kind() == ast.KindBlockquote) {
-				if err := r.WriteByte(w, '\n'); err != nil {
+				if err := r.writeByte(w, '\n'); err != nil {
 					return ast.WalkStop, err
 				}
 			}
@@ -1132,13 +1132,13 @@ func (r *Renderer) RenderAutoLink(w util.BufWriter, source []byte, node ast.Node
 		return ast.WalkContinue, nil
 	}
 
-	if err := r.WriteByte(w, '<'); err != nil {
+	if err := r.writeByte(w, '<'); err != nil {
 		return ast.WalkStop, err
 	}
 	if _, err := r.Write(w, node.(*ast.AutoLink).Label(source)); err != nil {
 		return ast.WalkStop, err
 	}
-	if err := r.WriteByte(w, '>'); err != nil {
+	if err := r.writeByte(w, '>'); err != nil {
 		return ast.WalkStop, err
 	}
 
@@ -1213,7 +1213,7 @@ func (r *Renderer) RenderCodeSpan(w util.BufWriter, source []byte, node ast.Node
 		return ast.WalkStop, err
 	}
 	if pad {
-		if err := r.WriteByte(w, ' '); err != nil {
+		if err := r.writeByte(w, ' '); err != nil {
 			return ast.WalkStop, err
 		}
 	}
@@ -1228,7 +1228,7 @@ func (r *Renderer) RenderCodeSpan(w util.BufWriter, source []byte, node ast.Node
 	}
 
 	if pad {
-		if err := r.WriteByte(w, ' '); err != nil {
+		if err := r.writeByte(w, ' '); err != nil {
 			return ast.WalkStop, err
 		}
 	}
@@ -1351,7 +1351,7 @@ func (r *Renderer) renderLinkOrImage(w util.BufWriter, node ast.Node, open strin
 			if _, err := r.Write(w, label); err != nil {
 				return err
 			}
-			if err := r.WriteByte(w, ']'); err != nil {
+			if err := r.writeByte(w, ']'); err != nil {
 				return err
 			}
 		case ast.LinkCollapsedReference:
@@ -1359,7 +1359,7 @@ func (r *Renderer) renderLinkOrImage(w util.BufWriter, node ast.Node, open strin
 				return err
 			}
 		case ast.LinkShortcutReference:
-			if err := r.WriteByte(w, ']'); err != nil {
+			if err := r.writeByte(w, ']'); err != nil {
 				return err
 			}
 		default:
@@ -1377,7 +1377,7 @@ func (r *Renderer) renderLinkOrImage(w util.BufWriter, node ast.Node, open strin
 				}
 			}
 
-			if err := r.WriteByte(w, ')'); err != nil {
+			if err := r.writeByte(w, ')'); err != nil {
 				return err
 			}
 		}
@@ -1577,7 +1577,7 @@ func (r *Renderer) RenderText(w util.BufWriter, source []byte, node ast.Node, en
 			c = ' '
 		}
 
-		if err := r.WriteByte(w, byte(c)); err != nil {
+		if err := r.writeByte(w, byte(c)); err != nil {
 			return ast.WalkStop, err
 		}
 	}
@@ -1768,7 +1768,7 @@ func (r *Renderer) renderTableBorder(w util.BufWriter, left, join, right rune) e
 	if _, err := r.WriteRune(w, right); err != nil {
 		return err
 	}
-	return r.WriteByte(w, '\n')
+	return r.writeByte(w, '\n')
 }
 
 // RenderTable renders an *xast.Table to the given BufWriter.
@@ -1915,8 +1915,8 @@ func (r *Renderer) RenderTable(w util.BufWriter, source []byte, node ast.Node, e
 		// Pre-render all cells with word wrapping applied at the constrained widths.
 		numCols := len(constrainedWidths)
 		type cellData struct {
-			lines []string    // rendered lines for this cell
-			links []ast.Node  // Link/AutoLink nodes in this cell
+			lines []string   // rendered lines for this cell
+			links []ast.Node // Link/AutoLink nodes in this cell
 		}
 		var rows [][]cellData // rows[rowIdx][colIdx]
 
@@ -2072,7 +2072,7 @@ func (r *Renderer) RenderTable(w util.BufWriter, source []byte, node ast.Node, e
 						return ast.WalkStop, err
 					}
 				}
-				if err := r.WriteByte(w, '\n'); err != nil {
+				if err := r.writeByte(w, '\n'); err != nil {
 					return ast.WalkStop, err
 				}
 			}
@@ -2115,7 +2115,7 @@ func (r *Renderer) RenderTableHeader(w util.BufWriter, source []byte, node ast.N
 		if _, err := r.WriteRune(w, borders.vertical()); err != nil {
 			return ast.WalkStop, err
 		}
-		if err := r.WriteByte(w, '\n'); err != nil {
+		if err := r.writeByte(w, '\n'); err != nil {
 			return ast.WalkStop, err
 		}
 

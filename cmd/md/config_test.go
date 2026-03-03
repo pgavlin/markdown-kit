@@ -79,14 +79,17 @@ command = "asciidoctor"
 }
 
 func TestConfig_Theme(t *testing.T) {
+	autoName := styles.AutoTheme().Name
+
 	tests := []struct {
 		name      string
 		theme     string
 		wantStyle string
 	}{
-		{"empty_returns_glamour_dark", "", styles.GlamourDark.Name},
+		{"empty_returns_auto", "", autoName},
+		{"auto_returns_auto", "auto", autoName},
 		{"known_theme", "monokai", "monokai"},
-		{"unknown_returns_glamour_dark", "nonexistent-theme-xyz", styles.GlamourDark.Name},
+		{"unknown_returns_auto", "nonexistent-theme-xyz", autoName},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

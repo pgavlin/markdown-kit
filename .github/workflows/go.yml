@@ -8,6 +8,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     env:
       OS: ${{ matrix.os }}
+      GOFLAGS: -tags=sqlite_fts5
     runs-on: ${{ matrix.os }}
     steps:
     - name: Install Go

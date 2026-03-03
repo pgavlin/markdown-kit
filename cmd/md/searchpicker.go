@@ -16,7 +16,7 @@ import (
 type searchMode int
 
 const (
-	searchModeKeyword  searchMode = iota
+	searchModeKeyword searchMode = iota
 	searchModeSemantic
 )
 
