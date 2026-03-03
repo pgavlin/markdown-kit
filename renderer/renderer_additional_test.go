@@ -796,7 +796,7 @@ func TestRendererOptions(t *testing.T) {
 	assert.Equal(t, 80, r.wordWrap, "word wrap should be 80")
 	assert.True(t, r.hyperlinks, "hyperlinks should be enabled")
 	assert.True(t, r.softBreak, "soft break should be enabled")
-	assert.True(t, r.padToWrap, "pad should be enabled")
+	assert.Equal(t, []int{80}, r.padToWrap, "pad should be set to wrap width")
 }
 
 // TestRendererOptionsTheme verifies that WithTheme correctly sets the theme.
@@ -815,7 +815,7 @@ func TestRendererOptionsDefaults(t *testing.T) {
 	assert.Equal(t, 0, r.wordWrap, "default word wrap should be 0 (disabled)")
 	assert.False(t, r.hyperlinks, "default hyperlinks should be false")
 	assert.False(t, r.softBreak, "default soft break should be false")
-	assert.False(t, r.padToWrap, "default pad should be false")
+	assert.Empty(t, r.padToWrap, "default pad should be empty")
 }
 
 // TestEmptyDocument verifies that rendering an empty document produces empty output.

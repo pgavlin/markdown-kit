@@ -180,7 +180,7 @@ type Renderer struct {
 	contentRoot   string
 	imageEncoder  ImageEncoder
 	softBreak     bool
-	padToWrap     bool
+	padToWrap     []int
 
 	listStack  []listState
 	tableStack []tableState
@@ -233,7 +233,22 @@ func WithWordWrap(width int) RendererOption {
 // disabled.
 func WithPad(enabled bool) RendererOption {
 	return func(r *Renderer) {
-		r.padToWrap = enabled
+		if enabled {
+			r.padToWrap = []int{r.wordWrap}
+		}
+	}
+}
+
+// PushPad enables line padding to the given width in the current rendering context.
+// A width of 0 disables padding.
+func (r *Renderer) PushPad(width int) {
+	r.padToWrap = append(r.padToWrap, width)
+}
+
+// PopPad restores the previous padding state.
+func (r *Renderer) PopPad() {
+	if len(r.padToWrap) > 0 {
+		r.padToWrap = r.padToWrap[:len(r.padToWrap)-1]
 	}
 }
 
@@ -466,12 +481,13 @@ func (r *Renderer) write(w io.Writer, buf []byte) (int, error) {
 		writtenWidth := r.measureText(buf[:n])
 
 		if err == nil && hasNewline && n == newline {
-			if r.padToWrap && r.wordWrap > 0 {
-				// pad out to the wrap width if necessary
-				remaining := r.wordWrap - (r.lineWidth + writtenWidth)
-				if remaining < 0 {
-					remaining = r.wordWrap - (-remaining % r.wordWrap)
-				}
+			padWidth := 0
+			if len(r.padToWrap) > 0 {
+				padWidth = r.padToWrap[len(r.padToWrap)-1]
+			}
+			if padWidth > 0 {
+				// pad out to the target width if necessary
+				remaining := padWidth - (r.lineWidth + writtenWidth)
 				if remaining > 0 {
 					remaining, err = w.Write(bytes.Repeat([]byte{' '}, remaining))
 				}
@@ -830,6 +846,7 @@ func (r *Renderer) RenderBlockquote(w util.BufWriter, source []byte, node ast.No
 // RenderCodeBlock renders an *ast.CodeBlock node to the given BufWriter.
 func (r *Renderer) RenderCodeBlock(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if !enter {
+		r.PopPad()
 		r.PopWordWrap()
 
 		if err := r.CloseBlock(w); err != nil {
@@ -844,6 +861,22 @@ func (r *Renderer) RenderCodeBlock(w util.BufWriter, source []byte, node ast.Nod
 
 	r.PushWordWrap(false)
 
+	// Measure the widest line to determine the code block padding width.
+	// Indented code blocks add 4 spaces of indent.
+	lines := node.Lines()
+	maxWidth := 0
+	for i := 0; i < lines.Len(); i++ {
+		line := lines.At(i)
+		v := line.Value(source)
+		if len(v) > 0 && v[len(v)-1] == '\n' {
+			v = v[:len(v)-1]
+		}
+		if w := ansi.StringWidth(string(v)); w > maxWidth {
+			maxWidth = w
+		}
+	}
+	r.PushPad(maxWidth + 4) // +4 for the indent
+
 	// Each line of a code block needs to be aligned at the same offset, and a code block must start with at least four
 	// spaces. To achieve this, we unconditionally add four spaces to the first line of the code block and indent the
 	// rest as necessary.
@@ -854,7 +887,7 @@ func (r *Renderer) RenderCodeBlock(w util.BufWriter, source []byte, node ast.Nod
 	r.PushIndent(4)
 	defer r.PopPrefix()
 
-	if err := r.writeCodeLines(w, "", source, node.Lines()); err != nil {
+	if err := r.writeCodeLines(w, "", source, lines); err != nil {
 		return ast.WalkStop, err
 	}
 
@@ -868,6 +901,7 @@ func (r *Renderer) RenderFencedCodeBlock(w util.BufWriter, source []byte, node a
 			return ast.WalkStop, err
 		}
 
+		r.PopPad()
 		r.PopWordWrap()
 
 		if err := r.CloseBlock(w); err != nil {
@@ -882,18 +916,39 @@ func (r *Renderer) RenderFencedCodeBlock(w util.BufWriter, source []byte, node a
 
 	r.PushWordWrap(false)
 
+	code := node.(*ast.FencedCodeBlock)
+	fence := code.Fence
+	language := code.Language(source)
+
+	// Measure the widest line to determine the code block padding width.
+	fenceLineWidth := ansi.StringWidth(string(fence)) + ansi.StringWidth(string(language))
+	closingFenceWidth := ansi.StringWidth(string(fence))
+	maxWidth := fenceLineWidth
+	if closingFenceWidth > maxWidth {
+		maxWidth = closingFenceWidth
+	}
+	lines := node.Lines()
+	for i := 0; i < lines.Len(); i++ {
+		line := lines.At(i)
+		v := line.Value(source)
+		// Trim trailing newline for width measurement.
+		if len(v) > 0 && v[len(v)-1] == '\n' {
+			v = v[:len(v)-1]
+		}
+		if w := ansi.StringWidth(string(v)); w > maxWidth {
+			maxWidth = w
+		}
+	}
+	r.PushPad(maxWidth)
+
 	if err := r.PushStyle(w, chroma.LiteralStringHeredoc); err != nil {
 		return ast.WalkStop, err
 	}
 
-	code := node.(*ast.FencedCodeBlock)
-
 	// Write the start of the fenced code block.
-	fence := code.Fence
 	if _, err := r.Write(w, fence); err != nil {
 		return ast.WalkStop, err
 	}
-	language := code.Language(source)
 	if _, err := r.Write(w, language); err != nil {
 		return ast.WalkStop, err
 	}
@@ -902,7 +957,7 @@ func (r *Renderer) RenderFencedCodeBlock(w util.BufWriter, source []byte, node a
 	}
 
 	// Write the contents of the fenced code block.
-	if err := r.writeCodeLines(w, string(language), source, node.Lines()); err != nil {
+	if err := r.writeCodeLines(w, string(language), source, lines); err != nil {
 		return ast.WalkStop, err
 	}
 
