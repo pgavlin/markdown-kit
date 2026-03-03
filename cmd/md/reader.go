@@ -483,7 +483,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.picker.input.SetValue("")
 				r.picker.filter()
 				return r, nil
-			case "tab":
+			case "tab", "shift+tab":
 				r.pickerURLMode = !r.pickerURLMode
 				if r.pickerURLMode {
 					r.pickerURLInput = textinput.New()
