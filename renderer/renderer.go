@@ -243,7 +243,9 @@ func WithPad(enabled bool) RendererOption {
 // PushPad enables line padding to the given width in the current rendering context.
 // A width of 0 disables padding.
 func (r *Renderer) PushPad(width int) {
-	r.padToWrap = append(r.padToWrap, width)
+	// Account for the current prefix width (list indentation, etc.) because
+	// r.lineWidth includes the prefix when beginLine writes it.
+	r.padToWrap = append(r.padToWrap, width+len(r.prefix))
 }
 
 // PopPad restores the previous padding state.
