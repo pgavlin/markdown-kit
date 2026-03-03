@@ -108,15 +108,20 @@ func FromStyleConfig(cfg ansi.StyleConfig) *Theme {
 		set(GenericInserted, primitiveToEntry(c.GenericInserted))
 		set(GenericStrong, primitiveToEntry(c.GenericStrong))
 		set(GenericSubheading, primitiveToEntry(c.GenericSubheading))
-		set(Background, primitiveToEntry(c.Background))
+		// Note: c.Background is intentionally NOT mapped to the Background
+		// token here. In glamour configs, Chroma.Background is the code
+		// block syntax-highlighting background. The Background token is
+		// inherited by ALL tokens via Get(), so placing the code block bg
+		// there would leak it into the entire document. Instead, we merge
+		// it into LiteralStringHeredoc (the code block style) below.
 	}
 
 	// Structural markdown fields (higher priority — overlay on chroma).
 
-	// Document background color.
-	if docBg := parseColor(cfg.Document.Color); docBg != nil {
+	// Document colors → Background token (inherited by all tokens).
+	if docColor := parseColor(cfg.Document.Color); docColor != nil {
 		bg := entries[Background]
-		bg.Colour = docBg
+		bg.Colour = docColor
 		entries[Background] = bg
 	}
 	if docBgColor := parseColor(cfg.Document.BackgroundColor); docBgColor != nil {
@@ -169,8 +174,14 @@ func FromStyleConfig(cfg ansi.StyleConfig) *Theme {
 	// Code (inline) → CodeSpan.
 	set(TokenType(CodeSpan), primitiveToEntry(cfg.Code.StylePrimitive))
 
-	// CodeBlock → LiteralStringHeredoc.
-	set(LiteralStringHeredoc, primitiveToEntry(cfg.CodeBlock.StylePrimitive))
+	// CodeBlock → LiteralStringHeredoc. Merge the Chroma.Background (code
+	// block syntax-highlighting background) into the code block style so it
+	// applies only inside code blocks, not the entire document.
+	codeBlockEntry := primitiveToEntry(cfg.CodeBlock.StylePrimitive)
+	if c := cfg.CodeBlock.Chroma; c != nil {
+		codeBlockEntry = overlay(codeBlockEntry, primitiveToEntry(c.Background))
+	}
+	set(LiteralStringHeredoc, codeBlockEntry)
 
 	// Table.
 	set(TokenType(Table), primitiveToEntry(cfg.Table.StylePrimitive))
@@ -281,7 +292,8 @@ func ChromaStyleFromConfig(name string, cfg ansi.StyleConfig) *chroma.Style {
 		set(chroma.GenericInserted, primitiveToChromaString(c.GenericInserted))
 		set(chroma.GenericStrong, primitiveToChromaString(c.GenericStrong))
 		set(chroma.GenericSubheading, primitiveToChromaString(c.GenericSubheading))
-		set(chroma.Background, primitiveToChromaString(c.Background))
+		// Note: c.Background is intentionally NOT mapped to chroma.Background.
+		// See comment in FromStyleConfig for rationale.
 	}
 
 	// Structural markdown fields — these overlay on top of chroma entries.
@@ -289,6 +301,11 @@ func ChromaStyleFromConfig(name string, cfg ansi.StyleConfig) *chroma.Style {
 	// Document text color → chroma.Generic (base text color for the document).
 	if c := colorToHex(cfg.Document.Color); c != "" {
 		entries[chroma.Generic] = c
+	}
+
+	// Document background → chroma.Background (inherited by all tokens).
+	if bg := colorToHex(cfg.Document.BackgroundColor); bg != "" {
+		entries[chroma.Background] = "bg:" + bg
 	}
 
 	// Headings.
@@ -313,8 +330,14 @@ func ChromaStyleFromConfig(name string, cfg ansi.StyleConfig) *chroma.Style {
 	// Code (inline) → CodeSpan.
 	set(CodeSpan, primitiveToChromaString(cfg.Code.StylePrimitive))
 
-	// Code block fence → LiteralStringHeredoc.
-	set(chroma.LiteralStringHeredoc, primitiveToChromaString(cfg.CodeBlock.StylePrimitive))
+	// Code block fence → LiteralStringHeredoc. Merge the Chroma.Background
+	// (code block syntax-highlighting background) so it applies only inside
+	// code blocks, not the entire document.
+	codeBlockPrim := cfg.CodeBlock.StylePrimitive
+	if cfg.CodeBlock.Chroma != nil {
+		codeBlockPrim = mergePrimitive(codeBlockPrim, cfg.CodeBlock.Chroma.Background)
+	}
+	set(chroma.LiteralStringHeredoc, primitiveToChromaString(codeBlockPrim))
 
 	// Table.
 	set(Table, primitiveToChromaString(cfg.Table.StylePrimitive))

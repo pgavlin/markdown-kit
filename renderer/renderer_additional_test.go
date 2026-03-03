@@ -910,11 +910,13 @@ func TestTableWrapping_StyledCellNoStyleLeak(t *testing.T) {
 }
 
 // TestTableWrapping_StyledCellStyleContinuity verifies that when cell content
-// wraps, continuation lines preserve the row background color for padding.
+// wraps with a theme that sets a table background, continuation lines preserve
+// the row background color for padding.
 func TestTableWrapping_StyledCellStyleContinuity(t *testing.T) {
 	input := "| Package | Description |\n|---------|-------------|\n| [`renderer`](https://pkg.go.dev/github.com/pgavlin/markdown-kit/renderer) | Terminal renderer with ANSI colorization, word wrapping, table rendering (Unicode box-drawing), image encoding (Kitty graphics protocol, ANSI), and document span tracking. |\n"
 
-	output, _ := renderMarkdownWithTables(t, input, WithWordWrap(183), WithTheme(styles.GlamourDark), WithHyperlinks(true), WithSoftBreak(true))
+	// Use the Pulumi theme which has an explicit table background color.
+	output, _ := renderMarkdownWithTables(t, input, WithWordWrap(183), WithTheme(styles.Pulumi), WithHyperlinks(true), WithSoftBreak(true))
 
 	lines := strings.Split(output, "\n")
 	// Find the data row continuation line (second line of the first data row).

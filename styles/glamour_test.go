@@ -122,6 +122,8 @@ func TestFromStyleConfigDark(t *testing.T) {
 	t.Run("code block fence", func(t *testing.T) {
 		entry := theme.entries[LiteralStringHeredoc]
 		require.NotNil(t, entry.Colour)
+		// Code block should have the Chroma.Background merged in.
+		require.NotNil(t, entry.Background, "code block should have background from Chroma.Background")
 	})
 
 	t.Run("chroma keyword", func(t *testing.T) {
@@ -130,9 +132,12 @@ func TestFromStyleConfigDark(t *testing.T) {
 		assert.Equal(t, lipgloss.Color("#00AAFF"), entry.Colour)
 	})
 
-	t.Run("chroma background", func(t *testing.T) {
+	t.Run("background token", func(t *testing.T) {
+		// glamour-dark has no Document.BackgroundColor, so the Background
+		// token should not have a background color (code block bg should
+		// NOT leak here).
 		entry := theme.entries[Background]
-		require.NotNil(t, entry.Background)
+		assert.Nil(t, entry.Background, "Background token should not inherit code block bg")
 	})
 }
 

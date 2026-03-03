@@ -910,6 +910,22 @@ func (m Model) View() string {
 	var buf strings.Builder
 
 	leftPad := strings.Repeat(" ", margin)
+	rightMargin := width - margin - ew
+	if rightMargin < 0 {
+		rightMargin = 0
+	}
+	rightMarginPad := strings.Repeat(" ", rightMargin)
+
+	// Compute theme background SGR sequence for the content area.
+	// Content lines carry their own background via ansiPrefix, but
+	// short lines need padding within the effective width to fill
+	// the content column with the theme background.
+	var bgSeq string
+	if m.theme != nil {
+		if bg := m.theme.Get(chroma.Background).Background; bg.IsSet() {
+			bgSeq = fmt.Sprintf("\033[48;2;%d;%d;%dm", bg.Red(), bg.Green(), bg.Blue())
+		}
+	}
 
 	for i, ln := range m.lines[lineOffset:lastLine] {
 		if i > 0 {
@@ -940,21 +956,30 @@ func (m Model) View() string {
 		// Left margin for centering (unstyled).
 		buf.WriteString(leftPad)
 
+		// Theme background for the content column.
+		buf.WriteString(bgSeq)
+
 		// Restore the ANSI SGR state expected at the start of this line,
 		// then write content. Each line is self-contained: the reset at
-		// the end ensures padding is unstyled, and emitting ansiPrefix
-		// here restores state (e.g. theme colors) even when scrolled.
+		// the end clears content styling, and emitting ansiPrefix here
+		// restores state (e.g. theme colors) even when scrolled.
 		buf.WriteString(ln.ansiPrefix)
 		buf.WriteString(content)
 
-		// Reset ANSI state so right padding is unstyled.
+		// Reset content styling, then restore theme background to pad
+		// the content area to the effective width.
 		buf.WriteString("\033[0m")
-
-		// Pad content to effective width, then add right margin.
-		rightPad := width - margin - lineWidth
-		if rightPad > 0 {
-			buf.WriteString(strings.Repeat(" ", rightPad))
+		buf.WriteString(bgSeq)
+		contentPad := ew - lineWidth
+		if contentPad > 0 {
+			buf.WriteString(strings.Repeat(" ", contentPad))
 		}
+
+		// Clear background and add right margin (unstyled).
+		if bgSeq != "" {
+			buf.WriteString("\033[0m")
+		}
+		buf.WriteString(rightMarginPad)
 	}
 
 	// Pad remaining empty lines.
@@ -962,7 +987,13 @@ func (m Model) View() string {
 		if i > 0 || lastLine > lineOffset {
 			buf.WriteByte('\n')
 		}
-		buf.WriteString(strings.Repeat(" ", width))
+		buf.WriteString(leftPad)
+		buf.WriteString(bgSeq)
+		buf.WriteString(strings.Repeat(" ", ew))
+		if bgSeq != "" {
+			buf.WriteString("\033[0m")
+		}
+		buf.WriteString(rightMarginPad)
 	}
 
 	// Draw gutter.
