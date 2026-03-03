@@ -390,6 +390,37 @@ func (r *Renderer) beginLine(w io.Writer) error {
 	return nil
 }
 
+const defaultTabWidth = 8
+
+// expandTabs replaces tab characters with spaces, aligning to tab stops at
+// every tabWidth columns. This is necessary because ansi.StringWidth reports
+// tabs as zero-width, but terminals render them as advancing to the next tab
+// stop.
+func expandTabs(s string, tabWidth int) string {
+	if !strings.Contains(s, "\t") {
+		return s
+	}
+	var result strings.Builder
+	result.Grow(len(s) + 16)
+	col := 0
+	for _, ch := range s {
+		if ch == '\t' {
+			spaces := tabWidth - (col % tabWidth)
+			for i := 0; i < spaces; i++ {
+				result.WriteByte(' ')
+			}
+			col += spaces
+		} else if ch == '\n' {
+			result.WriteRune(ch)
+			col = 0
+		} else {
+			result.WriteRune(ch)
+			col++
+		}
+	}
+	return result.String()
+}
+
 func (r *Renderer) writeLines(w util.BufWriter, source []byte, lines *text.Segments) error {
 	for i := 0; i < lines.Len(); i++ {
 		line := lines.At(i)
@@ -401,17 +432,20 @@ func (r *Renderer) writeLines(w util.BufWriter, source []byte, lines *text.Segme
 }
 
 func (r *Renderer) writeCodeLines(w util.BufWriter, language string, source []byte, lines *text.Segments) error {
-	if r.theme == nil {
-		return r.writeLines(w, source, lines)
-	}
-
 	var buf strings.Builder
 	for i := 0; i < lines.Len(); i++ {
 		line := lines.At(i)
 		buf.Write(line.Value(source))
 	}
 
-	return r.writeCode(w, language, buf.String())
+	code := expandTabs(buf.String(), defaultTabWidth)
+
+	if r.theme == nil {
+		_, err := r.WriteString(w, code)
+		return err
+	}
+
+	return r.writeCode(w, language, code)
 }
 
 func (r *Renderer) writeCode(w util.BufWriter, language, code string) error {
@@ -901,7 +935,7 @@ func (r *Renderer) RenderCodeBlock(w util.BufWriter, source []byte, node ast.Nod
 		if len(v) > 0 && v[len(v)-1] == '\n' {
 			v = v[:len(v)-1]
 		}
-		if w := ansi.StringWidth(string(v)); w > maxWidth {
+		if w := ansi.StringWidth(expandTabs(string(v), defaultTabWidth)); w > maxWidth {
 			maxWidth = w
 		}
 	}
@@ -965,7 +999,7 @@ func (r *Renderer) RenderFencedCodeBlock(w util.BufWriter, source []byte, node a
 		if len(v) > 0 && v[len(v)-1] == '\n' {
 			v = v[:len(v)-1]
 		}
-		if w := ansi.StringWidth(string(v)); w > maxWidth {
+		if w := ansi.StringWidth(expandTabs(string(v), defaultTabWidth)); w > maxWidth {
 			maxWidth = w
 		}
 	}

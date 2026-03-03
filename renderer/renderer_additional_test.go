@@ -1101,3 +1101,64 @@ func assertNoUnderlineLeak(t *testing.T, output string) {
 		}
 	}
 }
+
+// TestExpandTabs verifies the expandTabs helper.
+func TestExpandTabs(t *testing.T) {
+	cases := []struct {
+		name     string
+		input    string
+		tabWidth int
+		expected string
+	}{
+		{"no tabs", "hello", 8, "hello"},
+		{"tab at start", "\thello", 8, "        hello"},
+		{"tab at col 4", "1234\thello", 8, "1234    hello"},
+		{"two tabs", "\t\thello", 8, "                hello"},
+		{"tab width 4", "\thello", 4, "    hello"},
+		{"mixed", "a\tb\tc", 8, "a       b       c"},
+		{"newline resets col", "a\tb\na\tb", 8, "a       b\na       b"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, expandTabs(tc.input, tc.tabWidth))
+		})
+	}
+}
+
+// TestFencedCodeBlockTabPadding verifies that fenced code blocks with tab characters
+// have consistent line widths for background padding.
+func TestFencedCodeBlockTabPadding(t *testing.T) {
+	input := "```go\ntype Foo struct {\n\tBar string\n\tBaz int\n}\n```\n"
+
+	output, _ := renderMarkdown(t, input, WithPad(true))
+
+	// All non-empty lines within the code block should have the same width.
+	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+	require.True(t, len(lines) >= 3, "should have code block lines")
+
+	var widths []int
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		widths = append(widths, ansi.StringWidth(line))
+	}
+
+	// All lines should have equal width (padded to the same maxWidth).
+	for i, w := range widths {
+		assert.Equal(t, widths[0], w, "line %d width %d should match first line width %d", i, w, widths[0])
+	}
+}
+
+// TestFencedCodeBlockTabsExpandedToSpaces verifies that tab characters in code
+// blocks are expanded to spaces in the rendered output.
+func TestFencedCodeBlockTabsExpandedToSpaces(t *testing.T) {
+	input := "```\n\thello\n```\n"
+
+	output, _ := renderMarkdown(t, input)
+
+	// The rendered output should not contain literal tab characters.
+	assert.False(t, strings.Contains(output, "\t"), "rendered code block should not contain literal tabs")
+	// The tab should be expanded to spaces.
+	assert.True(t, strings.Contains(output, "        hello"), "tab should be expanded to 8 spaces")
+}
