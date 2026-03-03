@@ -39,13 +39,13 @@ type searchPicker struct {
 
 // Style constants for the search picker.
 var (
-	spCursorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
-	spSelectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
+	spCursorStyle   = lipgloss.NewStyle().Foreground(colorAccent)
+	spSelectedStyle = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
 	spNameStyle     = lipgloss.NewStyle()
-	spPathStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	spEmptyStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	spModeStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("69")).Bold(true)
-	spDateStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	spPathStyle     = lipgloss.NewStyle().Foreground(colorMuted)
+	spEmptyStyle    = lipgloss.NewStyle().Foreground(colorMuted)
+	spModeStyle     = lipgloss.NewStyle().Bold(true).Foreground(colorTabActiveFg).Background(colorTabActiveBg)
+	spDateStyle     = lipgloss.NewStyle().Foreground(colorMuted)
 )
 
 func newSearchPicker(index *docsearch.Index, height, width int) searchPicker {

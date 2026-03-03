@@ -73,16 +73,16 @@ func (parentFileInfo) Sys() any           { return nil }
 
 // Style constants matching filepicker's defaults.
 var (
-	fpCursorStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
-	fpSelectedStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
-	fpDirectoryStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("99"))
+	fpCursorStyle      = lipgloss.NewStyle().Foreground(colorAccent)
+	fpSelectedStyle    = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
+	fpDirectoryStyle   = lipgloss.NewStyle().Foreground(colorDirectory)
 	fpFileStyle        = lipgloss.NewStyle()
-	fpDisabledStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("243"))
-	fpDisabledCursor   = lipgloss.NewStyle().Foreground(lipgloss.Color("247"))
-	fpDisabledSelected = lipgloss.NewStyle().Foreground(lipgloss.Color("247"))
-	fpPermissionStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-	fpFileSizeStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Width(7).Align(lipgloss.Right)
-	fpEmptyStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	fpDisabledStyle    = lipgloss.NewStyle().Foreground(colorDisabled)
+	fpDisabledCursor   = lipgloss.NewStyle().Foreground(colorDisabledAlt)
+	fpDisabledSelected = lipgloss.NewStyle().Foreground(colorDisabledAlt)
+	fpPermissionStyle  = lipgloss.NewStyle().Foreground(colorPermission)
+	fpFileSizeStyle    = lipgloss.NewStyle().Foreground(colorMuted).Width(7).Align(lipgloss.Right)
+	fpEmptyStyle       = lipgloss.NewStyle().Foreground(colorMuted)
 )
 
 func newFuzzyPicker(dir string, allowedTypes []string, fsys fileSystem) fuzzyPicker {

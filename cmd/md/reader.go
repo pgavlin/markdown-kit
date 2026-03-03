@@ -412,7 +412,7 @@ func (r *markdownReader) renderTabBar() string {
 		return ""
 	}
 
-	activeStyle := lipgloss.NewStyle().Reverse(true).Padding(0, 1)
+	activeStyle := lipgloss.NewStyle().Bold(true).Foreground(colorTabActiveFg).Background(colorTabActiveBg).Padding(0, 1)
 	inactiveStyle := lipgloss.NewStyle().Faint(true).Padding(0, 1)
 
 	var parts []string
@@ -1078,9 +1078,9 @@ func (r markdownReader) overlayDialog(base, _, content string) string {
 
 // renderOpenModeHeader renders the File/URL mode indicator for the open picker.
 func renderOpenModeHeader(fileActive bool) string {
-	active := lipgloss.NewStyle().Bold(true)
-	inactive := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	active := lipgloss.NewStyle().Bold(true).Foreground(colorTabActiveFg).Background(colorTabActiveBg)
+	inactive := lipgloss.NewStyle().Foreground(colorMuted)
+	hint := lipgloss.NewStyle().Foreground(colorMuted)
 	if fileActive {
 		return active.Render("File") + "  " + inactive.Render("URL") + hint.Render("  (tab to switch)")
 	}
@@ -1103,7 +1103,7 @@ func (r markdownReader) renderFixedOverlay(base, content string, fixedW, maxH in
 
 	dialogStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240")).
+		BorderForeground(colorMuted).
 		Padding(0, 1).
 		Width(fixedW)
 
@@ -1134,7 +1134,7 @@ func (r markdownReader) renderOverlay(base, content string, maxW, maxH int) stri
 
 	dialogStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240")).
+		BorderForeground(colorMuted).
 		Padding(0, 1).
 		Width(dialogWidth)
 

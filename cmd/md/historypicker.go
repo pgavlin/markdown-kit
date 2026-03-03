@@ -33,11 +33,11 @@ type historyPicker struct {
 
 // Style constants for the history picker.
 var (
-	hpCursorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
-	hpSelectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
+	hpCursorStyle   = lipgloss.NewStyle().Foreground(colorAccent)
+	hpSelectedStyle = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
 	hpNameStyle     = lipgloss.NewStyle()
-	hpSourceStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	hpEmptyStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	hpSourceStyle   = lipgloss.NewStyle().Foreground(colorMuted)
+	hpEmptyStyle    = lipgloss.NewStyle().Foreground(colorMuted)
 )
 
 // newHistoryPicker creates a history picker from the tab's page stack and current page.
