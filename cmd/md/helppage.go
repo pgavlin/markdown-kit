@@ -57,7 +57,7 @@ func renderHelpPage(km readerKeyMap) string {
 		"PrevMatch":     fmtKey(km.PrevMatch),
 		"ClearSearch":   fmtKey(km.ClearSearch),
 		// Reader keys
-		"ToggleRaw":       fmtKey(km.ToggleRaw),
+		"ToggleSource":       fmtKey(km.ToggleSource),
 		"OpenFile":        fmtKey(km.OpenFile),
 		"OpenBrowser":     fmtKey(km.OpenBrowser),
 		"OpenFileNewTab":  fmtKey(km.OpenFileNewTab),

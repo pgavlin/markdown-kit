@@ -256,7 +256,8 @@ func (c config) applyKeys(km *readerKeyMap) {
 		"prev_match":      &km.PrevMatch,
 		"clear_search":    &km.ClearSearch,
 		// Reader keys
-		"toggle_raw":        &km.ToggleRaw,
+		"toggle_source":     &km.ToggleSource,
+		"toggle_raw":        &km.ToggleSource, // backwards compat
 		"open_url":          &km.OpenURL,
 		"open_browser":      &km.OpenBrowser,
 		"open_file_new_tab": &km.OpenFileNewTab,

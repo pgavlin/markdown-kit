@@ -188,10 +188,10 @@ your index. Requires an embedder to be configured.
 
 | Key | Action |
 |-----|--------|
-| {{.ToggleRaw}} | Toggle raw Markdown source view |
+| {{.ToggleSource}} | Toggle source view |
 
-Press {{.ToggleRaw}} to see the raw Markdown source of the current document,
-displayed inside a fenced code block. Press {{.ToggleRaw}} again to return
+Press {{.ToggleSource}} to see the Markdown source of the current document,
+displayed inside a fenced code block. Press {{.ToggleSource}} again to return
 to the rendered view.
 
 ## Copy
@@ -355,7 +355,7 @@ Available binding names: `up`, `down`, `page_up`, `page_down`, `goto_top`,
 `next_code_block`, `prev_code_block`, `next_heading`, `prev_heading`,
 `decrease_width`, `increase_width`, `follow_link`, `go_back`,
 `copy_selection`, `search`, `next_match`, `prev_match`, `clear_search`,
-`toggle_raw`, `open_url`, `open_browser`, `open_file_new_tab`, `next_tab`,
+`toggle_source`, `open_url`, `open_browser`, `open_file_new_tab`, `next_tab`,
 `prev_tab`, `close_tab`, `close_all_tabs`, `new_tab`, `reload`, `history`,
 `search_documents`, `find_similar`, `user_guide`, `bug_report`, `help`, `quit`.
 

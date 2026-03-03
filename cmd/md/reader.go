@@ -27,7 +27,7 @@ import (
 type readerKeyMap struct {
 	mdk.KeyMap // embed the view KeyMap
 
-	ToggleRaw             key.Binding
+	ToggleSource             key.Binding
 	ToggleOriginalHTML    key.Binding
 	ToggleReadabilityHTML key.Binding
 	OpenFile              key.Binding
@@ -57,7 +57,7 @@ func defaultReaderKeyMap() readerKeyMap {
 	km.GoBack.SetEnabled(true)
 	return readerKeyMap{
 		KeyMap: km,
-		ToggleRaw: key.NewBinding(
+		ToggleSource: key.NewBinding(
 			key.WithKeys("ctrl+u"),
 			key.WithHelp("ctrl+u", "view source"),
 		),
@@ -134,7 +134,7 @@ func defaultReaderKeyMap() readerKeyMap {
 
 // ShortHelp returns a short list of key bindings for the compact help view.
 func (km readerKeyMap) ShortHelp() []key.Binding {
-	return append(km.KeyMap.ShortHelp(), km.OpenFile, km.OpenURL, km.ToggleRaw, km.Help, km.Quit)
+	return append(km.KeyMap.ShortHelp(), km.OpenFile, km.OpenURL, km.ToggleSource, km.Help, km.Quit)
 }
 
 // FullHelp returns the full set of key bindings for the expanded help view.
@@ -149,7 +149,7 @@ func (km readerKeyMap) FullHelp() [][]key.Binding {
 		// Actions
 		{km.FollowLink, km.GoBack, km.History, km.SearchDocuments, km.FindSimilar, km.Reload, km.CopySelection, km.OpenFile, km.OpenURL, km.OpenBrowser, km.DecreaseWidth, km.IncreaseWidth},
 		// Search & View
-		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.ToggleRaw},
+		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.ToggleSource},
 		// Tabs & General
 		{km.NextTab, km.PrevTab, km.CloseTab, km.CloseAllTabs, km.NewTab, km.OpenFileNewTab, km.UserGuide, km.BugReport, km.Help, km.Quit},
 	}
@@ -184,9 +184,9 @@ type tab struct {
 	view            mdk.Model
 	currentSource   string
 	pageStack       []page
-	showRaw         bool
-	rawOrigName     string
-	rawOrigMarkdown string
+	showSource         bool
+	sourceOrigName     string
+	sourceOrigMarkdown string
 }
 
 // displayName returns the tab's display name: the document heading if available,
@@ -623,7 +623,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if idx != -1 {
 				// Navigate to the selected stack entry.
 				at := r.active()
-				at.showRaw = false
+				at.showSource = false
 				prev := at.pageStack[idx]
 				at.pageStack = at.pageStack[:idx]
 				at.view.SetText(prev.name, prev.markdown)
@@ -687,7 +687,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, r.handleLinkNavigation(msg.URL, false)
 
 	case mdk.GoBackMsg:
-		r.active().showRaw = false
+		r.active().showSource = false
 		r.popPage()
 		return r, nil
 
@@ -696,7 +696,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.openNewTab(msg.name, msg.markdown, msg.source)
 		} else {
 			at := r.active()
-			at.showRaw = false
+			at.showSource = false
 			// Don't push to the stack on reload or when the page is empty.
 			if !msg.reload && (at.view.GetName() != "" || len(at.view.GetMarkdown()) > 0) {
 				r.pushCurrentPage()
@@ -805,13 +805,13 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return r, tea.Quit
 		case "ctrl+u":
-			if at.showRaw {
-				at.view.SetText(at.rawOrigName, at.rawOrigMarkdown)
-				at.showRaw = false
+			if at.showSource {
+				at.view.SetText(at.sourceOrigName, at.sourceOrigMarkdown)
+				at.showSource = false
 			} else {
-				r.saveRawState()
-				at.view.SetText(at.rawOrigName, fenceRaw(at.rawOrigMarkdown))
-				at.showRaw = true
+				r.saveSourceState()
+				at.view.SetText(at.sourceOrigName, fenceSource(at.sourceOrigMarkdown))
+				at.showSource = true
 			}
 			return r, nil
 		case "ctrl+o":
@@ -1305,7 +1305,7 @@ type bugReportData struct {
 	termEnv        string
 	colorTerm      string
 	themeName      string
-	showRaw        bool
+	showSource        bool
 	tabCount       int
 	activeTab      int
 	goVersion      string
@@ -1334,7 +1334,7 @@ func (r *markdownReader) captureBugReport() {
 		termEnv:        os.Getenv("TERM"),
 		colorTerm:      os.Getenv("COLORTERM"),
 		themeName:      r.theme.Name,
-		showRaw:        at.showRaw,
+		showSource:        at.showSource,
 		tabCount:       len(r.tabs),
 		activeTab:      r.activeTab,
 		goVersion:      runtime.Version(),
@@ -1361,7 +1361,7 @@ func (d bugReportData) formatBugReport(description string) string {
 	fmt.Fprintf(&b, "- Name: %s\n", d.documentName)
 	fmt.Fprintf(&b, "- Source: %s\n", d.source)
 	fmt.Fprintf(&b, "- Tab: %d/%d\n", d.activeTab+1, d.tabCount)
-	fmt.Fprintf(&b, "- Raw mode: %v\n", d.showRaw)
+	fmt.Fprintf(&b, "- Source mode: %v\n", d.showSource)
 	b.WriteString("\n")
 
 	b.WriteString("### Viewport\n")
@@ -1384,11 +1384,11 @@ func (d bugReportData) formatBugReport(description string) string {
 	return b.String()
 }
 
-// saveRawState saves the current view state for toggling back from a raw view.
-func (r *markdownReader) saveRawState() {
+// saveSourceState saves the current view state for toggling back from a raw view.
+func (r *markdownReader) saveSourceState() {
 	at := r.active()
-	at.rawOrigName = at.view.GetName()
-	at.rawOrigMarkdown = string(at.view.GetMarkdown())
+	at.sourceOrigName = at.view.GetName()
+	at.sourceOrigMarkdown = string(at.view.GetMarkdown())
 }
 
 // fenceHTML wraps HTML in a fenced code block with html syntax highlighting.
@@ -1409,10 +1409,10 @@ func fenceHTML(html string) string {
 	return fence + "html\n" + html + "\n" + fence
 }
 
-// fenceRaw wraps markdown in a fenced code block for raw display.
+// fenceSource wraps markdown in a fenced code block for raw display.
 // It scans the content for the longest run of consecutive backticks
 // and uses one more to avoid conflicts.
-func fenceRaw(markdown string) string {
+func fenceSource(markdown string) string {
 	maxRun := 0
 	run := 0
 	for _, c := range markdown {
@@ -1426,5 +1426,5 @@ func fenceRaw(markdown string) string {
 		}
 	}
 	fence := strings.Repeat("`", max(maxRun+1, 3))
-	return fence + "\n" + markdown + "\n" + fence
+	return fence + "markdown\n" + markdown + "\n" + fence
 }

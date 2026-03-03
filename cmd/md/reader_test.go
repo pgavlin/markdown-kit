@@ -93,11 +93,11 @@ func TestFenceHTML(t *testing.T) {
 	})
 }
 
-func TestFenceRaw(t *testing.T) {
+func TestFenceSource(t *testing.T) {
 	t.Run("simple", func(t *testing.T) {
-		got := fenceRaw("# Hello")
-		if !strings.HasPrefix(got, "```\n") {
-			t.Errorf("expected to start with ```\\n, got prefix %q", got[:10])
+		got := fenceSource("# Hello")
+		if !strings.HasPrefix(got, "```markdown\n") {
+			t.Errorf("expected to start with ```markdown\\n, got prefix %q", got[:20])
 		}
 		if !strings.Contains(got, "# Hello") {
 			t.Error("expected markdown content to be preserved")
@@ -106,7 +106,7 @@ func TestFenceRaw(t *testing.T) {
 
 	t.Run("with_backticks", func(t *testing.T) {
 		md := "```go\nfmt.Println()\n```"
-		got := fenceRaw(md)
+		got := fenceSource(md)
 		lines := strings.Split(got, "\n")
 		fence := lines[0]
 		if len(fence) <= 3 {
@@ -338,22 +338,22 @@ func TestUpdate_LoadingSwallowsKeys(t *testing.T) {
 
 func TestUpdate_ToggleRaw(t *testing.T) {
 	r := testReader("test", "# Hello", "")
-	if r.active().showRaw {
-		t.Fatal("expected showRaw=false initially")
+	if r.active().showSource {
+		t.Fatal("expected showSource=false initially")
 	}
 
 	// Toggle on.
 	m, _ := r.Update(keyMsg("ctrl+u"))
 	reader := m.(markdownReader)
-	if !reader.active().showRaw {
-		t.Error("expected showRaw=true after ctrl+u")
+	if !reader.active().showSource {
+		t.Error("expected showSource=true after ctrl+u")
 	}
 
 	// Toggle off.
 	m, _ = reader.Update(keyMsg("ctrl+u"))
 	reader = m.(markdownReader)
-	if reader.active().showRaw {
-		t.Error("expected showRaw=false after second ctrl+r")
+	if reader.active().showSource {
+		t.Error("expected showSource=false after second ctrl+r")
 	}
 }
 
@@ -374,8 +374,8 @@ func TestUpdate_PageLoadedMsg(t *testing.T) {
 	if reader.loading {
 		t.Error("expected loading=false")
 	}
-	if reader.active().showRaw {
-		t.Error("expected showRaw=false")
+	if reader.active().showSource {
+		t.Error("expected showSource=false")
 	}
 	// Page stack should have the initial page.
 	if len(reader.active().pageStack) != 1 {
@@ -388,13 +388,13 @@ func TestUpdate_PageLoadedMsg(t *testing.T) {
 
 func TestUpdate_PageLoadedMsg_ClearsRawState(t *testing.T) {
 	r := testReader("initial", "# Initial", "")
-	r.active().showRaw = true
+	r.active().showSource = true
 
 	msg := pageLoadedMsg{name: "new", markdown: "# New", source: "new.md"}
 	m, _ := r.Update(msg)
 	reader := m.(markdownReader)
-	if reader.active().showRaw {
-		t.Error("expected showRaw=false after page load")
+	if reader.active().showSource {
+		t.Error("expected showSource=false after page load")
 	}
 }
 
@@ -423,7 +423,7 @@ func TestUpdate_PageLoadErrorMsg(t *testing.T) {
 
 func TestUpdate_GoBackMsg(t *testing.T) {
 	r := testReader("initial", "# Initial", "/doc.md")
-	r.active().showRaw = true
+	r.active().showSource = true
 
 	// Push a page via pageLoadedMsg.
 	m, _ := r.Update(pageLoadedMsg{name: "second", markdown: "# Second", source: "/second.md"})
@@ -436,8 +436,8 @@ func TestUpdate_GoBackMsg(t *testing.T) {
 	if reader.active().currentSource != "/doc.md" {
 		t.Errorf("currentSource = %q, want %q", reader.active().currentSource, "/doc.md")
 	}
-	if reader.active().showRaw {
-		t.Error("expected showRaw=false after go back")
+	if reader.active().showSource {
+		t.Error("expected showSource=false after go back")
 	}
 	if len(reader.active().pageStack) != 0 {
 		t.Errorf("pageStack length = %d, want 0", len(reader.active().pageStack))
