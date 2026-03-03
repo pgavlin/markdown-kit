@@ -361,6 +361,9 @@ type Model struct {
 	// If true, render a gutter with document name and position.
 	showGutter bool
 
+	// Transient status message shown in gutter instead of name/breadcrumbs.
+	statusMessage string
+
 	// The desired content width. 0 means use full viewport width.
 	contentWidth int
 
@@ -457,6 +460,16 @@ func (m *Model) SetContentWidth(width int) {
 // SetGutter sets whether to show the gutter with document name and position.
 func (m *Model) SetGutter(showGutter bool) {
 	m.showGutter = showGutter
+}
+
+// SetStatusMessage sets a transient status message to display in the gutter.
+func (m *Model) SetStatusMessage(msg string) {
+	m.statusMessage = msg
+}
+
+// ClearStatusMessage clears the transient gutter status message.
+func (m *Model) ClearStatusMessage() {
+	m.statusMessage = ""
 }
 
 // SetSize sets the viewport dimensions.
@@ -1113,79 +1126,96 @@ func (m *Model) renderGutter(width, lineOffset, lastLine int) string {
 	pctWidth := len(pct)
 
 	nameWidth := width - pctWidth
-	name := m.name
-	nameVisWidth := ansi.StringWidth(name)
+	var name string
+	var nameVisWidth int
 
-	if nameVisWidth > nameWidth {
-		if nameWidth > 3 {
-			name = ansiTruncate(name, nameWidth-3) + "..."
-		} else {
-			name = ""
-		}
+	if m.statusMessage != "" {
+		// Show transient status message instead of normal gutter content.
+		name = m.statusMessage
 		nameVisWidth = ansi.StringWidth(name)
-	}
-
-	// Append heading breadcrumbs.
-	crumbs := m.headingBreadcrumbs(lineOffset)
-	bcAvail := nameWidth - nameVisWidth - 3
-	if bcAvail > 0 && len(crumbs) > 0 {
-		totalCrumbs := len(crumbs)
-		for len(crumbs) > 0 && ansi.StringWidth(strings.Join(crumbs, " > ")) > bcAvail {
-			crumbs = crumbs[1:]
+		if nameVisWidth > nameWidth {
+			if nameWidth > 3 {
+				name = ansiTruncate(name, nameWidth-3) + "..."
+			} else {
+				name = ""
+			}
+			nameVisWidth = ansi.StringWidth(name)
 		}
-		// If crumbs were dropped but the remainder still doesn't fit with
-		// an ellipsis prefix, keep dropping until it does.
-		if len(crumbs) > 0 && len(crumbs) < totalCrumbs {
-			for len(crumbs) > 0 && ansi.StringWidth("... > "+strings.Join(crumbs, " > ")) > bcAvail {
+	} else {
+		name = m.name
+		nameVisWidth = ansi.StringWidth(name)
+
+		if nameVisWidth > nameWidth {
+			if nameWidth > 3 {
+				name = ansiTruncate(name, nameWidth-3) + "..."
+			} else {
+				name = ""
+			}
+			nameVisWidth = ansi.StringWidth(name)
+		}
+
+		// Append heading breadcrumbs.
+		crumbs := m.headingBreadcrumbs(lineOffset)
+		bcAvail := nameWidth - nameVisWidth - 3
+		if bcAvail > 0 && len(crumbs) > 0 {
+			totalCrumbs := len(crumbs)
+			for len(crumbs) > 0 && ansi.StringWidth(strings.Join(crumbs, " > ")) > bcAvail {
 				crumbs = crumbs[1:]
 			}
-		}
-		if len(crumbs) > 0 {
-			breadcrumb := strings.Join(crumbs, " > ")
-			if len(crumbs) < totalCrumbs {
-				breadcrumb = "... > " + breadcrumb
+			// If crumbs were dropped but the remainder still doesn't fit with
+			// an ellipsis prefix, keep dropping until it does.
+			if len(crumbs) > 0 && len(crumbs) < totalCrumbs {
+				for len(crumbs) > 0 && ansi.StringWidth("... > "+strings.Join(crumbs, " > ")) > bcAvail {
+					crumbs = crumbs[1:]
+				}
 			}
-			bcWidth := ansi.StringWidth(breadcrumb)
-			name = name + " | " + breadcrumb
-			nameVisWidth += 3 + bcWidth
+			if len(crumbs) > 0 {
+				breadcrumb := strings.Join(crumbs, " > ")
+				if len(crumbs) < totalCrumbs {
+					breadcrumb = "... > " + breadcrumb
+				}
+				bcWidth := ansi.StringWidth(breadcrumb)
+				name = name + " | " + breadcrumb
+				nameVisWidth += 3 + bcWidth
+			}
 		}
-	}
 
-	// Append link target when a link is selected.
-	if m.selection != nil {
-		var linkTarget string
-		switch node := m.selection.Node.(type) {
-		case *ast.Link:
-			linkTarget = string(node.Destination)
-		case *ast.AutoLink:
-			linkTarget = string(node.URL(m.markdown))
-		}
-		if linkTarget != "" {
-			ltAvail := nameWidth - nameVisWidth - 3
-			if ltAvail > 0 {
-				ltWidth := ansi.StringWidth(linkTarget)
-				if ltWidth > ltAvail {
-					if ltAvail > 3 {
-						linkTarget = ansiTruncate(linkTarget, ltAvail-3) + "..."
-					} else {
-						linkTarget = ""
+		// Append link target when a link is selected.
+		if m.selection != nil {
+			var linkTarget string
+			switch node := m.selection.Node.(type) {
+			case *ast.Link:
+				linkTarget = string(node.Destination)
+			case *ast.AutoLink:
+				linkTarget = string(node.URL(m.markdown))
+			}
+			if linkTarget != "" {
+				ltAvail := nameWidth - nameVisWidth - 3
+				if ltAvail > 0 {
+					ltWidth := ansi.StringWidth(linkTarget)
+					if ltWidth > ltAvail {
+						if ltAvail > 3 {
+							linkTarget = ansiTruncate(linkTarget, ltAvail-3) + "..."
+						} else {
+							linkTarget = ""
+						}
+					}
+					if linkTarget != "" {
+						name = name + " | " + linkTarget
+						nameVisWidth += 3 + ansi.StringWidth(linkTarget)
 					}
 				}
-				if linkTarget != "" {
-					name = name + " | " + linkTarget
-					nameVisWidth += 3 + ansi.StringWidth(linkTarget)
-				}
 			}
 		}
-	}
 
-	// Append search match info when search is confirmed with results.
-	if searchInfo := m.searchGutterInfo(); searchInfo != "" {
-		siAvail := nameWidth - nameVisWidth - 1
-		siWidth := ansi.StringWidth(searchInfo)
-		if siWidth <= siAvail {
-			name = name + " " + searchInfo
-			nameVisWidth += 1 + siWidth
+		// Append search match info when search is confirmed with results.
+		if searchInfo := m.searchGutterInfo(); searchInfo != "" {
+			siAvail := nameWidth - nameVisWidth - 1
+			siWidth := ansi.StringWidth(searchInfo)
+			if siWidth <= siAvail {
+				name = name + " " + searchInfo
+				nameVisWidth += 1 + siWidth
+			}
 		}
 	}
 

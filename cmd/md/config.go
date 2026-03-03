@@ -272,6 +272,7 @@ func (c config) applyKeys(km *readerKeyMap) {
 		"find_similar":      &km.FindSimilar,
 		"user_guide":        &km.UserGuide,
 		"bug_report":        &km.BugReport,
+		"export_gist":       &km.ExportGist,
 		"help":              &km.Help,
 		"quit":              &km.Quit,
 	}

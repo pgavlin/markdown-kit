@@ -204,6 +204,16 @@ When a code block is selected (navigate to one using {{.NextCodeBlock}} /
 {{.PrevCodeBlock}}), press {{.CopySelection}} to copy its contents to your
 system clipboard.
 
+## Export
+
+| Key | Action |
+|-----|--------|
+| {{.ExportGist}} | Export as secret GitHub Gist |
+
+Pressing {{.ExportGist}} exports the current document's raw Markdown as a
+secret GitHub Gist using the `gh` CLI. The gist URL is copied to your
+clipboard automatically. Requires `gh` to be installed and authenticated.
+
 ## Reload
 
 | Key | Action |
@@ -357,7 +367,8 @@ Available binding names: `up`, `down`, `page_up`, `page_down`, `goto_top`,
 `copy_selection`, `search`, `next_match`, `prev_match`, `clear_search`,
 `toggle_source`, `open_url`, `open_browser`, `open_file_new_tab`, `next_tab`,
 `prev_tab`, `close_tab`, `close_all_tabs`, `new_tab`, `reload`, `history`,
-`search_documents`, `find_similar`, `user_guide`, `bug_report`, `help`, `quit`.
+`search_documents`, `find_similar`, `user_guide`, `bug_report`, `export_gist`,
+`help`, `quit`.
 
 ## Subcommands
 

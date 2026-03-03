@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
@@ -45,6 +47,7 @@ type readerKeyMap struct {
 	FindSimilar           key.Binding
 	UserGuide             key.Binding
 	BugReport             key.Binding
+	ExportGist            key.Binding
 	Help                  key.Binding
 	Quit                  key.Binding
 }
@@ -121,6 +124,10 @@ func defaultReaderKeyMap() readerKeyMap {
 			key.WithKeys("ctrl+b"),
 			key.WithHelp("ctrl+b", "bug report"),
 		),
+		ExportGist: key.NewBinding(
+			key.WithKeys("ctrl+g"),
+			key.WithHelp("ctrl+g", "export gist"),
+		),
 		Help: key.NewBinding(
 			key.WithKeys("?"),
 			key.WithHelp("?", "toggle help"),
@@ -151,7 +158,7 @@ func (km readerKeyMap) FullHelp() [][]key.Binding {
 		// Search & View
 		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.ToggleSource},
 		// Tabs & General
-		{km.NextTab, km.PrevTab, km.CloseTab, km.CloseAllTabs, km.NewTab, km.OpenFileNewTab, km.UserGuide, km.BugReport, km.Help, km.Quit},
+		{km.NextTab, km.PrevTab, km.CloseTab, km.CloseAllTabs, km.NewTab, km.OpenFileNewTab, km.UserGuide, km.BugReport, km.ExportGist, km.Help, km.Quit},
 	}
 }
 
@@ -276,6 +283,9 @@ type markdownReader struct {
 	showBugReport    bool
 	bugReportInput   textinput.Model
 	bugReportCapture bugReportData
+
+	// Gist export state.
+	exportingGist bool
 }
 
 // active returns a pointer to the active tab.
@@ -736,6 +746,23 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.logger.Error("index_error", "error", msg.err)
 		return r, nil
 
+	case gistExportMsg:
+		r.exportingGist = false
+		if msg.err != nil {
+			r.showError = true
+			r.errorText = fmt.Sprintf("Gist export failed: %v", msg.err)
+			return r, nil
+		}
+		r.active().view.SetStatusMessage("Gist URL copied to clipboard")
+		return r, tea.Batch(
+			tea.SetClipboard(msg.url),
+			tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} }),
+		)
+
+	case clearStatusMsg:
+		r.active().view.ClearStatusMessage()
+		return r, nil
+
 	case pageLoadErrorMsg:
 		r.loading = false
 		r.loadingURL = ""
@@ -924,6 +951,18 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.bugReportInput.SetWidth(innerW - lipgloss.Width(r.bugReportInput.Prompt) - 1)
 			r.showBugReport = true
 			return r, r.bugReportInput.Focus()
+		}
+
+		if key.Matches(msg, r.keys.ExportGist) && !r.exportingGist {
+			r.exportingGist = true
+			at := r.active()
+			at.view.SetStatusMessage("Exporting gist...")
+			markdown := string(at.view.GetMarkdown())
+			filename := filepath.Base(at.currentSource)
+			if filename == "" || filename == "." {
+				filename = "document.md"
+			}
+			return r, exportGist(markdown, filename)
 		}
 
 		// Pass other keys to the view.
@@ -1389,6 +1428,28 @@ func (r *markdownReader) saveSourceState() {
 	at := r.active()
 	at.sourceOrigName = at.view.GetName()
 	at.sourceOrigMarkdown = string(at.view.GetMarkdown())
+}
+
+// gistExportMsg is sent when the async gist export completes.
+type gistExportMsg struct {
+	url string
+	err error
+}
+
+// clearStatusMsg is sent by a timer to clear the gutter status message.
+type clearStatusMsg struct{}
+
+// exportGist runs `gh gist create` asynchronously and returns the gist URL.
+func exportGist(markdown, filename string) tea.Cmd {
+	return func() tea.Msg {
+		cmd := exec.Command("gh", "gist", "create", "-f", filename, "-")
+		cmd.Stdin = strings.NewReader(markdown)
+		out, err := cmd.Output()
+		if err != nil {
+			return gistExportMsg{err: fmt.Errorf("gh gist create: %w", err)}
+		}
+		return gistExportMsg{url: strings.TrimSpace(string(out))}
+	}
 }
 
 // fenceHTML wraps HTML in a fenced code block with html syntax highlighting.
