@@ -238,10 +238,12 @@ type markdownReader struct {
 	errorURL  string // URL that failed, for "open in browser" fallback
 
 	// File picker state.
-	picker        fuzzyPicker
-	showPicker    bool
-	pickerStartup bool // true when picker is shown at startup (no content loaded yet)
-	pickerNewTab  bool // true when the picker should open the selected file in a new tab
+	picker         fuzzyPicker
+	showPicker     bool
+	pickerStartup  bool            // true when picker is shown at startup (no content loaded yet)
+	pickerNewTab   bool            // true when the picker should open the selected file in a new tab
+	pickerURLMode  bool            // true when the picker is showing URL input instead of file list
+	pickerURLInput textinput.Model // URL text input for picker URL mode
 
 	// URL input state.
 	showURLInput bool
@@ -368,6 +370,7 @@ func (r *markdownReader) closeTab(idx int) {
 		r.activeTab = 0
 		r.showPicker = true
 		r.pickerStartup = true
+		r.pickerURLMode = false
 		return
 	}
 	r.tabs = append(r.tabs[:idx], r.tabs[idx+1:]...)
@@ -385,6 +388,7 @@ func (r *markdownReader) closeAllTabs() {
 	r.activeTab = 0
 	r.showPicker = true
 	r.pickerStartup = true
+	r.pickerURLMode = false
 	r.resizeAllViews()
 }
 
@@ -453,8 +457,21 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return r, tea.Quit
 				}
 				r.showPicker = false
+				r.pickerURLMode = false
 				return r, nil
 			case "esc":
+				if r.pickerURLMode {
+					if r.pickerURLInput.Value() == "" {
+						if r.pickerStartup {
+							return r, tea.Quit
+						}
+						r.showPicker = false
+						r.pickerURLMode = false
+						return r, nil
+					}
+					r.pickerURLInput.SetValue("")
+					return r, nil
+				}
 				if r.picker.input.Value() == "" {
 					if r.pickerStartup {
 						return r, tea.Quit
@@ -466,8 +483,53 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.picker.input.SetValue("")
 				r.picker.filter()
 				return r, nil
+			case "tab":
+				r.pickerURLMode = !r.pickerURLMode
+				if r.pickerURLMode {
+					r.pickerURLInput = textinput.New()
+					r.pickerURLInput.Prompt = "  URL: "
+					r.pickerURLInput.Placeholder = "https://..."
+					fixedW := r.width * 3 / 4
+					if fixedW < 40 {
+						fixedW = min(r.width-4, 40)
+					}
+					innerW := fixedW - 4 // account for border + padding
+					r.pickerURLInput.SetWidth(innerW - lipgloss.Width(r.pickerURLInput.Prompt) - 1)
+					return r, r.pickerURLInput.Focus()
+				}
+				return r, r.picker.input.Focus()
 			}
 		}
+
+		if r.pickerURLMode {
+			// URL mode: handle enter, forward other messages to URL input.
+			if km, ok := msg.(tea.KeyPressMsg); ok && km.String() == "enter" {
+				url := r.pickerURLInput.Value()
+				r.showPicker = false
+				r.pickerURLMode = false
+				r.pickerStartup = false
+				if url != "" {
+					r.loading = true
+					r.loadingURL = url
+					return r, tea.Batch(
+						fetchURLPage(url, r.pickerNewTab, r.converter, r.registry, r.cache, r.client, r.logger),
+						r.spinner.Tick,
+					)
+				}
+				return r, nil
+			}
+			var cmd tea.Cmd
+			r.pickerURLInput, cmd = r.pickerURLInput.Update(msg)
+			if ws, ok := msg.(tea.WindowSizeMsg); ok {
+				r.width = ws.Width
+				r.height = ws.Height
+				r.resizeAllViews()
+				r.helpModel.SetWidth(ws.Width)
+			}
+			return r, cmd
+		}
+
+		// File mode.
 		var cmd tea.Cmd
 		r.picker, cmd = r.picker.Update(msg)
 		if didSelect, path := r.picker.DidSelect(); didSelect {
@@ -725,12 +787,14 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.showPicker = true
 			r.pickerStartup = false
 			r.pickerNewTab = false
+			r.pickerURLMode = false
 			r.picker.selected = ""
 			return r, r.picker.Init()
 		case "ctrl+t":
 			r.showPicker = true
 			r.pickerStartup = false
 			r.pickerNewTab = true
+			r.pickerURLMode = false
 			r.picker.selected = ""
 			return r, r.picker.Init()
 		case "ctrl+l":
@@ -924,14 +988,19 @@ func (r markdownReader) View() tea.View {
 
 	var result string
 	if r.showPicker {
-		header := lipgloss.NewStyle().Bold(true).Render("Select a file")
-		pickerView := header + "\n\n" + r.picker.View()
+		header := renderOpenModeHeader(!r.pickerURLMode)
 		fixedW := r.width * 3 / 4
 		if fixedW < 40 {
 			fixedW = min(r.width-4, 40)
 		}
-		maxH := r.height * 3 / 4
-		result = r.renderFixedOverlay(base, pickerView, fixedW, maxH)
+		if r.pickerURLMode {
+			contentView := header + "\n\n" + r.pickerURLInput.View()
+			result = r.renderFixedOverlay(base, contentView, fixedW, 5)
+		} else {
+			contentView := header + "\n\n" + r.picker.View()
+			maxH := r.height * 3 / 4
+			result = r.renderFixedOverlay(base, contentView, fixedW, maxH)
+		}
 	} else if r.showSearch {
 		header := lipgloss.NewStyle().Bold(true).Render("Search Documents")
 		searchView := header + "\n\n" + r.searchPicker.View()
@@ -1005,6 +1074,17 @@ func (r markdownReader) overlayDialog(base, _, content string) string {
 
 	wrapped := wordWrap(content, maxW-4) // account for border + padding
 	return r.renderOverlay(base, wrapped, maxW, maxH)
+}
+
+// renderOpenModeHeader renders the File/URL mode indicator for the open picker.
+func renderOpenModeHeader(fileActive bool) string {
+	active := lipgloss.NewStyle().Bold(true)
+	inactive := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	if fileActive {
+		return active.Render("File") + "  " + inactive.Render("URL") + hint.Render("  (tab to switch)")
+	}
+	return inactive.Render("File") + "  " + active.Render("URL") + hint.Render("  (tab to switch)")
 }
 
 // renderFixedOverlay renders content in a bordered dialog with a fixed width, centered over base.

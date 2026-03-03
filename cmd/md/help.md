@@ -126,11 +126,18 @@ select a file and `Enter` to open it. Press `Esc` to dismiss the picker.
 Only Markdown files and files matching configured format converter extensions
 are shown.
 
+Press `Tab` within the file picker to switch to URL input mode. Press `Tab`
+again to switch back. This lets you toggle between opening a local file and
+fetching a URL without dismissing the picker.
+
 ### URL Input
 
 Press {{.OpenURL}} to open the URL input prompt. Type or paste a URL and
 press `Enter` to fetch and display it. The URL is resolved and fetched via
 HTTP; HTML responses are converted to Markdown.
+
+You can also enter a URL from within the file picker by pressing `Tab` to
+switch to URL mode.
 
 ## Page History
 
