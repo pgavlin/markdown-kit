@@ -181,6 +181,7 @@ type Renderer struct {
 	imageEncoder  ImageEncoder
 	softBreak     bool
 	padToWrap     []int
+	noBreak       int // nesting counter; when > 0, spaces don't break words
 
 	listStack  []listState
 	tableStack []tableState
@@ -558,7 +559,7 @@ func (r *Renderer) Write(w io.Writer, buf []byte) (int, error) {
 	written := 0
 	for len(buf) > 0 {
 		c, sz := utf8.DecodeRune(buf)
-		if unicode.IsSpace(c) {
+		if unicode.IsSpace(c) && r.noBreak == 0 {
 			// Flush the word buffer, then write out the whitespace.
 			if err := r.flushWordBuffer(w); err != nil {
 				return written, err
@@ -1245,13 +1246,13 @@ func (r *Renderer) RenderCodeSpan(w util.BufWriter, source []byte, node ast.Node
 		if err := r.PopStyle(w); err != nil {
 			return ast.WalkStop, err
 		}
-		r.PopWordWrap()
+		r.noBreak--
 		r.CloseSpan()
 		return ast.WalkContinue, nil
 	}
 
 	r.OpenSpan(node)
-	r.PushWordWrap(false)
+	r.noBreak++
 	if err := r.PushStyle(w, styles.CodeSpan); err != nil {
 		return ast.WalkStop, err
 	}

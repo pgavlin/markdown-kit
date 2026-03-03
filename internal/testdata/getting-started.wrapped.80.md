@@ -12,11 +12,12 @@ are visible immediately. Markdown isn't like that. When you create a
 Markdown-formatted file, you add Markdown syntax to the text to indicate which 
 words and phrases should look different.
 
-For instance, to denote a heading, you add a number sign before it (e.g., `# Heading One`
-). Or to make a phrase bold, you add two asterisks before and after it (e.g., `**this text is bold**`
-). It may take a while to get used to seeing Markdown syntax in your text, 
-especially if you're accustomed to WYSIWYG applications. The screenshot below 
-shows a Markdown file displayed in the [Atom text editor](https://atom.io).
+For instance, to denote a heading, you add a number sign before it (e.g., 
+`# Heading One`). Or to make a phrase bold, you add two asterisks before and 
+after it (e.g., `**this text is bold**`). It may take a while to get used to 
+seeing Markdown syntax in your text, especially if you're accustomed to WYSIWYG 
+applications. The screenshot below shows a Markdown file displayed in the [Atom 
+text editor](https://atom.io).
 
 <div style="text-align:center; margin:30px 0">
   <img src="/assets/images/atom.png" class="img-fluid" alt="Markdown file in the Atom text editor">
@@ -92,9 +93,9 @@ can be installed on your desktop computer or mobile device.
 Dillinger makes writing in Markdown easy because it hides the stuff happening 
 behind the scenes, but it's worth exploring how the process works in general.
 
-When you write in Markdown, the text is stored in a plaintext file that has an `.md`
- or `.markdown` extension. But then what? How is your Markdown-formatted file 
-converted into HTML or a print-ready document?
+When you write in Markdown, the text is stored in a plaintext file that has an 
+`.md` or `.markdown` extension. But then what? How is your Markdown-formatted 
+file converted into HTML or a print-ready document?
 
 The short answer is that you need a *Markdown application* capable of 
 processing the Markdown file. There are lots of applications available — 
