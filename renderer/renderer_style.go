@@ -113,6 +113,33 @@ func (r *Renderer) reapplyStyle(w io.Writer) error {
 	return r.writeDelta(w, chroma.StyleEntry{}, r.styles[len(r.styles)-1])
 }
 
+// buildStyleSGR returns the raw ANSI SGR bytes needed to establish the given
+// style from a reset state. Returns nil if the style is zero. This is used by
+// beginLine to restore the active style after writing the prefix without going
+// through the renderer's Write pipeline (which would recurse back into beginLine).
+func buildStyleSGR(style chroma.StyleEntry) []byte {
+	if style.IsZero() {
+		return nil
+	}
+	var buf []byte
+	if style.Background.IsSet() {
+		buf = fmt.Appendf(buf, "\033[48;2;%d;%d;%dm", style.Background.Red(), style.Background.Green(), style.Background.Blue())
+	}
+	if style.Colour.IsSet() {
+		buf = fmt.Appendf(buf, "\033[38;2;%d;%d;%dm", style.Colour.Red(), style.Colour.Green(), style.Colour.Blue())
+	}
+	if style.Bold == chroma.Yes {
+		buf = append(buf, "\033[1m"...)
+	}
+	if style.Underline == chroma.Yes {
+		buf = append(buf, "\033[4m"...)
+	}
+	if style.Italic == chroma.Yes {
+		buf = append(buf, "\033[3m"...)
+	}
+	return buf
+}
+
 func (r *Renderer) PushStyle(w io.Writer, token chroma.TokenType) error {
 	resolved, ok := r.resolveStyle(token)
 	if !ok {

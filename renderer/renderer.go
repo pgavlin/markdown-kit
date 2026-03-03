@@ -352,6 +352,21 @@ func (r *Renderer) beginLine(w io.Writer) error {
 		}
 	}
 
+	// If a style is active and there's a prefix to write, reset the style
+	// before the prefix so indentation doesn't carry content styles (e.g.,
+	// code block background color), then restore it after.
+	var restore []byte
+	if len(r.prefix) > 0 && len(r.styles) > 0 {
+		restore = buildStyleSGR(r.styles[len(r.styles)-1])
+	}
+	if len(restore) > 0 {
+		n, err := w.Write([]byte("\033[0m"))
+		r.byteOffset += n
+		if err != nil {
+			return err
+		}
+	}
+
 	n, err := w.Write(r.prefix)
 	if n != 0 {
 		r.atNewline = r.prefix[len(r.prefix)-1] == '\n'
@@ -360,7 +375,19 @@ func (r *Renderer) beginLine(w io.Writer) error {
 		}
 		r.byteOffset += n
 	}
-	return err
+	if err != nil {
+		return err
+	}
+
+	if len(restore) > 0 {
+		n, err := w.Write(restore)
+		r.byteOffset += n
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (r *Renderer) writeLines(w util.BufWriter, source []byte, lines *text.Segments) error {
