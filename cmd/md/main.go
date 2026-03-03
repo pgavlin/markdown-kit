@@ -45,6 +45,45 @@ func main() {
 					return toml.NewEncoder(os.Stdout).Encode(cfg)
 				},
 			},
+			{
+				Name:  "system",
+				Usage: "manage system data (cache, index)",
+				Commands: []*cli.Command{
+					{
+						Name:  "clear-cache",
+						Usage: "remove all cached conversion results",
+						Action: func(ctx context.Context, cmd *cli.Command) error {
+							userCache, err := os.UserCacheDir()
+							if err != nil {
+								return fmt.Errorf("determining cache directory: %w", err)
+							}
+							dir := filepath.Join(userCache, "md")
+							if err := os.RemoveAll(dir); err != nil {
+								return fmt.Errorf("removing cache: %w", err)
+							}
+							fmt.Printf("Cleared cache: %s\n", dir)
+							return nil
+						},
+					},
+					{
+						Name:  "clear-index",
+						Usage: "remove the document search index",
+						Action: func(ctx context.Context, cmd *cli.Command) error {
+							dd, err := dataDir()
+							if err != nil {
+								return fmt.Errorf("determining data directory: %w", err)
+							}
+							dbPath := filepath.Join(dd, "index.db")
+							// Remove the main db and any WAL/SHM files.
+							for _, suffix := range []string{"", "-wal", "-shm"} {
+								os.Remove(dbPath + suffix)
+							}
+							fmt.Printf("Cleared search index: %s\n", dbPath)
+							return nil
+						},
+					},
+				},
+			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			cfgPath, err := configPath()
