@@ -127,6 +127,54 @@ func TestAddContentChange(t *testing.T) {
 	assert.Equal(t, "Test Updated", results[0].Title)
 }
 
+func TestAddWithEmbedderCreatesChunks(t *testing.T) {
+	ctx := context.Background()
+	embedder := newMockEmbedder(4)
+	idx, err := Open(testDBPath(t), embedder)
+	require.NoError(t, err)
+	defer idx.Close()
+
+	// Document with multiple sections should create multiple chunks.
+	err = idx.Add(ctx, "/tmp/test.md", "Test", "# Section A\n\nContent A.\n\n# Section B\n\nContent B.")
+	require.NoError(t, err)
+
+	// Verify chunks were created.
+	var count int
+	err = idx.db.QueryRow(`SELECT COUNT(*) FROM chunks`).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 2, count)
+
+	// Verify vec entries were created.
+	err = idx.db.QueryRow(`SELECT COUNT(*) FROM documents_vec`).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 2, count)
+}
+
+func TestAddContentChangeUpdatesChunks(t *testing.T) {
+	ctx := context.Background()
+	embedder := newMockEmbedder(4)
+	idx, err := Open(testDBPath(t), embedder)
+	require.NoError(t, err)
+	defer idx.Close()
+
+	// Add document with 2 sections.
+	err = idx.Add(ctx, "/tmp/test.md", "Test", "# A\n\nContent A.\n\n# B\n\nContent B.")
+	require.NoError(t, err)
+
+	var count int
+	err = idx.db.QueryRow(`SELECT COUNT(*) FROM chunks`).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 2, count)
+
+	// Update to 3 sections.
+	err = idx.Add(ctx, "/tmp/test.md", "Test", "# X\n\nContent X.\n\n# Y\n\nContent Y.\n\n# Z\n\nContent Z.")
+	require.NoError(t, err)
+
+	err = idx.db.QueryRow(`SELECT COUNT(*) FROM chunks`).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 3, count)
+}
+
 func TestSearchKeywordEmpty(t *testing.T) {
 	ctx := context.Background()
 	idx, err := Open(testDBPath(t), nil)
@@ -176,7 +224,9 @@ func TestSearchSemanticWithEmbedder(t *testing.T) {
 func TestFindSimilarWithEmbedder(t *testing.T) {
 	ctx := context.Background()
 	embedder := newMockEmbedder(4)
-	// Give similar vectors to related docs.
+
+	// The chunker will strip markdown and produce plain text chunks.
+	// For simple content without headings, the chunk text = stripped content.
 	embedder.vectors["Similar content A"] = []float32{0.1, 0.2, 0.3, 0.4}
 	embedder.vectors["Similar content B"] = []float32{0.11, 0.21, 0.31, 0.41}
 	embedder.vectors["Very different content"] = []float32{0.9, 0.8, 0.7, 0.6}
@@ -237,6 +287,32 @@ func TestRemove(t *testing.T) {
 	results, err = idx.SearchKeyword(ctx, "hello", 10)
 	require.NoError(t, err)
 	assert.Len(t, results, 0)
+}
+
+func TestRemoveWithChunks(t *testing.T) {
+	ctx := context.Background()
+	embedder := newMockEmbedder(4)
+	idx, err := Open(testDBPath(t), embedder)
+	require.NoError(t, err)
+	defer idx.Close()
+
+	err = idx.Add(ctx, "/tmp/test.md", "Test", "# Section\n\nSome content here.")
+	require.NoError(t, err)
+
+	// Verify chunks exist.
+	var count int
+	err = idx.db.QueryRow(`SELECT COUNT(*) FROM chunks`).Scan(&count)
+	require.NoError(t, err)
+	assert.Greater(t, count, 0)
+
+	// Remove it.
+	err = idx.Remove("/tmp/test.md")
+	require.NoError(t, err)
+
+	// Verify chunks are gone.
+	err = idx.db.QueryRow(`SELECT COUNT(*) FROM chunks`).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
 }
 
 func TestRemoveNonexistent(t *testing.T) {
@@ -309,4 +385,38 @@ func TestDataDirectory(t *testing.T) {
 	idx, err := Open(dbPath, nil)
 	require.NoError(t, err)
 	defer idx.Close()
+}
+
+func TestMigrationV1ToV2(t *testing.T) {
+	ctx := context.Background()
+	dbPath := testDBPath(t)
+
+	// Simulate a v1 database by opening without embedder and manually setting version to 1.
+	idx, err := Open(dbPath, nil)
+	require.NoError(t, err)
+	_, err = idx.db.Exec(`INSERT OR REPLACE INTO metadata (key, value) VALUES ('schema_version', '1')`)
+	require.NoError(t, err)
+	err = idx.Add(ctx, "/tmp/test.md", "Test", "# Hello\n\nWorld")
+	require.NoError(t, err)
+	idx.Close()
+
+	// Reopen with embedder — should trigger migration and work correctly.
+	embedder := newMockEmbedder(4)
+	idx, err = Open(dbPath, embedder)
+	require.NoError(t, err)
+	defer idx.Close()
+
+	// Document should still exist for keyword search.
+	results, err := idx.SearchKeyword(ctx, "hello", 10)
+	require.NoError(t, err)
+	assert.Len(t, results, 1)
+
+	// Re-add to generate chunks and embeddings.
+	err = idx.Add(ctx, "/tmp/test.md", "Test", "# Hello\n\nWorld")
+	require.NoError(t, err)
+
+	// Semantic search should now work.
+	results, err = idx.SearchSemantic(ctx, "hello", 10)
+	require.NoError(t, err)
+	assert.NotEmpty(t, results)
 }

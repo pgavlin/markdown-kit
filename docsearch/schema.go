@@ -5,9 +5,10 @@ import (
 	"fmt"
 )
 
-const schemaVersion = "1"
+const schemaVersion = "2"
 
-// createSchema creates the database tables and triggers if they don't exist.
+// createSchema creates the database tables and triggers if they don't exist,
+// and runs any necessary migrations.
 func createSchema(db *sql.DB) error {
 	statements := []string{
 		`CREATE TABLE IF NOT EXISTS metadata (
@@ -41,6 +42,15 @@ func createSchema(db *sql.DB) error {
 		`CREATE TRIGGER IF NOT EXISTS documents_ad AFTER DELETE ON documents BEGIN
 			INSERT INTO documents_fts(documents_fts, rowid, title, content) VALUES('delete', old.id, old.title, old.content);
 		END`,
+		// Chunks table for chunked embeddings.
+		`CREATE TABLE IF NOT EXISTS chunks (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+			chunk_index INTEGER NOT NULL,
+			heading     TEXT NOT NULL DEFAULT '',
+			content     TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE INDEX IF NOT EXISTS chunks_document_id ON chunks(document_id)`,
 	}
 
 	for _, stmt := range statements {
@@ -49,13 +59,60 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
-	// Set schema version if not present.
-	_, err := db.Exec(
-		`INSERT OR IGNORE INTO metadata (key, value) VALUES ('schema_version', ?)`,
-		schemaVersion,
-	)
-	if err != nil {
-		return fmt.Errorf("setting schema version: %w", err)
+	// Check current schema version and migrate if needed.
+	var currentVersion string
+	err := db.QueryRow(`SELECT value FROM metadata WHERE key = 'schema_version'`).Scan(&currentVersion)
+	if err == sql.ErrNoRows {
+		currentVersion = ""
+	} else if err != nil {
+		return fmt.Errorf("checking schema version: %w", err)
+	}
+
+	if currentVersion == "" {
+		// Fresh database — set version.
+		_, err := db.Exec(
+			`INSERT OR REPLACE INTO metadata (key, value) VALUES ('schema_version', ?)`,
+			schemaVersion,
+		)
+		if err != nil {
+			return fmt.Errorf("setting schema version: %w", err)
+		}
+	} else if currentVersion != schemaVersion {
+		if err := migrateSchema(db, currentVersion); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// migrateSchema handles schema upgrades.
+func migrateSchema(db *sql.DB, fromVersion string) error {
+	switch fromVersion {
+	case "1":
+		return migrateV1ToV2(db)
+	default:
+		return fmt.Errorf("unsupported schema version %q, cannot migrate", fromVersion)
+	}
+}
+
+// migrateV1ToV2 migrates from schema v1 (document-level embeddings) to v2
+// (chunk-level embeddings). Existing documents are preserved; embeddings will
+// be regenerated on next use.
+func migrateV1ToV2(db *sql.DB) error {
+	statements := []string{
+		// Drop the old document-keyed vec table — embeddings must be regenerated.
+		`DROP TABLE IF EXISTS documents_vec`,
+		// Clear the embedding dimensions so ensureVecTable recreates with chunk_id key.
+		`DELETE FROM metadata WHERE key = 'embedding_dimensions'`,
+		// Update schema version.
+		`INSERT OR REPLACE INTO metadata (key, value) VALUES ('schema_version', '2')`,
+	}
+
+	for _, stmt := range statements {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("migrating v1 to v2: %w", err)
+		}
 	}
 
 	return nil
@@ -81,9 +138,9 @@ func ensureVecTable(db *sql.DB, dimensions int) error {
 		}
 	}
 
-	// Create vec table with new dimensions.
+	// Create vec table keyed by chunk_id.
 	stmt := fmt.Sprintf(
-		`CREATE VIRTUAL TABLE IF NOT EXISTS documents_vec USING vec0(document_id INTEGER PRIMARY KEY, embedding float[%d])`,
+		`CREATE VIRTUAL TABLE IF NOT EXISTS documents_vec USING vec0(chunk_id INTEGER PRIMARY KEY, embedding float[%d])`,
 		dimensions,
 	)
 	if _, err := db.Exec(stmt); err != nil {

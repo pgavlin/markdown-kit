@@ -33,7 +33,7 @@ type Index struct {
 // Open opens (or creates) the index database at the given path.
 // If embedder is nil, only keyword search will be available.
 func Open(path string, embedder Embedder) (*Index, error) {
-	db, err := sql.Open("sqlite3", path+"?_journal_mode=WAL")
+	db, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_foreign_keys=on")
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)
 	}
@@ -85,11 +85,29 @@ func (idx *Index) Add(ctx context.Context, path, title, markdown string) error {
 
 	if err == nil && existingHash == hash {
 		// Content unchanged — just update last_opened.
-		_, err := idx.db.ExecContext(ctx,
+		if _, err := idx.db.ExecContext(ctx,
 			`UPDATE documents SET last_opened = ?, title = ? WHERE id = ?`,
 			now, title, existingID,
-		)
-		return err
+		); err != nil {
+			return err
+		}
+
+		// If embedder is configured but no chunks exist (e.g. after migration),
+		// generate them now.
+		if idx.embedder != nil {
+			var chunkCount int
+			if err := idx.db.QueryRowContext(ctx,
+				`SELECT COUNT(*) FROM chunks WHERE document_id = ?`, existingID,
+			).Scan(&chunkCount); err != nil {
+				return fmt.Errorf("checking chunks: %w", err)
+			}
+			if chunkCount == 0 {
+				if err := idx.updateEmbeddings(ctx, existingID, markdown); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
 	}
 
 	// Insert or replace the document. The triggers handle FTS updates.
@@ -103,9 +121,9 @@ func (idx *Index) Add(ctx context.Context, path, title, markdown string) error {
 			return fmt.Errorf("updating document: %w", err)
 		}
 
-		// Update vector embedding if embedder is configured.
+		// Update chunked embeddings if embedder is configured.
 		if idx.embedder != nil {
-			if err := idx.updateEmbedding(ctx, existingID, markdown); err != nil {
+			if err := idx.updateEmbeddings(ctx, existingID, markdown); err != nil {
 				return err
 			}
 		}
@@ -125,13 +143,13 @@ func (idx *Index) Add(ctx context.Context, path, title, markdown string) error {
 		return fmt.Errorf("inserting document: %w", err)
 	}
 
-	// Update vector embedding if embedder is configured.
+	// Update chunked embeddings if embedder is configured.
 	if idx.embedder != nil {
 		docID, err := result.LastInsertId()
 		if err != nil {
 			return fmt.Errorf("getting document id: %w", err)
 		}
-		if err := idx.updateEmbedding(ctx, docID, markdown); err != nil {
+		if err := idx.updateEmbeddings(ctx, docID, markdown); err != nil {
 			return err
 		}
 	}
@@ -139,19 +157,51 @@ func (idx *Index) Add(ctx context.Context, path, title, markdown string) error {
 	return nil
 }
 
-// updateEmbedding generates and stores a vector embedding for the given document.
-func (idx *Index) updateEmbedding(ctx context.Context, docID int64, text string) error {
-	embedding, err := idx.embedder.Embed(ctx, text)
-	if err != nil {
-		return fmt.Errorf("generating embedding: %w", err)
+// updateEmbeddings generates and stores chunked vector embeddings for the given document.
+func (idx *Index) updateEmbeddings(ctx context.Context, docID int64, markdown string) error {
+	// Delete existing chunks and their vec entries.
+	if _, err := idx.db.ExecContext(ctx, `DELETE FROM documents_vec WHERE chunk_id IN (SELECT id FROM chunks WHERE document_id = ?)`, docID); err != nil {
+		return fmt.Errorf("deleting old vec entries: %w", err)
+	}
+	if _, err := idx.db.ExecContext(ctx, `DELETE FROM chunks WHERE document_id = ?`, docID); err != nil {
+		return fmt.Errorf("deleting old chunks: %w", err)
 	}
 
-	_, err = idx.db.ExecContext(ctx,
-		`INSERT OR REPLACE INTO documents_vec (document_id, embedding) VALUES (?, ?)`,
-		docID, serializeFloat32s(embedding),
-	)
-	if err != nil {
-		return fmt.Errorf("storing embedding: %w", err)
+	// Chunk the markdown.
+	chunks := chunkMarkdown(markdown, 2000)
+	if len(chunks) == 0 {
+		// Nothing to embed (e.g. empty document).
+		return nil
+	}
+
+	for i, c := range chunks {
+		// Insert chunk.
+		result, err := idx.db.ExecContext(ctx,
+			`INSERT INTO chunks (document_id, chunk_index, heading, content) VALUES (?, ?, ?, ?)`,
+			docID, i, c.heading, c.text,
+		)
+		if err != nil {
+			return fmt.Errorf("inserting chunk: %w", err)
+		}
+
+		chunkID, err := result.LastInsertId()
+		if err != nil {
+			return fmt.Errorf("getting chunk id: %w", err)
+		}
+
+		// Embed and store.
+		embedding, err := idx.embedder.Embed(ctx, c.text)
+		if err != nil {
+			return fmt.Errorf("generating embedding for chunk %d: %w", i, err)
+		}
+
+		_, err = idx.db.ExecContext(ctx,
+			`INSERT INTO documents_vec (chunk_id, embedding) VALUES (?, ?)`,
+			chunkID, serializeFloat32s(embedding),
+		)
+		if err != nil {
+			return fmt.Errorf("storing embedding for chunk %d: %w", i, err)
+		}
 	}
 
 	return nil
@@ -198,6 +248,7 @@ func (idx *Index) recentDocuments(ctx context.Context, limit int) ([]Result, err
 
 // SearchSemantic returns documents matching the query using vector similarity.
 // Requires an embedder to be configured; returns an error otherwise.
+// Results are grouped by document, using the best (minimum distance) chunk match.
 func (idx *Index) SearchSemantic(ctx context.Context, query string, limit int) ([]Result, error) {
 	if idx.embedder == nil {
 		return nil, fmt.Errorf("semantic search requires an embedder")
@@ -208,14 +259,23 @@ func (idx *Index) SearchSemantic(ctx context.Context, query string, limit int) (
 		return nil, fmt.Errorf("embedding query: %w", err)
 	}
 
+	// Fetch more chunk matches than needed, then group by document.
+	k := limit * 5
+	if k < 20 {
+		k = 20
+	}
+
 	rows, err := idx.db.QueryContext(ctx, `
-		SELECT d.path, d.title, d.last_opened, v.distance
+		SELECT d.path, d.title, d.last_opened, MIN(v.distance) AS distance
 		FROM documents_vec v
-		JOIN documents d ON d.id = v.document_id
+		JOIN chunks c ON c.id = v.chunk_id
+		JOIN documents d ON d.id = c.document_id
 		WHERE v.embedding MATCH ?
 		AND k = ?
-		ORDER BY v.distance
-	`, serializeFloat32s(embedding), limit)
+		GROUP BY d.id
+		ORDER BY distance
+		LIMIT ?
+	`, serializeFloat32s(embedding), k, limit)
 	if err != nil {
 		return nil, fmt.Errorf("semantic search: %w", err)
 	}
@@ -227,15 +287,12 @@ func (idx *Index) SearchSemantic(ctx context.Context, query string, limit int) (
 // FindSimilar returns documents most similar to the given content,
 // using vector embedding cosine similarity. Requires an embedder.
 // The document at excludePath (if non-empty) is excluded from results.
+//
+// All chunks of the query content are embedded and searched; results are
+// aggregated by taking the best (minimum) distance per target document.
 func (idx *Index) FindSimilar(ctx context.Context, content, excludePath string, limit int) ([]Result, error) {
 	if idx.embedder == nil {
 		return nil, fmt.Errorf("find similar requires an embedder")
-	}
-
-	// Embed the current document's content directly.
-	embedding, err := idx.embedder.Embed(ctx, content)
-	if err != nil {
-		return nil, fmt.Errorf("embedding content: %w", err)
 	}
 
 	// Look up the document ID to exclude (if it exists in the index).
@@ -246,27 +303,93 @@ func (idx *Index) FindSimilar(ctx context.Context, content, excludePath string, 
 		).Scan(&excludeID)
 	}
 
-	// Search for similar documents, excluding the source document.
-	rows, err := idx.db.QueryContext(ctx, `
-		SELECT d.path, d.title, d.last_opened, v.distance
-		FROM documents_vec v
-		JOIN documents d ON d.id = v.document_id
-		WHERE v.embedding MATCH ?
-		AND k = ?
-		AND v.document_id != ?
-		ORDER BY v.distance
-	`, serializeFloat32s(embedding), limit+1, excludeID)
-	if err != nil {
-		return nil, fmt.Errorf("finding similar: %w", err)
-	}
-	defer rows.Close()
-
-	results, err := scanResults(rows)
-	if err != nil {
-		return nil, err
+	// Chunk and embed the query content.
+	queryChunks := chunkMarkdown(content, 2000)
+	if len(queryChunks) == 0 {
+		// Nothing to search with — embed the raw content as fallback.
+		stripped := stripMarkdown(content)
+		if stripped == "" {
+			return nil, nil
+		}
+		queryChunks = []chunk{{text: stripped}}
 	}
 
-	// Trim to requested limit.
+	// Search with each query chunk and merge results.
+	type docResult struct {
+		path       string
+		title      string
+		lastOpened int64
+		distance   float64
+	}
+	bestByPath := make(map[string]*docResult)
+
+	k := limit * 5
+	if k < 20 {
+		k = 20
+	}
+
+	for _, qc := range queryChunks {
+		embedding, err := idx.embedder.Embed(ctx, qc.text)
+		if err != nil {
+			return nil, fmt.Errorf("embedding content chunk: %w", err)
+		}
+
+		rows, err := idx.db.QueryContext(ctx, `
+			SELECT d.path, d.title, d.last_opened, MIN(v.distance) AS distance
+			FROM documents_vec v
+			JOIN chunks c ON c.id = v.chunk_id
+			JOIN documents d ON d.id = c.document_id
+			WHERE v.embedding MATCH ?
+			AND k = ?
+			AND c.document_id != ?
+			GROUP BY d.id
+			ORDER BY distance
+		`, serializeFloat32s(embedding), k, excludeID)
+		if err != nil {
+			return nil, fmt.Errorf("finding similar: %w", err)
+		}
+
+		for rows.Next() {
+			var r docResult
+			if err := rows.Scan(&r.path, &r.title, &r.lastOpened, &r.distance); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("scanning result: %w", err)
+			}
+
+			if existing, ok := bestByPath[r.path]; ok {
+				if r.distance < existing.distance {
+					existing.distance = r.distance
+				}
+			} else {
+				bestByPath[r.path] = &r
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("iterating results: %w", err)
+		}
+	}
+
+	// Convert to sorted results.
+	results := make([]Result, 0, len(bestByPath))
+	for _, r := range bestByPath {
+		results = append(results, Result{
+			Path:       r.path,
+			Title:      r.title,
+			LastOpened: time.Unix(r.lastOpened, 0),
+			Score:      r.distance,
+		})
+	}
+
+	// Sort by distance (ascending).
+	for i := 0; i < len(results); i++ {
+		for j := i + 1; j < len(results); j++ {
+			if results[j].Score < results[i].Score {
+				results[i], results[j] = results[j], results[i]
+			}
+		}
+	}
+
 	if len(results) > limit {
 		results = results[:limit]
 	}
@@ -284,8 +407,11 @@ func (idx *Index) Remove(path string) error {
 		return fmt.Errorf("looking up document: %w", err)
 	}
 
-	// Delete from vec table first (if it exists).
-	_, _ = idx.db.Exec(`DELETE FROM documents_vec WHERE document_id = ?`, docID)
+	// Delete vec entries for this document's chunks.
+	_, _ = idx.db.Exec(`DELETE FROM documents_vec WHERE chunk_id IN (SELECT id FROM chunks WHERE document_id = ?)`, docID)
+
+	// Delete chunks.
+	_, _ = idx.db.Exec(`DELETE FROM chunks WHERE document_id = ?`, docID)
 
 	// Delete from documents table (triggers handle FTS cleanup).
 	_, err = idx.db.Exec(`DELETE FROM documents WHERE id = ?`, docID)
