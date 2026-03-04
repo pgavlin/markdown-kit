@@ -1251,14 +1251,39 @@ func (r *Renderer) RenderAutoLink(w util.BufWriter, source []byte, node ast.Node
 		return ast.WalkContinue, nil
 	}
 
-	if err := r.writeByte(w, '<'); err != nil {
-		return ast.WalkStop, err
-	}
-	if _, err := r.Write(w, node.(*ast.AutoLink).Label(source)); err != nil {
-		return ast.WalkStop, err
-	}
-	if err := r.writeByte(w, '>'); err != nil {
-		return ast.WalkStop, err
+	autoLink := node.(*ast.AutoLink)
+	url := autoLink.URL(source)
+	label := autoLink.Label(source)
+
+	r.OpenSpan(node)
+	defer r.CloseSpan()
+
+	if r.hyperlinks {
+		if _, err := r.WriteString(w, ansi.SetHyperlink(string(url))); err != nil {
+			return ast.WalkStop, err
+		}
+		if err := r.PushStyle(w, chroma.GenericUnderline); err != nil {
+			return ast.WalkStop, err
+		}
+		if _, err := r.Write(w, label); err != nil {
+			return ast.WalkStop, err
+		}
+		if err := r.PopStyle(w); err != nil {
+			return ast.WalkStop, err
+		}
+		if _, err := r.WriteString(w, ansi.ResetHyperlink()); err != nil {
+			return ast.WalkStop, err
+		}
+	} else {
+		if err := r.writeByte(w, '<'); err != nil {
+			return ast.WalkStop, err
+		}
+		if _, err := r.Write(w, label); err != nil {
+			return ast.WalkStop, err
+		}
+		if err := r.writeByte(w, '>'); err != nil {
+			return ast.WalkStop, err
+		}
 	}
 
 	return ast.WalkContinue, nil
@@ -1434,11 +1459,17 @@ func (r *Renderer) linkTitleDelimiter(title []byte) byte {
 
 func (r *Renderer) renderHyperlink(w util.BufWriter, node ast.Node, open string, refType ast.LinkReferenceType, label, dest, title []byte, enter bool) error {
 	if enter {
+		if _, err := r.WriteString(w, ansi.SetHyperlink(string(dest))); err != nil {
+			return err
+		}
 		if err := r.PushStyle(w, chroma.GenericUnderline); err != nil {
 			return err
 		}
 	} else {
 		if err := r.PopStyle(w); err != nil {
+			return err
+		}
+		if _, err := r.WriteString(w, ansi.ResetHyperlink()); err != nil {
 			return err
 		}
 	}

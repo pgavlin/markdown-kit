@@ -1162,3 +1162,43 @@ func TestFencedCodeBlockTabsExpandedToSpaces(t *testing.T) {
 	// The tab should be expanded to spaces.
 	assert.True(t, strings.Contains(output, "        hello"), "tab should be expanded to 8 spaces")
 }
+
+// TestHyperlinkOSC8 verifies that OSC 8 sequences are emitted for links in hyperlink mode.
+func TestHyperlinkOSC8(t *testing.T) {
+	t.Run("regular link emits OSC 8", func(t *testing.T) {
+		input := "[click here](https://example.com)\n"
+		output, _ := renderMarkdown(t, input, WithHyperlinks(true))
+
+		assert.Contains(t, output, ansi.SetHyperlink("https://example.com"))
+		assert.Contains(t, output, ansi.ResetHyperlink())
+		assert.Contains(t, output, "click here")
+		// Should not contain markdown link syntax
+		assert.NotContains(t, output, "](")
+	})
+
+	t.Run("autolink emits OSC 8", func(t *testing.T) {
+		input := "<https://example.com>\n"
+		output, _ := renderMarkdown(t, input, WithHyperlinks(true))
+
+		assert.Contains(t, output, ansi.SetHyperlink("https://example.com"))
+		assert.Contains(t, output, ansi.ResetHyperlink())
+		// Should not contain angle brackets
+		assert.NotContains(t, output, "<https://")
+	})
+
+	t.Run("no OSC 8 without hyperlinks mode", func(t *testing.T) {
+		input := "[click here](https://example.com)\n"
+		output, _ := renderMarkdown(t, input)
+
+		assert.NotContains(t, output, ansi.SetHyperlink("https://example.com"))
+		assert.NotContains(t, output, ansi.ResetHyperlink())
+	})
+
+	t.Run("OSC 8 contains correct URL", func(t *testing.T) {
+		input := "[link1](https://one.com) and [link2](https://two.com)\n"
+		output, _ := renderMarkdown(t, input, WithHyperlinks(true))
+
+		assert.Contains(t, output, ansi.SetHyperlink("https://one.com"))
+		assert.Contains(t, output, ansi.SetHyperlink("https://two.com"))
+	})
+}
