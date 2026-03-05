@@ -229,3 +229,23 @@ func TestLinkNav_HyperlinkSequences(t *testing.T) {
 	// Link text should be underlined.
 	assert.Contains(t, view, "\033[4m", "should contain underline on sequence")
 }
+
+func TestLinkNav_NoEmptyHyperlinks(t *testing.T) {
+	md := "Before [anchor link](#target) after\n"
+
+	m := NewModel(WithTheme(styles.GlamourDark))
+	m.SetText("test.md", md)
+	m.SetSize(80, 24)
+
+	// Navigate to the link.
+	m, _ = m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
+	require.NotNil(t, m.Selection())
+
+	view := m.View()
+	osc8Set := ansi.SetHyperlink("#target")
+
+	// The OSC 8 set sequence should appear exactly once, not duplicated
+	// by ansiCut/TruncateLeft re-emitting state for empty hyperlink regions.
+	count := strings.Count(view, osc8Set)
+	assert.Equal(t, 1, count, "OSC 8 set should appear exactly once, got %d", count)
+}

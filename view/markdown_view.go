@@ -1065,14 +1065,16 @@ func (m *Model) applySelection(ln line, content string) string {
 	lineWidth := ansi.StringWidth(content)
 
 	// Split into before, selected, and after portions using ANSI-aware operations.
-	before := ansiTruncate(content, selStart)
-	middle := ansiCut(content, selStart, selEnd)
-	after := ansiCut(content, selEnd, lineWidth)
+	// ansiSlice avoids emitting empty OSC 8 hyperlink regions by deferring
+	// hyperlink set sequences until visible content follows.
+	before := ansiSlice(content, 0, selStart)
+	middle := ansiSlice(content, selStart, selEnd)
+	after := ansiSlice(content, selEnd, lineWidth)
 
 	// Insert reverse video after any leading ANSI state preamble in middle.
-	// ansi.TruncateLeft (used by ansiCut) emits \033[0m followed by ANSI
-	// sequences to restore state at the cut point. Placing \033[7m before
-	// middle would be immediately cleared by that reset.
+	// ansiSlice (when start > 0) emits \033[0m followed by SGR sequences
+	// to restore state at the cut point. Placing \033[7m before middle
+	// would be immediately cleared by that reset.
 	revIdx := firstNonANSIByteIndex(middle)
 	return before + middle[:revIdx] + "\033[7m" + middle[revIdx:] + "\033[27m" + after
 }
@@ -1605,6 +1607,100 @@ func firstNonANSIByteIndex(s string) int {
 		i += n
 	}
 	return i
+}
+
+var osc8Reset = ansi.ResetHyperlink()
+
+func isOSC8Set(seq string) bool {
+	return strings.HasPrefix(seq, "\x1b]8;") && seq != osc8Reset
+}
+
+func isOSC8Reset(seq string) bool {
+	return seq == osc8Reset
+}
+
+// isSGR returns true if the sequence is a CSI SGR sequence (ends with 'm').
+func isSGR(seq string) bool {
+	return len(seq) >= 3 && seq[0] == '\033' && seq[1] == '[' && seq[len(seq)-1] == 'm'
+}
+
+// ansiSlice extracts visible columns [start, end) from s, preserving ANSI SGR
+// state and OSC 8 hyperlinks without emitting empty hyperlink regions.
+//
+// Unlike ansiCut (which delegates to ansi.TruncateLeft and unconditionally
+// re-emits all ANSI state including OSC 8), ansiSlice defers OSC 8 set
+// sequences and only emits them when visible hyperlink content follows.
+func ansiSlice(s string, start, end int) string {
+	if start >= end {
+		return ""
+	}
+
+	var buf strings.Builder
+	var state ansi.State
+	var sgr sgrState
+	var pendingOSC8 string // deferred OSC 8 set sequence
+	var flushedOSC8 bool   // whether we've emitted the deferred OSC 8 set
+	col := 0               // current visible column
+	inRange := start == 0  // whether we've entered [start, end)
+
+	i := 0
+	for i < len(s) && col < end {
+		_, width, n, newState := ansi.DecodeSequence(s[i:], state, nil)
+		seq := s[i : i+n]
+
+		if width > 0 {
+			// Visible character.
+			if col >= start && col < end {
+				if !inRange {
+					// Entering the range from a non-zero start: emit
+					// reset + accumulated SGR as a preamble.
+					buf.WriteString("\033[0m")
+					if sgrStr := sgr.String(); sgrStr != "" {
+						buf.WriteString(sgrStr)
+					}
+					inRange = true
+				}
+
+				// Flush deferred OSC 8 set on first visible char in the hyperlink.
+				if pendingOSC8 != "" && !flushedOSC8 {
+					buf.WriteString(pendingOSC8)
+					flushedOSC8 = true
+				}
+
+				buf.WriteString(seq)
+			}
+			col += width
+		} else {
+			// Control/escape sequence.
+			if isSGR(seq) {
+				sgr.applySGR(seq)
+				if inRange {
+					buf.WriteString(seq)
+				}
+			} else if isOSC8Set(seq) {
+				pendingOSC8 = seq
+				flushedOSC8 = false
+			} else if isOSC8Reset(seq) {
+				if flushedOSC8 {
+					buf.WriteString(seq)
+				}
+				pendingOSC8 = ""
+				flushedOSC8 = false
+			} else if inRange {
+				buf.WriteString(seq)
+			}
+		}
+
+		state = newState
+		i += n
+	}
+
+	// Close any open hyperlink that was flushed into the output.
+	if flushedOSC8 {
+		buf.WriteString(ansi.ResetHyperlink())
+	}
+
+	return buf.String()
 }
 
 // ansiTruncate truncates a string to the given visible width, preserving ANSI codes.

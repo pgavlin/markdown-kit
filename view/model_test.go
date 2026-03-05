@@ -15,6 +15,111 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// ansiSlice
+// ---------------------------------------------------------------------------
+
+func TestAnsiSlice_PlainText(t *testing.T) {
+	result := ansiSlice("hello world", 2, 7)
+	// When start > 0, a \033[0m preamble is emitted to reset prior state.
+	stripped := ansi.Strip(result)
+	assert.Equal(t, "llo w", stripped)
+	assert.True(t, strings.HasPrefix(result, "\033[0m"), "should start with SGR reset preamble")
+}
+
+func TestAnsiSlice_StartZero(t *testing.T) {
+	result := ansiSlice("hello world", 0, 5)
+	assert.Equal(t, "hello", result)
+}
+
+func TestAnsiSlice_FullString(t *testing.T) {
+	input := "hello world"
+	result := ansiSlice(input, 0, 11)
+	assert.Equal(t, input, result)
+}
+
+func TestAnsiSlice_StartGEEnd(t *testing.T) {
+	assert.Equal(t, "", ansiSlice("hello", 5, 3))
+	assert.Equal(t, "", ansiSlice("hello", 3, 3))
+}
+
+func TestAnsiSlice_WithSGR(t *testing.T) {
+	// Bold "hello" followed by normal " world".
+	input := "\033[1mhello\033[0m world"
+	result := ansiSlice(input, 0, 5)
+	stripped := ansi.Strip(result)
+	assert.Equal(t, "hello", stripped)
+	assert.Contains(t, result, "\033[1m")
+}
+
+func TestAnsiSlice_MiddleWithSGR(t *testing.T) {
+	// Cut from middle: the preamble should restore SGR state.
+	input := "\033[1mhello\033[0m world"
+	result := ansiSlice(input, 3, 8)
+	stripped := ansi.Strip(result)
+	assert.Equal(t, "lo wo", stripped)
+	// Should start with a reset preamble since start > 0.
+	assert.True(t, strings.HasPrefix(result, "\033[0m"), "should start with SGR reset preamble")
+}
+
+func TestAnsiSlice_OSC8Hyperlink(t *testing.T) {
+	// "Before " + hyperlink("anchor link", "#target") + " after"
+	osc8Set := ansi.SetHyperlink("#target")
+	osc8Rst := ansi.ResetHyperlink()
+	input := "Before " + osc8Set + "anchor link" + osc8Rst + " after"
+
+	// Slice the hyperlink text exactly.
+	result := ansiSlice(input, 7, 18)
+	stripped := ansi.Strip(result)
+	assert.Equal(t, "anchor link", stripped)
+	// Should contain the hyperlink set and reset.
+	assert.Contains(t, result, osc8Set, "should contain OSC 8 set")
+	assert.Contains(t, result, osc8Rst, "should contain OSC 8 reset")
+}
+
+func TestAnsiSlice_NoEmptyHyperlinks(t *testing.T) {
+	// Split at the hyperlink boundary: the "before" slice should NOT contain
+	// the OSC 8 set, and no empty hyperlinks should appear.
+	osc8Set := ansi.SetHyperlink("#target")
+	osc8Rst := ansi.ResetHyperlink()
+	input := "Before " + osc8Set + "anchor link" + osc8Rst + " after"
+
+	before := ansiSlice(input, 0, 7)
+	assert.NotContains(t, before, osc8Set, "before should not contain OSC 8 set")
+	assert.NotContains(t, before, osc8Rst, "before should not contain OSC 8 reset")
+
+	after := ansiSlice(input, 18, 24)
+	assert.NotContains(t, after, osc8Set, "after should not contain OSC 8 set")
+}
+
+func TestAnsiSlice_EmptyHyperlinkStripped(t *testing.T) {
+	// An input with an already-empty hyperlink (set immediately followed by reset).
+	osc8Set := ansi.SetHyperlink("url")
+	osc8Rst := ansi.ResetHyperlink()
+	input := "text" + osc8Set + osc8Rst + " more"
+
+	result := ansiSlice(input, 0, 9)
+	stripped := ansi.Strip(result)
+	assert.Equal(t, "text more", stripped)
+	// The empty hyperlink should be eliminated.
+	assert.NotContains(t, result, osc8Set, "empty hyperlink set should be stripped")
+}
+
+func TestAnsiSlice_PartialHyperlink(t *testing.T) {
+	// Slice through the middle of a hyperlink: should include OSC 8 set/reset
+	// for just the visible portion.
+	osc8Set := ansi.SetHyperlink("url")
+	osc8Rst := ansi.ResetHyperlink()
+	input := "aa" + osc8Set + "bbcc" + osc8Rst + "dd"
+
+	result := ansiSlice(input, 3, 6)
+	stripped := ansi.Strip(result)
+	assert.Equal(t, "bcc", stripped)
+	// Should contain hyperlink for the partial content.
+	assert.Contains(t, result, osc8Set)
+	assert.Contains(t, result, osc8Rst)
+}
+
+// ---------------------------------------------------------------------------
 // ansiCut
 // ---------------------------------------------------------------------------
 
