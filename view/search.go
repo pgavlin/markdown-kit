@@ -252,15 +252,20 @@ func (m *Model) applySearchHighlights(lineIdx int, content string) string {
 			result.WriteString(ansiCut(content, pos, sc))
 		}
 
-		// The highlighted span.
+		// The highlighted span. Insert the highlight SGR after any
+		// leading ANSI state preamble emitted by ansi.TruncateLeft,
+		// which starts with \033[0m and would otherwise reset it.
 		spanContent := ansiCut(content, sc, ec)
+		revIdx := firstNonANSIByteIndex(spanContent)
 		if span.current {
+			result.WriteString(spanContent[:revIdx])
 			result.WriteString("\033[7m")
-			result.WriteString(spanContent)
+			result.WriteString(spanContent[revIdx:])
 			result.WriteString("\033[27m")
 		} else {
+			result.WriteString(spanContent[:revIdx])
 			result.WriteString("\033[30;43m")
-			result.WriteString(spanContent)
+			result.WriteString(spanContent[revIdx:])
 			result.WriteString("\033[39;49m")
 		}
 

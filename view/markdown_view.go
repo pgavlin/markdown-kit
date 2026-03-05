@@ -1069,9 +1069,12 @@ func (m *Model) applySelection(ln line, content string) string {
 	middle := ansiCut(content, selStart, selEnd)
 	after := ansiCut(content, selEnd, lineWidth)
 
-	// Use raw ANSI reverse video codes instead of lipgloss, which requires
-	// TTY detection and may not emit codes in all environments.
-	return before + "\033[7m" + middle + "\033[27m" + after
+	// Insert reverse video after any leading ANSI state preamble in middle.
+	// ansi.TruncateLeft (used by ansiCut) emits \033[0m followed by ANSI
+	// sequences to restore state at the cut point. Placing \033[7m before
+	// middle would be immediately cleared by that reset.
+	revIdx := firstNonANSIByteIndex(middle)
+	return before + middle[:revIdx] + "\033[7m" + middle[revIdx:] + "\033[27m" + after
 }
 
 // headingBreadcrumbs returns the heading hierarchy at the given line offset.
@@ -1585,6 +1588,23 @@ func expandTabs(s string, tabWidth int) string {
 		}
 	}
 	return result.String()
+}
+
+// firstNonANSIByteIndex returns the byte index of the first byte in s that is
+// not part of an ANSI escape sequence. This is used to insert styling codes
+// after a state-restoration preamble emitted by ansi.TruncateLeft.
+func firstNonANSIByteIndex(s string) int {
+	var state ansi.State
+	i := 0
+	for i < len(s) {
+		_, width, n, newState := ansi.DecodeSequence(s[i:], state, nil)
+		if width > 0 {
+			return i
+		}
+		state = newState
+		i += n
+	}
+	return i
 }
 
 // ansiTruncate truncates a string to the given visible width, preserving ANSI codes.
