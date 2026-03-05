@@ -674,6 +674,42 @@ func TestFuzzyPicker_TabCompletion_MultipleMatches(t *testing.T) {
 	}
 }
 
+func TestFuzzyPicker_TabCompletion_IgnoresSubsequenceOnlyMatches(t *testing.T) {
+	fs := newMemFS()
+	fs.wd = "/testdir"
+	fs.files["/testdir/helppage.go"] = []byte("hp")
+	fs.files["/testdir/cache.go"] = []byte("c")    // matches "he" by subsequence (c-a-c-H-E)... actually no
+	fs.files["/testdir/help.md"] = []byte("h")      // prefix match
+	fs.files["/testdir/scheme.go"] = []byte("s")    // matches "he" by subsequence (sc-H-E-me)
+
+	fp := newFuzzyPicker("/testdir", nil, fs)
+	fp = applyReadDir(fp)
+
+	// Type "he" — subsequence matching will include scheme.go, but tab
+	// completion should only consider prefix matches (help.md, helppage.go).
+	for _, ch := range "he" {
+		fp, _ = fp.Update(tea.KeyPressMsg{Code: -1, Text: string(ch)})
+	}
+
+	// Verify that subsequence matches are present in filtered results.
+	hasSubseqMatch := false
+	for _, e := range fp.filtered {
+		if e.Name() == "scheme.go" {
+			hasSubseqMatch = true
+		}
+	}
+	if !hasSubseqMatch {
+		t.Fatal("expected 'scheme.go' as subsequence match in filtered results")
+	}
+
+	// Tab should complete to LCP of prefix matches only: "help".
+	fp, _ = fp.Update(keyMsg("tab"))
+	got := fp.input.Value()
+	if got != "help" {
+		t.Errorf("expected input='help' after tab, got %q", got)
+	}
+}
+
 func TestFuzzyPicker_TabCompletion_SingleDirAppendsSep(t *testing.T) {
 	fp, _ := testFuzzyPicker()
 	fp = applyReadDir(fp)

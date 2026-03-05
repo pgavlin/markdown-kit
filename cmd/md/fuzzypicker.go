@@ -442,10 +442,18 @@ func (fp fuzzyPicker) Update(msg tea.Msg) (fuzzyPicker, tea.Cmd) {
 
 		case "tab":
 			// Tab completion: complete to the longest common prefix of matches.
-			// Exclude ".." from LCP computation.
+			// Only consider entries whose names prefix-match the current query
+			// (subsequence-only matches are excluded so the LCP is meaningful).
+			var query string
+			if fp.isPathMode() {
+				_, query = fp.splitPathInput()
+			} else {
+				query = fp.input.Value()
+			}
+			queryLower := strings.ToLower(query)
 			var candidates []os.DirEntry
 			for _, e := range fp.filtered {
-				if e.Name() != ".." {
+				if e.Name() != ".." && strings.HasPrefix(strings.ToLower(e.Name()), queryLower) {
 					candidates = append(candidates, e)
 				}
 			}
@@ -458,11 +466,14 @@ func (fp fuzzyPicker) Update(msg tea.Msg) (fuzzyPicker, tea.Cmd) {
 					lcp += string(filepath.Separator)
 				}
 			}
+			newVal := lcp
 			if fp.isPathMode() {
-				fp.input.SetValue(fp.rawDirPart() + lcp)
-			} else {
-				fp.input.SetValue(lcp)
+				newVal = fp.rawDirPart() + lcp
 			}
+			if newVal == fp.input.Value() {
+				return fp, nil
+			}
+			fp.input.SetValue(newVal)
 			fp.input.CursorEnd()
 			return fp, fp.handleInputChange()
 
