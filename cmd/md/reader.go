@@ -511,7 +511,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.picker.input.SetValue("")
 				r.picker.filter()
 				return r, nil
-			case "tab", "shift+tab":
+			case "ctrl+l":
 				r.pickerURLMode = !r.pickerURLMode
 				if r.pickerURLMode {
 					r.pickerURLInput = textinput.New()
@@ -1181,9 +1181,9 @@ func renderOpenModeHeader(fileActive bool) string {
 	inactive := lipgloss.NewStyle().Foreground(colorMuted)
 	hint := lipgloss.NewStyle().Foreground(colorMuted)
 	if fileActive {
-		return active.Render("File") + "  " + inactive.Render("URL") + hint.Render("  (tab to switch)")
+		return active.Render("File") + "  " + inactive.Render("URL") + hint.Render("  (ctrl+l to switch)")
 	}
-	return inactive.Render("File") + "  " + active.Render("URL") + hint.Render("  (tab to switch)")
+	return inactive.Render("File") + "  " + active.Render("URL") + hint.Render("  (ctrl+l to switch)")
 }
 
 // renderFixedOverlay renders content in a bordered dialog with a fixed width, centered over base.

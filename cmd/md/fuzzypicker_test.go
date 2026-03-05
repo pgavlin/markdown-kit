@@ -650,6 +650,143 @@ func TestFuzzyPicker_PathMode_BadDirShowsEmpty(t *testing.T) {
 	}
 }
 
+func TestFuzzyPicker_TabCompletion_MultipleMatches(t *testing.T) {
+	fs := newMemFS()
+	fs.wd = "/testdir"
+	fs.files["/testdir/readme.md"] = []byte("# Readme")
+	fs.files["/testdir/release.md"] = []byte("# Release")
+	fs.files["/testdir/other.md"] = []byte("# Other")
+
+	fp := newFuzzyPicker("/testdir", []string{".md"}, fs)
+	fp = applyReadDir(fp)
+
+	// Type "re" to filter to readme.md and release.md.
+	for _, ch := range "re" {
+		fp, _ = fp.Update(tea.KeyPressMsg{Code: -1, Text: string(ch)})
+	}
+
+	// Tab should complete to the LCP "re" — already matches both, but LCP
+	// of "readme.md" and "release.md" is "re".
+	fp, _ = fp.Update(keyMsg("tab"))
+	got := fp.input.Value()
+	if got != "re" {
+		t.Errorf("expected input='re' after tab, got %q", got)
+	}
+}
+
+func TestFuzzyPicker_TabCompletion_SingleDirAppendsSep(t *testing.T) {
+	fp, _ := testFuzzyPicker()
+	fp = applyReadDir(fp)
+
+	// Type "sub" to filter to just "subdir".
+	for _, ch := range "sub" {
+		fp, _ = fp.Update(tea.KeyPressMsg{Code: -1, Text: string(ch)})
+	}
+	if len(fp.filtered) != 1 || fp.filtered[0].Name() != "subdir" {
+		t.Fatalf("expected single match 'subdir', got %d entries", len(fp.filtered))
+	}
+
+	// Tab should complete to "subdir/" (with trailing separator).
+	fp, _ = fp.Update(keyMsg("tab"))
+	got := fp.input.Value()
+	if got != "subdir/" {
+		t.Errorf("expected input='subdir/', got %q", got)
+	}
+}
+
+func TestFuzzyPicker_TabCompletion_SingleFile(t *testing.T) {
+	fp, _ := testFuzzyPicker()
+	fp = applyReadDir(fp)
+
+	// Type "read" to filter to just "readme.md".
+	for _, ch := range "read" {
+		fp, _ = fp.Update(tea.KeyPressMsg{Code: -1, Text: string(ch)})
+	}
+
+	// Filter out non-file entries; only readme.md should match (plus maybe ..).
+	var nonParent []string
+	for _, e := range fp.filtered {
+		if e.Name() != ".." {
+			nonParent = append(nonParent, e.Name())
+		}
+	}
+	if len(nonParent) != 1 || nonParent[0] != "readme.md" {
+		t.Fatalf("expected single non-parent match 'readme.md', got %v", nonParent)
+	}
+
+	fp, _ = fp.Update(keyMsg("tab"))
+	got := fp.input.Value()
+	if got != "readme.md" {
+		t.Errorf("expected input='readme.md', got %q", got)
+	}
+}
+
+func TestFuzzyPicker_TabCompletion_NoMatches(t *testing.T) {
+	fp, _ := testFuzzyPicker()
+	fp = applyReadDir(fp)
+
+	// Type something that matches nothing.
+	for _, ch := range "zzzzz" {
+		fp, _ = fp.Update(tea.KeyPressMsg{Code: -1, Text: string(ch)})
+	}
+	if len(fp.filtered) != 0 {
+		t.Fatalf("expected 0 matches, got %d", len(fp.filtered))
+	}
+
+	fp, _ = fp.Update(keyMsg("tab"))
+	got := fp.input.Value()
+	if got != "zzzzz" {
+		t.Errorf("expected input unchanged at 'zzzzz', got %q", got)
+	}
+}
+
+func TestFuzzyPicker_TabCompletion_PathMode(t *testing.T) {
+	fs := newMemFS()
+	fs.wd = "/testdir"
+	fs.files["/testdir/subdir/alpha.md"] = []byte("a")
+	fs.files["/testdir/subdir/also.md"] = []byte("b")
+
+	fp := newFuzzyPicker("/testdir", []string{".md"}, fs)
+	fp = applyReadDir(fp)
+
+	// Enter path mode by typing "subdir/".
+	fp = applyPathInput(fp, "subdir/")
+
+	// Tab should complete to LCP of "alpha.md" and "also.md" → "al".
+	fp, _ = fp.Update(keyMsg("tab"))
+	got := fp.input.Value()
+	if got != "subdir/al" {
+		t.Errorf("expected input='subdir/al', got %q", got)
+	}
+}
+
+func TestFuzzyPicker_EnterDir_CursorAtEnd(t *testing.T) {
+	fp, fs := testFuzzyPicker()
+	fs.files["/testdir/subdir/deep/file.md"] = []byte("deep")
+	fp = applyReadDir(fp)
+
+	fp = applyPathInput(fp, "subdir/")
+
+	// Find "deep" directory.
+	for fp.cursor < len(fp.filtered)-1 && fp.filtered[fp.cursor].Name() != "deep" {
+		fp, _ = fp.Update(keyMsg("down"))
+	}
+	if fp.filtered[fp.cursor].Name() != "deep" {
+		t.Fatalf("expected cursor on 'deep', got %q", fp.filtered[fp.cursor].Name())
+	}
+
+	// Press enter — should update input and place cursor at end.
+	fp, _ = fp.Update(keyMsg("enter"))
+	val := fp.input.Value()
+	if val != "subdir/deep/" {
+		t.Fatalf("expected input='subdir/deep/', got %q", val)
+	}
+	// Cursor position should be at the end of the value.
+	if fp.input.Position() != len(val) {
+		t.Errorf("expected cursor at position %d, got %d", len(val), fp.input.Position())
+	}
+}
+
 func TestFuzzyPicker_PathMode_ExitReturnsToNormal(t *testing.T) {
 	fp, _ := testFuzzyPicker()
 	fp = applyReadDir(fp)

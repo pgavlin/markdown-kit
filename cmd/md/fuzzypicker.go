@@ -275,6 +275,31 @@ func subsequenceMatch(haystack, needle string) bool {
 	return true
 }
 
+// longestCommonPrefix returns the longest common prefix of the entry names,
+// compared case-insensitively but preserving the case of the first entry.
+func longestCommonPrefix(entries []os.DirEntry) string {
+	if len(entries) == 0 {
+		return ""
+	}
+	prefix := entries[0].Name()
+	for _, e := range entries[1:] {
+		name := e.Name()
+		n := len(prefix)
+		if len(name) < n {
+			n = len(name)
+		}
+		i := 0
+		for i < n && strings.ToLower(prefix[i:i+1]) == strings.ToLower(name[i:i+1]) {
+			i++
+		}
+		prefix = prefix[:i]
+		if prefix == "" {
+			break
+		}
+	}
+	return prefix
+}
+
 // canSelect checks if a filename has an allowed extension.
 func (fp *fuzzyPicker) canSelect(name string) bool {
 	if len(fp.allowedTypes) == 0 {
@@ -383,6 +408,7 @@ func (fp fuzzyPicker) Update(msg tea.Msg) (fuzzyPicker, tea.Cmd) {
 					} else {
 						fp.input.SetValue(raw + entry.Name() + string(filepath.Separator))
 					}
+					fp.input.CursorEnd()
 					return fp, fp.handleInputChange()
 				}
 				// File selection in path mode.
@@ -413,6 +439,32 @@ func (fp fuzzyPicker) Update(msg tea.Msg) (fuzzyPicker, tea.Cmd) {
 				fp.selected = filepath.Join(fp.dir, entry.Name())
 			}
 			return fp, nil
+
+		case "tab":
+			// Tab completion: complete to the longest common prefix of matches.
+			// Exclude ".." from LCP computation.
+			var candidates []os.DirEntry
+			for _, e := range fp.filtered {
+				if e.Name() != ".." {
+					candidates = append(candidates, e)
+				}
+			}
+			if len(candidates) == 0 {
+				return fp, nil
+			}
+			lcp := longestCommonPrefix(candidates)
+			if len(candidates) == 1 {
+				if candidates[0].IsDir() {
+					lcp += string(filepath.Separator)
+				}
+			}
+			if fp.isPathMode() {
+				fp.input.SetValue(fp.rawDirPart() + lcp)
+			} else {
+				fp.input.SetValue(lcp)
+			}
+			fp.input.CursorEnd()
+			return fp, fp.handleInputChange()
 
 		default:
 			// Forward to textinput.
