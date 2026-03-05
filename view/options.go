@@ -1,6 +1,13 @@
 package view
 
-import "github.com/alecthomas/chroma"
+import (
+	"github.com/alecthomas/chroma"
+	"github.com/pgavlin/goldmark/ast"
+)
+
+// DocumentTransformer is a function that transforms a parsed Markdown AST
+// before rendering. It can be used to remove or modify nodes in the document.
+type DocumentTransformer func(doc ast.Node, source []byte)
 
 // Option configures a [Model] during construction.
 type Option func(*Model)
@@ -51,5 +58,13 @@ func WithWidth(width int) Option {
 func WithHeight(height int) Option {
 	return func(m *Model) {
 		m.height = height
+	}
+}
+
+// WithDocumentTransformer adds a document transformer that will be applied
+// to the parsed AST before rendering.
+func WithDocumentTransformer(t DocumentTransformer) Option {
+	return func(m *Model) {
+		m.documentTransformers = append(m.documentTransformers, t)
 	}
 }

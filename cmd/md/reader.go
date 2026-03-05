@@ -216,6 +216,9 @@ type markdownReader struct {
 	// Theme needed to create new tab views.
 	theme *chroma.Style
 
+	// Options for creating new view models.
+	viewOpts []mdk.Option
+
 	width, height int
 
 	// Structured logger for I/O operations.
@@ -297,11 +300,12 @@ const defaultContentWidth = 160
 
 // newTab creates a new tab with a fresh mdk.Model using the reader's theme and keys.
 func (r *markdownReader) newTab() tab {
-	view := mdk.NewModel(
+	opts := append([]mdk.Option{
 		mdk.WithTheme(r.theme),
 		mdk.WithGutter(true),
 		mdk.WithContentWidth(defaultContentWidth),
-	)
+	}, r.viewOpts...)
+	view := mdk.NewModel(opts...)
 	view.KeyMap = r.keys.KeyMap
 	if r.width > 0 && r.height > 0 {
 		view.SetSize(r.width, r.viewHeight())
@@ -309,14 +313,15 @@ func (r *markdownReader) newTab() tab {
 	return tab{view: view}
 }
 
-func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv converter, registry *converterRegistry, cache *conversionCache, client httpClient, fsys fileSystem, searchIndex *docsearch.Index, logger *slog.Logger) markdownReader {
+func newMarkdownReader(name, markdown, source string, theme *chroma.Style, viewOpts []mdk.Option, conv converter, registry *converterRegistry, cache *conversionCache, client httpClient, fsys fileSystem, searchIndex *docsearch.Index, logger *slog.Logger) markdownReader {
 	keys := defaultReaderKeyMap()
 
-	view := mdk.NewModel(
+	opts := append([]mdk.Option{
 		mdk.WithTheme(theme),
 		mdk.WithGutter(true),
 		mdk.WithContentWidth(defaultContentWidth),
-	)
+	}, viewOpts...)
+	view := mdk.NewModel(opts...)
 	view.SetText(name, markdown)
 	view.KeyMap = keys.KeyMap
 
@@ -333,6 +338,7 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style, conv 
 		}},
 		activeTab:   0,
 		theme:       theme,
+		viewOpts:    viewOpts,
 		logger:      logger,
 		converter:   conv,
 		registry:    registry,

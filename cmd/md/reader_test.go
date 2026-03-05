@@ -20,6 +20,7 @@ func testReader(name, markdown, source string) markdownReader {
 	return newMarkdownReader(
 		name, markdown, source,
 		styles.GlamourDark,
+		nil, // no view opts
 		&fakeConverter{},
 		nil,               // no registry
 		nil,               // no cache

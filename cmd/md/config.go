@@ -124,11 +124,16 @@ func (c searchConfig) newEmbedder() docsearch.Embedder {
 }
 
 type config struct {
-	Theme      string                  `toml:"theme"`
-	Keys       map[string]any          `toml:"keys"`
-	Converter  converterConfig         `toml:"converter"`
-	Converters []formatConverterConfig `toml:"converters"`
-	Search     searchConfig            `toml:"search"`
+	Theme         string                  `toml:"theme"`
+	StripDataURIs *bool                   `toml:"strip_data_uris"`
+	Keys          map[string]any          `toml:"keys"`
+	Converter     converterConfig         `toml:"converter"`
+	Converters    []formatConverterConfig `toml:"converters"`
+	Search        searchConfig            `toml:"search"`
+}
+
+func (c config) stripDataURIs() bool {
+	return c.StripDataURIs == nil || *c.StripDataURIs
 }
 
 func configPath() (string, error) {
@@ -169,6 +174,10 @@ const defaultConfig = `# md configuration file
 # Color theme (any Chroma style name, e.g. "monokai", "dracula").
 # Defaults to a built-in dark theme when empty.
 # theme = ""
+
+# Strip inline HTML tags containing data: URIs (e.g. base64 images).
+# Enabled by default. Set to false to preserve them.
+# strip_data_uris = true
 
 # Content converter for HTML-to-Markdown when opening URLs.
 # [converter]

@@ -369,6 +369,9 @@ type Model struct {
 
 	// Search state.
 	search searchState
+
+	// Document transformers to apply after parsing.
+	documentTransformers []DocumentTransformer
 }
 
 // effectiveWidth returns the width to use for rendering content.
@@ -430,6 +433,9 @@ func (m *Model) SetText(name, markdown string) {
 		util.Prioritized(extension.NewTableParagraphTransformer(), 200),
 	))
 	m.document = parser.Parse(text.NewReader(m.markdown))
+	for _, t := range m.documentTransformers {
+		t(m.document, m.markdown)
+	}
 	if name == "" {
 		name = firstHeadingText(m.document, m.markdown)
 	}

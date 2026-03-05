@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/BurntSushi/toml"
 	"github.com/pgavlin/markdown-kit/docsearch"
+	mdk "github.com/pgavlin/markdown-kit/view"
 	"github.com/urfave/cli/v3"
 )
 
@@ -112,6 +113,11 @@ func main() {
 			cache := openCache()
 			httpCl := http.DefaultClient
 
+			var viewOpts []mdk.Option
+			if cfg.stripDataURIs() {
+				viewOpts = append(viewOpts, mdk.WithDocumentTransformer(mdk.StripDataURIs))
+			}
+
 			// Open the document search index.
 			var searchIndex *docsearch.Index
 			if dd, err := dataDir(); err == nil {
@@ -130,7 +136,7 @@ func main() {
 			var model markdownReader
 			if cmd.Args().Len() == 0 {
 				// No args — start with file picker.
-				model = newMarkdownReader("", "", "", theme, conv, registry, cache, httpCl, fsys, searchIndex, logger)
+				model = newMarkdownReader("", "", "", theme, viewOpts, conv, registry, cache, httpCl, fsys, searchIndex, logger)
 				model.showPicker = true
 				model.pickerStartup = true
 			} else {
@@ -141,7 +147,7 @@ func main() {
 					if err != nil {
 						return fmt.Errorf("error fetching %v: %w", arg, err)
 					}
-					model = newMarkdownReader("", result.markdown, result.source, theme, conv, registry, cache, httpCl, fsys, searchIndex, logger)
+					model = newMarkdownReader("", result.markdown, result.source, theme, viewOpts, conv, registry, cache, httpCl, fsys, searchIndex, logger)
 					// Index the initial document.
 					if searchIndex != nil {
 						searchIndex.Add(ctx, result.source, model.active().view.GetName(), result.markdown)
@@ -161,7 +167,7 @@ func main() {
 					if err != nil {
 						return fmt.Errorf("error converting %v: %w", arg, err)
 					}
-					model = newMarkdownReader("", cr.markdown, absPath, theme, conv, registry, cache, httpCl, fsys, searchIndex, logger)
+					model = newMarkdownReader("", cr.markdown, absPath, theme, viewOpts, conv, registry, cache, httpCl, fsys, searchIndex, logger)
 					// Index the initial document.
 					if searchIndex != nil {
 						searchIndex.Add(ctx, absPath, model.active().view.GetName(), cr.markdown)
@@ -175,7 +181,7 @@ func main() {
 					if err != nil {
 						absPath = arg
 					}
-					model = newMarkdownReader("", string(source), absPath, theme, conv, registry, cache, httpCl, fsys, searchIndex, logger)
+					model = newMarkdownReader("", string(source), absPath, theme, viewOpts, conv, registry, cache, httpCl, fsys, searchIndex, logger)
 					// Index the initial document.
 					if searchIndex != nil {
 						searchIndex.Add(ctx, absPath, model.active().view.GetName(), string(source))
