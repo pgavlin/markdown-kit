@@ -1439,7 +1439,7 @@ func (d bugReportData) formatBugReport(description string) string {
 	b.WriteString("\n```\n\n")
 
 	b.WriteString("### Raw Markdown\n```markdown\n")
-	b.WriteString(d.rawMarkdown)
+	b.WriteString(mdk.StripDataURIText(d.rawMarkdown))
 	b.WriteString("\n```\n")
 
 	return b.String()

@@ -100,6 +100,51 @@ func TestStripDataURIs(t *testing.T) {
 		assert.NotContains(t, output, "data:image")
 	})
 
+	t.Run("removes markdown image with data URI", func(t *testing.T) {
+		input := "before ![alt](data:image/png;base64,iVBORw0KGgo=) after\n"
+		output := renderWithTransformer(t, input, StripDataURIs)
+
+		assert.Contains(t, output, "before")
+		assert.Contains(t, output, "after")
+		assert.NotContains(t, output, "data:image")
+		assert.NotContains(t, output, "iVBOR")
+	})
+
+	t.Run("removes reference-style markdown image with data URI", func(t *testing.T) {
+		input := "before\n\n![][image1]\n\n[image1]: <data:image/png;base64,iVBORw0KGgo=>\n\nafter\n"
+		output := renderWithTransformer(t, input, StripDataURIs)
+
+		assert.Contains(t, output, "before")
+		assert.Contains(t, output, "after")
+		assert.NotContains(t, output, "data:image")
+		assert.NotContains(t, output, "iVBOR")
+	})
+
+	t.Run("removes markdown link with data URI", func(t *testing.T) {
+		input := "before [click](data:image/png;base64,iVBORw0KGgo=) after\n"
+		output := renderWithTransformer(t, input, StripDataURIs)
+
+		assert.Contains(t, output, "before")
+		assert.Contains(t, output, "after")
+		assert.NotContains(t, output, "data:image")
+	})
+
+	t.Run("preserves normal markdown image", func(t *testing.T) {
+		input := "![alt](https://example.com/img.png)\n"
+		output := renderWithTransformer(t, input, StripDataURIs)
+
+		assert.Contains(t, output, "https://example.com/img.png")
+	})
+
+	t.Run("removes reference definition with bare data URI", func(t *testing.T) {
+		input := "before\n\n![][img]\n\n[img]: data:image/png;base64,iVBORw0KGgo=\n\nafter\n"
+		output := renderWithTransformer(t, input, StripDataURIs)
+
+		assert.Contains(t, output, "before")
+		assert.Contains(t, output, "after")
+		assert.NotContains(t, output, "data:image")
+	})
+
 	t.Run("no transform without StripDataURIs", func(t *testing.T) {
 		input := "text <img src=\"data:image/png;base64,iVBOR\"> end\n"
 
@@ -119,5 +164,59 @@ func TestStripDataURIs(t *testing.T) {
 			return ast.WalkContinue, nil
 		})
 		assert.True(t, found, "RawHTML node should exist without transformer")
+	})
+}
+
+func TestStripDataURIText(t *testing.T) {
+	t.Run("markdown image", func(t *testing.T) {
+		input := "![alt](data:image/png;base64,iVBORw0KGgo=)"
+		got := StripDataURIText(input)
+		assert.Equal(t, "![alt]([data URI removed])", got)
+	})
+
+	t.Run("markdown link", func(t *testing.T) {
+		input := "[click](data:text/html;base64,AAAA)"
+		got := StripDataURIText(input)
+		assert.Equal(t, "[click]([data URI removed])", got)
+	})
+
+	t.Run("HTML double-quoted attribute", func(t *testing.T) {
+		input := `<img src="data:image/png;base64,iVBOR">`
+		got := StripDataURIText(input)
+		assert.Equal(t, `<img src="[data URI removed]">`, got)
+	})
+
+	t.Run("HTML single-quoted attribute", func(t *testing.T) {
+		input := `<img src='data:image/gif;base64,R0lGODlh'>`
+		got := StripDataURIText(input)
+		assert.Equal(t, `<img src='[data URI removed]'>`, got)
+	})
+
+	t.Run("link reference definition bare", func(t *testing.T) {
+		input := "[img]: data:image/png;base64,iVBORw0KGgo="
+		got := StripDataURIText(input)
+		assert.Equal(t, "[img]: [data URI removed]", got)
+	})
+
+	t.Run("link reference definition angle-bracketed", func(t *testing.T) {
+		input := "[img]: <data:image/png;base64,iVBORw0KGgo=>"
+		got := StripDataURIText(input)
+		assert.Equal(t, "[img]: <[data URI removed]>", got)
+	})
+
+	t.Run("multiple data URIs", func(t *testing.T) {
+		input := "![a](data:image/png;base64,AAA) and ![b](data:image/gif;base64,BBB)"
+		got := StripDataURIText(input)
+		assert.Equal(t, "![a]([data URI removed]) and ![b]([data URI removed])", got)
+	})
+
+	t.Run("no data URIs passthrough", func(t *testing.T) {
+		input := "plain **markdown** with [link](https://example.com)"
+		got := StripDataURIText(input)
+		assert.Equal(t, input, got)
+	})
+
+	t.Run("empty string", func(t *testing.T) {
+		assert.Equal(t, "", StripDataURIText(""))
 	})
 }
