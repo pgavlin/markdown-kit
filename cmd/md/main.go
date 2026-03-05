@@ -148,9 +148,13 @@ func main() {
 						return fmt.Errorf("error fetching %v: %w", arg, err)
 					}
 					model = newMarkdownReader("", result.markdown, result.source, theme, viewOpts, conv, registry, cache, httpCl, fsys, searchIndex, logger)
-					// Index the initial document.
+					// Index the initial document in the background during Init.
 					if searchIndex != nil {
-						searchIndex.Add(ctx, result.source, model.active().view.GetName(), result.markdown)
+						model.pendingIndex = &pendingIndexEntry{
+							path:     result.source,
+							title:    model.active().view.GetName(),
+							markdown: result.markdown,
+						}
 					}
 				} else if isConvertibleFile(arg, registry) {
 					source, err := fsys.ReadFile(arg)
@@ -168,9 +172,13 @@ func main() {
 						return fmt.Errorf("error converting %v: %w", arg, err)
 					}
 					model = newMarkdownReader("", cr.markdown, absPath, theme, viewOpts, conv, registry, cache, httpCl, fsys, searchIndex, logger)
-					// Index the initial document.
+					// Index the initial document in the background during Init.
 					if searchIndex != nil {
-						searchIndex.Add(ctx, absPath, model.active().view.GetName(), cr.markdown)
+						model.pendingIndex = &pendingIndexEntry{
+							path:     absPath,
+							title:    model.active().view.GetName(),
+							markdown: cr.markdown,
+						}
 					}
 				} else {
 					source, err := fsys.ReadFile(arg)
@@ -182,9 +190,13 @@ func main() {
 						absPath = arg
 					}
 					model = newMarkdownReader("", string(source), absPath, theme, viewOpts, conv, registry, cache, httpCl, fsys, searchIndex, logger)
-					// Index the initial document.
+					// Index the initial document in the background during Init.
 					if searchIndex != nil {
-						searchIndex.Add(ctx, absPath, model.active().view.GetName(), string(source))
+						model.pendingIndex = &pendingIndexEntry{
+							path:     absPath,
+							title:    model.active().view.GetName(),
+							markdown: string(source),
+						}
 					}
 				}
 			}

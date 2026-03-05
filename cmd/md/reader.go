@@ -289,6 +289,16 @@ type markdownReader struct {
 
 	// Gist export state.
 	exportingGist bool
+
+	// Pending initial document index (deferred to Init for non-blocking startup).
+	pendingIndex *pendingIndexEntry
+}
+
+// pendingIndexEntry holds data for a document that should be indexed at Init time.
+type pendingIndexEntry struct {
+	path     string
+	title    string
+	markdown string
 }
 
 // active returns a pointer to the active tab.
@@ -469,10 +479,16 @@ func (r *markdownReader) renderTabBar() string {
 }
 
 func (r markdownReader) Init() tea.Cmd {
+	var cmds []tea.Cmd
 	if r.showPicker {
-		return r.picker.Init()
+		cmds = append(cmds, r.picker.Init())
 	}
-	return nil
+	if r.pendingIndex != nil && r.searchIndex != nil {
+		pi := r.pendingIndex
+		cmds = append(cmds, indexDocument(r.searchIndex, pi.path, pi.title, pi.markdown))
+		r.pendingIndex = nil
+	}
+	return tea.Batch(cmds...)
 }
 
 func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
