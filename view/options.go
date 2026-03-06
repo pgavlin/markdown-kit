@@ -3,6 +3,7 @@ package view
 import (
 	"github.com/alecthomas/chroma"
 	"github.com/pgavlin/goldmark/ast"
+	"github.com/pgavlin/markdown-kit/renderer"
 )
 
 // DocumentTransformer is a function that transforms a parsed Markdown AST
@@ -58,6 +59,14 @@ func WithWidth(width int) Option {
 func WithHeight(height int) Option {
 	return func(m *Model) {
 		m.height = height
+	}
+}
+
+// WithDiagramRenderer sets the diagram renderer used to convert diagram code blocks
+// (e.g. mermaid) into rendered text.
+func WithDiagramRenderer(dr renderer.DiagramRenderer) Option {
+	return func(m *Model) {
+		m.diagramRenderer = dr
 	}
 }
 

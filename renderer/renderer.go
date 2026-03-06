@@ -127,6 +127,10 @@ func (s *NodeSpan) Contains(offset int) bool {
 	return s.Start <= offset && offset < s.End
 }
 
+// A DiagramRenderer converts diagram source code into rendered text.
+// Returns an error for unsupported languages, causing fallback to normal code rendering.
+type DiagramRenderer func(language string, source []byte) (string, error)
+
 // An ImageEncoder converts an image to a binary representation that can be displayed by the target output device.
 type ImageEncoder func(w io.Writer, image image.Image, r *Renderer) (int, error)
 
@@ -178,8 +182,9 @@ type Renderer struct {
 	images        bool
 	maxImageWidth int
 	contentRoot   string
-	imageEncoder  ImageEncoder
-	softBreak     bool
+	imageEncoder    ImageEncoder
+	diagramRenderer DiagramRenderer
+	softBreak       bool
 	padToWrap     []int
 	noBreak       int // nesting counter; when > 0, spaces don't break words
 
@@ -200,6 +205,7 @@ type Renderer struct {
 	atNewline   bool
 	byteOffset  int
 	inImage     bool
+	inDiagram   bool
 }
 
 // A RendererOption represents a configuration option for a Renderer.
@@ -282,6 +288,15 @@ func WithGeometry(cols, rows, width, height int) RendererOption {
 func WithImageEncoder(encoder ImageEncoder) RendererOption {
 	return func(r *Renderer) {
 		r.imageEncoder = encoder
+	}
+}
+
+// WithDiagramRenderer sets the diagram renderer used to convert diagram code blocks (e.g. mermaid)
+// into rendered text. If the renderer returns an error for a given language, the code block falls
+// back to normal syntax-highlighted rendering.
+func WithDiagramRenderer(dr DiagramRenderer) RendererOption {
+	return func(r *Renderer) {
+		r.diagramRenderer = dr
 	}
 }
 
@@ -969,6 +984,11 @@ func (r *Renderer) RenderCodeBlock(w util.BufWriter, source []byte, node ast.Nod
 // RenderFencedCodeBlock renders an *ast.FencedCodeBlock node to the given BufWriter.
 func (r *Renderer) RenderFencedCodeBlock(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if !enter {
+		if r.inDiagram {
+			r.inDiagram = false
+			return ast.WalkContinue, nil
+		}
+
 		if err := r.PopStyle(w); err != nil {
 			return ast.WalkStop, err
 		}
@@ -982,15 +1002,59 @@ func (r *Renderer) RenderFencedCodeBlock(w util.BufWriter, source []byte, node a
 		return ast.WalkContinue, nil
 	}
 
+	code := node.(*ast.FencedCodeBlock)
+	fence := code.Fence
+	language := code.Language(source)
+
+	// Attempt diagram rendering if configured.
+	if r.diagramRenderer != nil && len(language) > 0 {
+		lines := node.Lines()
+		var src strings.Builder
+		for i := 0; i < lines.Len(); i++ {
+			line := lines.At(i)
+			src.Write(line.Value(source))
+		}
+		if rendered, err := r.diagramRenderer(string(language), []byte(src.String())); err == nil {
+			if err := r.OpenBlock(w, source, node); err != nil {
+				return ast.WalkStop, err
+			}
+			r.PushWordWrap(false)
+
+			// Measure widest line for padding.
+			diagramMaxWidth := 0
+			for _, dline := range strings.Split(rendered, "\n") {
+				if dw := ansi.StringWidth(dline); dw > diagramMaxWidth {
+					diagramMaxWidth = dw
+				}
+			}
+			r.PushPad(diagramMaxWidth)
+
+			// Write the diagram text (no fences, no code style).
+			if _, err := r.WriteString(w, rendered); err != nil {
+				return ast.WalkStop, err
+			}
+			if !strings.HasSuffix(rendered, "\n") {
+				if err := r.writeByte(w, '\n'); err != nil {
+					return ast.WalkStop, nil
+				}
+			}
+
+			r.PopPad()
+			r.PopWordWrap()
+			if err := r.CloseBlock(w); err != nil {
+				return ast.WalkStop, err
+			}
+			r.inDiagram = true
+			return ast.WalkSkipChildren, nil
+		}
+		// Fall through to normal code block rendering on error.
+	}
+
 	if err := r.OpenBlock(w, source, node); err != nil {
 		return ast.WalkStop, err
 	}
 
 	r.PushWordWrap(false)
-
-	code := node.(*ast.FencedCodeBlock)
-	fence := code.Fence
-	language := code.Language(source)
 
 	// Measure the widest line to determine the code block padding width.
 	fenceLineWidth := ansi.StringWidth(string(fence)) + ansi.StringWidth(string(language))

@@ -2,6 +2,7 @@ package renderer
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -1243,4 +1244,50 @@ func TestIndentedCodeBlockBlankLineWidth(t *testing.T) {
 	assert.Equal(t, helloWidth, worldWidth,
 		"world line width (%d) should match hello line width (%d)",
 		worldWidth, helloWidth)
+}
+
+// TestFencedCodeBlockDiagramRendering verifies that a diagram renderer replaces
+// code block content with rendered diagram text.
+func TestFencedCodeBlockDiagramRendering(t *testing.T) {
+	mockRenderer := func(language string, source []byte) (string, error) {
+		if language == "mermaid" {
+			return "┌───┐     ┌───┐\n│ A ├────►│ B │\n└───┘     └───┘", nil
+		}
+		return "", fmt.Errorf("unsupported: %s", language)
+	}
+
+	input := "```mermaid\ngraph LR;\n    A-->B;\n```\n"
+	output, _ := renderMarkdown(t, input, WithDiagramRenderer(mockRenderer))
+	stripped := ansi.Strip(output)
+
+	// The rendered diagram should appear in the output.
+	assert.True(t, strings.Contains(stripped, "┌───┐"), "output should contain rendered diagram box")
+	assert.True(t, strings.Contains(stripped, "│ A ├"), "output should contain rendered node A")
+	assert.True(t, strings.Contains(stripped, "│ B │"), "output should contain rendered node B")
+
+	// The raw mermaid source should NOT appear.
+	assert.False(t, strings.Contains(stripped, "graph LR"), "output should not contain raw mermaid source")
+	assert.False(t, strings.Contains(stripped, "A-->B"), "output should not contain raw mermaid arrows")
+
+	// No fence markers should appear.
+	assert.False(t, strings.Contains(stripped, "```"), "output should not contain fence markers")
+}
+
+// TestFencedCodeBlockDiagramFallback verifies that when the diagram renderer
+// returns an error, normal code block rendering is used.
+func TestFencedCodeBlockDiagramFallback(t *testing.T) {
+	failingRenderer := func(language string, source []byte) (string, error) {
+		return "", fmt.Errorf("rendering failed")
+	}
+
+	input := "```mermaid\ngraph LR;\n    A-->B;\n```\n"
+	output, _ := renderMarkdown(t, input, WithDiagramRenderer(failingRenderer))
+	stripped := ansi.Strip(output)
+
+	// The raw mermaid source SHOULD appear since the renderer failed.
+	assert.True(t, strings.Contains(stripped, "graph LR;"), "output should contain raw mermaid source on fallback")
+	assert.True(t, strings.Contains(stripped, "A-->B;"), "output should contain raw mermaid arrows on fallback")
+
+	// Fence markers should appear in normal rendering.
+	assert.True(t, strings.Contains(stripped, "```"), "output should contain fence markers on fallback")
 }

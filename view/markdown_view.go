@@ -372,6 +372,9 @@ type Model struct {
 
 	// Document transformers to apply after parsing.
 	documentTransformers []DocumentTransformer
+
+	// Diagram renderer for converting diagram code blocks to text.
+	diagramRenderer renderer.DiagramRenderer
 }
 
 // effectiveWidth returns the width to use for rendering content.
@@ -506,11 +509,16 @@ func (m *Model) render(width int) {
 		wrap = width
 	}
 
-	r := renderer.New(
+	opts := []renderer.RendererOption{
 		renderer.WithTheme(m.theme),
 		renderer.WithHyperlinks(true),
 		renderer.WithWordWrap(wrap),
-		renderer.WithSoftBreak(wrap != 0))
+		renderer.WithSoftBreak(wrap != 0),
+	}
+	if m.diagramRenderer != nil {
+		opts = append(opts, renderer.WithDiagramRenderer(m.diagramRenderer))
+	}
+	r := renderer.New(opts...)
 
 	w := lineWriter{}
 	gmRenderer := goldmark_renderer.NewRenderer(goldmark_renderer.WithNodeRenderers(util.Prioritized(r, 100)))

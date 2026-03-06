@@ -17,6 +17,7 @@ import (
 	goldmark_renderer "github.com/pgavlin/goldmark/renderer"
 	"github.com/pgavlin/goldmark/text"
 	"github.com/pgavlin/goldmark/util"
+	"github.com/pgavlin/markdown-kit/diagram"
 	"github.com/pgavlin/markdown-kit/renderer"
 	"github.com/pgavlin/markdown-kit/styles"
 	_ "github.com/pgavlin/svg2"
@@ -75,6 +76,7 @@ func main() {
 		renderer.WithHyperlinks(*hyperlinks),
 		renderer.WithImages(*images, termWidth, filepath.Dir(path)),
 		renderer.WithImageEncoder(imageEncoder),
+		renderer.WithDiagramRenderer(diagram.MermaidRenderer()),
 	}
 	if hasGeometry {
 		options = append(options, renderer.WithGeometry(cols, rows, termWidth, termHeight))
