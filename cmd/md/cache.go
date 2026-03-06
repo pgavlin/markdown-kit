@@ -27,10 +27,8 @@ type cacheEntry struct {
 	ContentHash string `json:"content_hash,omitempty"`
 
 	// The cached conversion result.
-	Name            string `json:"name"`
-	Markdown        string `json:"markdown"`
-	OriginalHTML    string `json:"original_html,omitempty"`
-	ReadabilityHTML string `json:"readability_html,omitempty"`
+	Name     string `json:"name"`
+	Markdown string `json:"markdown"`
 }
 
 // conversionCache stores cached conversion results on disk.

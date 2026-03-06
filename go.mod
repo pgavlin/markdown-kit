@@ -17,7 +17,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.34
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/pgavlin/goldmark v1.1.33-0.20210916052350-16f491902b32
-	github.com/pgavlin/readability-go v0.0.0
+	github.com/pgavlin/mermaid-ascii v0.0.0-20260306062738-41fbf76a4a4d
 	github.com/pgavlin/svg2 v0.0.0-20210919231505-4ace7308edc1
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	github.com/stretchr/testify v1.11.1
@@ -25,8 +25,6 @@ require (
 	golang.org/x/net v0.51.0
 	golang.org/x/term v0.40.0
 )
-
-replace github.com/pgavlin/readability-go => /Users/pgavlin/dev/sandbox/readability-go
 
 require (
 	github.com/alecthomas/chroma/v2 v2.14.0 // indirect
@@ -45,9 +43,11 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/disintegration/imaging v1.6.2 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
+	github.com/elliotchance/orderedmap/v2 v2.2.0 // indirect
 	github.com/flopp/go-findfont v0.1.0 // indirect
 	github.com/fogleman/gg v1.3.0 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
+	github.com/gookit/color v1.5.4 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -58,6 +58,7 @@ require (
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
+	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/tdewolff/parse/v2 v2.8.10 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yuin/goldmark v1.7.8 // indirect

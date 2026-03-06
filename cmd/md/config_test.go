@@ -12,11 +12,8 @@ func TestConverterConfig_Validate(t *testing.T) {
 		cfg     converterConfig
 		wantErr bool
 	}{
-		{"builtin_explicit", converterConfig{Method: "builtin"}, false},
-		{"empty_method", converterConfig{}, false},
-		{"external_with_cmd", converterConfig{Method: "external", Command: "pandoc"}, false},
-		{"external_no_cmd", converterConfig{Method: "external"}, true},
-		{"unknown", converterConfig{Method: "magic"}, true},
+		{"empty", converterConfig{}, false},
+		{"with_command", converterConfig{Command: "pandoc"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -151,7 +148,7 @@ func TestLoadConfig_ExistingFile(t *testing.T) {
 	fs := newMemFS()
 	fs.files["/config.toml"] = []byte(`theme = "monokai"
 [converter]
-method = "builtin"
+command = "pandoc -f html -t markdown"
 `)
 	cfg, err := loadConfig("/config.toml", fs, discardLogger())
 	if err != nil {
@@ -160,8 +157,8 @@ method = "builtin"
 	if cfg.Theme != "monokai" {
 		t.Errorf("Theme = %q, want %q", cfg.Theme, "monokai")
 	}
-	if cfg.Converter.Method != "builtin" {
-		t.Errorf("Converter.Method = %q, want %q", cfg.Converter.Method, "builtin")
+	if cfg.Converter.Command != "pandoc -f html -t markdown" {
+		t.Errorf("Converter.Command = %q, want %q", cfg.Converter.Command, "pandoc -f html -t markdown")
 	}
 }
 
@@ -208,7 +205,7 @@ func TestLoadConfig_PartialConfig(t *testing.T) {
 	if cfg.Theme != "dracula" {
 		t.Errorf("Theme = %q, want %q", cfg.Theme, "dracula")
 	}
-	if cfg.Converter.Method != "" {
-		t.Errorf("Converter.Method = %q, want empty", cfg.Converter.Method)
+	if cfg.Converter.Command != "" {
+		t.Errorf("Converter.Command = %q, want empty", cfg.Converter.Command)
 	}
 }

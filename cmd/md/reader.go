@@ -29,10 +29,8 @@ import (
 type readerKeyMap struct {
 	mdk.KeyMap // embed the view KeyMap
 
-	ToggleSource             key.Binding
-	ToggleOriginalHTML    key.Binding
-	ToggleReadabilityHTML key.Binding
-	OpenFile              key.Binding
+	ToggleSource key.Binding
+	OpenFile     key.Binding
 	OpenBrowser           key.Binding
 	OpenFileNewTab        key.Binding
 	OpenURL               key.Binding
@@ -1028,7 +1026,7 @@ func (r *markdownReader) reloadCurrentPage() tea.Cmd {
 func (r *markdownReader) handleLinkNavigation(rawURL string, newTab bool) tea.Cmd {
 	resolved := resolveLink(rawURL, r.active().currentSource)
 
-	// HTTP/HTTPS URLs: fetch and convert (markdown or HTML via readability).
+	// HTTP/HTTPS URLs: fetch and convert.
 	if strings.HasPrefix(resolved, "http://") || strings.HasPrefix(resolved, "https://") {
 		r.loading = true
 		r.loadingURL = resolved

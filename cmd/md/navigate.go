@@ -15,13 +15,11 @@ import (
 
 // pageLoadedMsg is sent when a page has been successfully loaded.
 type pageLoadedMsg struct {
-	name            string
-	markdown        string
-	source          string
-	originalHTML    string // non-empty for pages fetched from HTML
-	readabilityHTML string // non-empty for pages fetched from HTML
-	newTab          bool   // when true, open in a new tab instead of current tab
-	reload          bool   // when true, replace current content without pushing to back stack
+	name     string
+	markdown string
+	source   string
+	newTab   bool // when true, open in a new tab instead of current tab
+	reload   bool // when true, replace current content without pushing to back stack
 }
 
 // pageLoadErrorMsg is sent when a page fails to load.
@@ -185,11 +183,9 @@ func loadConvertFilePage(path string, newTab bool, registry *converterRegistry, 
 
 // fetchResult holds the result of fetching a URL.
 type fetchResult struct {
-	name            string
-	markdown        string
-	source          string
-	originalHTML    string // non-empty when the source was HTML
-	readabilityHTML string // non-empty when the source was HTML
+	name     string
+	markdown string
+	source   string
 }
 
 // fetchURL fetches a URL and returns a fetchResult. If the content is markdown,
@@ -204,8 +200,6 @@ func fetchURL(rawURL string, conv converter, registry *converterRegistry, cache 
 			name:            cached.Name,
 			markdown:        cached.Markdown,
 			source:          rawURL,
-			originalHTML:    cached.OriginalHTML,
-			readabilityHTML: cached.ReadabilityHTML,
 		}, nil
 	}
 	if cached != nil {
@@ -262,8 +256,6 @@ func fetchURL(rawURL string, conv converter, registry *converterRegistry, cache 
 			name:            cached.Name,
 			markdown:        cached.Markdown,
 			source:          rawURL,
-			originalHTML:    cached.OriginalHTML,
-			readabilityHTML: cached.ReadabilityHTML,
 		}, nil
 	}
 
@@ -305,6 +297,9 @@ func fetchURL(rawURL string, conv converter, registry *converterRegistry, cache 
 	if mc := registry.forMIMEType(ct); mc != nil {
 		activeConv = mc
 	}
+	if activeConv == nil {
+		return fetchResult{}, fmt.Errorf("no converter configured for content type %q", ct)
+	}
 
 	pageURL, _ := url.Parse(finalURL)
 	cr, err := activeConv.convert(body, pageURL, logger)
@@ -315,17 +310,13 @@ func fetchURL(rawURL string, conv converter, registry *converterRegistry, cache 
 	entry := cacheEntryFromResponse(resp)
 	entry.Name = cr.name
 	entry.Markdown = cr.markdown
-	entry.OriginalHTML = cr.originalHTML
-	entry.ReadabilityHTML = cr.readabilityHTML
 	cache.storeHTTP(rawURL, entry, logger)
 	logger.Info("cache_store", "url", rawURL)
 
 	return fetchResult{
-		name:            cr.name,
-		markdown:        cr.markdown,
-		source:          finalURL,
-		originalHTML:    cr.originalHTML,
-		readabilityHTML: cr.readabilityHTML,
+		name:     cr.name,
+		markdown: cr.markdown,
+		source:   finalURL,
 	}, nil
 }
 
@@ -340,8 +331,6 @@ func fetchURLPage(rawURL string, newTab bool, conv converter, registry *converte
 			name:            result.name,
 			markdown:        result.markdown,
 			source:          result.source,
-			originalHTML:    result.originalHTML,
-			readabilityHTML: result.readabilityHTML,
 			newTab:          newTab,
 		}
 	}
@@ -424,8 +413,6 @@ func reloadURLPage(rawURL string, conv converter, registry *converterRegistry, c
 			name:            result.name,
 			markdown:        result.markdown,
 			source:          result.source,
-			originalHTML:    result.originalHTML,
-			readabilityHTML: result.readabilityHTML,
 			reload:          true,
 		}
 	}

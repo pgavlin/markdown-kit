@@ -5,10 +5,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
-	"strings"
 	"time"
-
-	"github.com/pgavlin/readability-go"
 )
 
 // converter converts raw content (typically HTML) into markdown.
@@ -18,39 +15,8 @@ type converter interface {
 
 // convertResult holds the output of a content conversion.
 type convertResult struct {
-	name            string
-	markdown        string
-	originalHTML    string
-	readabilityHTML string
-}
-
-// builtinConverter uses readability extraction to convert HTML to markdown.
-type builtinConverter struct{}
-
-func (c *builtinConverter) convert(content []byte, sourceURL *url.URL, logger *slog.Logger) (convertResult, error) {
-	article, err := readability.ParseReader(strings.NewReader(string(content)), sourceURL, nil)
-	if err != nil {
-		logger.Error("readability_convert_error", "url", sourceURL.String(), "error", err)
-		return convertResult{}, fmt.Errorf("failed to parse page: %w", err)
-	}
-	if article == nil {
-		logger.Error("readability_convert_error", "url", sourceURL.String(), "error", "could not extract content")
-		return convertResult{}, fmt.Errorf("could not extract content from page")
-	}
-
-	name := article.Title
-	if name == "" {
-		name = pageTitleFromURL(sourceURL.String())
-	}
-
-	logger.Info("readability_convert", "url", sourceURL.String(), "title", name)
-
-	return convertResult{
-		name:            name,
-		markdown:        article.Markdown(),
-		originalHTML:    string(content),
-		readabilityHTML: article.Content,
-	}, nil
+	name     string
+	markdown string
 }
 
 // fallbackConverter tries multiple converters in order, returning the first

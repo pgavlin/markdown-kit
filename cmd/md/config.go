@@ -18,29 +18,18 @@ import (
 )
 
 type converterConfig struct {
-	Method  string `toml:"method"`  // "builtin" (default) or "external"
-	Command string `toml:"command"` // required when method = "external"; run via system shell
+	Command string `toml:"command"` // shell command for HTML-to-Markdown conversion
 }
 
 func (c converterConfig) validate() error {
-	switch c.Method {
-	case "", "builtin":
-		return nil
-	case "external":
-		if c.Command == "" {
-			return fmt.Errorf("converter: method \"external\" requires a non-empty command")
-		}
-		return nil
-	default:
-		return fmt.Errorf("converter: unknown method %q (expected \"builtin\" or \"external\")", c.Method)
-	}
+	return nil
 }
 
 func (c converterConfig) newConverter() converter {
-	if c.Method == "external" {
+	if c.Command != "" {
 		return &externalConverter{command: c.Command, shell: osShellRunner{}}
 	}
-	return &builtinConverter{}
+	return nil
 }
 
 type formatConverterConfig struct {
@@ -181,8 +170,7 @@ const defaultConfig = `# md configuration file
 
 # Content converter for HTML-to-Markdown when opening URLs.
 # [converter]
-# method = "builtin"              # "builtin" (default) or "external"
-# command = "pandoc -f html -t markdown"  # required when method = "external"; run via system shell
+# command = "pandoc -f html -t markdown"  # shell command to convert HTML to Markdown
 
 # Format converters for non-markdown files. Each entry specifies a shell
 # command and the file extensions / MIME types it handles.

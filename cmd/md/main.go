@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/BurntSushi/toml"
+	"github.com/pgavlin/markdown-kit/diagram"
 	"github.com/pgavlin/markdown-kit/docsearch"
 	mdk "github.com/pgavlin/markdown-kit/view"
 	"github.com/urfave/cli/v3"
@@ -114,6 +115,7 @@ func main() {
 			httpCl := http.DefaultClient
 
 			var viewOpts []mdk.Option
+			viewOpts = append(viewOpts, mdk.WithDiagramRenderer(diagram.MermaidRenderer()))
 			if cfg.stripDataURIs() {
 				viewOpts = append(viewOpts, mdk.WithDocumentTransformer(mdk.StripDataURIs))
 			}

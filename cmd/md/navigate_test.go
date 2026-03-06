@@ -110,7 +110,7 @@ func TestFetchURL_CacheFresh(t *testing.T) {
 		},
 	}
 
-	result, err := fetchURL("http://example.com", &builtinConverter{}, nil, c, client, logger)
+	result, err := fetchURL("http://example.com", &fakeConverter{}, nil, c, client, logger)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestFetchURL_CacheStale_304(t *testing.T) {
 		},
 	}
 
-	result, err := fetchURL("http://example.com", &builtinConverter{}, nil, c, client, logger)
+	result, err := fetchURL("http://example.com", &fakeConverter{}, nil, c, client, logger)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestFetchURL_MarkdownResponse(t *testing.T) {
 		},
 	}
 
-	result, err := fetchURL("http://example.com/doc.md", &builtinConverter{}, nil, nil, client, discardLogger())
+	result, err := fetchURL("http://example.com/doc.md", &fakeConverter{}, nil, nil, client, discardLogger())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestFetchURL_HTTPError(t *testing.T) {
 		},
 	}
 
-	_, err := fetchURL("http://example.com", &builtinConverter{}, nil, nil, client, discardLogger())
+	_, err := fetchURL("http://example.com", &fakeConverter{}, nil, nil, client, discardLogger())
 	if err == nil {
 		t.Fatal("expected error for 500 response")
 	}
@@ -229,7 +229,7 @@ func TestFetchURL_NetworkError(t *testing.T) {
 		},
 	}
 
-	_, err := fetchURL("http://example.com", &builtinConverter{}, nil, nil, client, discardLogger())
+	_, err := fetchURL("http://example.com", &fakeConverter{}, nil, nil, client, discardLogger())
 	if err == nil {
 		t.Fatal("expected error for network failure")
 	}
@@ -247,7 +247,7 @@ func TestFetchURL_NilCache(t *testing.T) {
 		},
 	}
 
-	result, err := fetchURL("http://example.com", &builtinConverter{}, nil, nil, client, discardLogger())
+	result, err := fetchURL("http://example.com", &fakeConverter{}, nil, nil, client, discardLogger())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -285,7 +285,7 @@ func TestFetchURL_ConditionalHeaders(t *testing.T) {
 		},
 	}
 
-	_, err := fetchURL("http://example.com", &builtinConverter{}, nil, c, client, logger)
+	_, err := fetchURL("http://example.com", &fakeConverter{}, nil, c, client, logger)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -315,7 +315,7 @@ func TestFetchURL_Redirect(t *testing.T) {
 		},
 	}
 
-	result, err := fetchURL("http://example.com/old-page", &builtinConverter{}, nil, nil, client, discardLogger())
+	result, err := fetchURL("http://example.com/old-page", &fakeConverter{}, nil, nil, client, discardLogger())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -358,7 +358,7 @@ func TestFetchURLPage_Success(t *testing.T) {
 		},
 	}
 
-	cmd := fetchURLPage("http://example.com/doc.md", false, &builtinConverter{}, nil, nil, client, discardLogger())
+	cmd := fetchURLPage("http://example.com/doc.md", false, &fakeConverter{}, nil, nil, client, discardLogger())
 	msg := cmd()
 
 	loaded, ok := msg.(pageLoadedMsg)
@@ -383,7 +383,7 @@ func TestFetchURLPage_Error(t *testing.T) {
 		},
 	}
 
-	cmd := fetchURLPage("http://example.com", false, &builtinConverter{}, nil, nil, client, discardLogger())
+	cmd := fetchURLPage("http://example.com", false, &fakeConverter{}, nil, nil, client, discardLogger())
 	msg := cmd()
 
 	errMsg, ok := msg.(pageLoadErrorMsg)
@@ -408,10 +408,8 @@ func TestFetchURLPage_HTMLContent(t *testing.T) {
 	}
 	conv := &fakeConverter{
 		result: convertResult{
-			name:            "Converted",
-			markdown:        "# Converted",
-			originalHTML:    "<html>body</html>",
-			readabilityHTML: "<article>body</article>",
+			name:     "Converted",
+			markdown: "# Converted",
 		},
 	}
 
@@ -422,11 +420,8 @@ func TestFetchURLPage_HTMLContent(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected pageLoadedMsg, got %T", msg)
 	}
-	if loaded.originalHTML != "<html>body</html>" {
-		t.Errorf("originalHTML = %q", loaded.originalHTML)
-	}
-	if loaded.readabilityHTML != "<article>body</article>" {
-		t.Errorf("readabilityHTML = %q", loaded.readabilityHTML)
+	if loaded.markdown != "# Converted" {
+		t.Errorf("markdown = %q, want %q", loaded.markdown, "# Converted")
 	}
 }
 
