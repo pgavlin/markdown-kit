@@ -1202,3 +1202,45 @@ func TestHyperlinkOSC8(t *testing.T) {
 		assert.Contains(t, output, ansi.SetHyperlink("https://two.com"))
 	})
 }
+
+// TestIndentedCodeBlockBlankLineWidth verifies that blank lines inside a code block
+// nested in a list item have the same background width as non-blank lines.
+func TestIndentedCodeBlockBlankLineWidth(t *testing.T) {
+	input := "- item\n\n  ```\n  hello\n\n  world\n  ```\n"
+
+	output, _ := renderMarkdown(t, input, WithTheme(styles.Pulumi), WithWordWrap(80))
+
+	lines := strings.Split(output, "\n")
+
+	// Find lines that belong to the code block by looking for "hello" and "world".
+	var helloLine, blankLine, worldLine string
+	for i, line := range lines {
+		stripped := ansi.Strip(line)
+		if strings.Contains(stripped, "hello") {
+			helloLine = line
+			// The blank line is the next one.
+			if i+1 < len(lines) {
+				blankLine = lines[i+1]
+			}
+		}
+		if strings.Contains(stripped, "world") {
+			worldLine = line
+		}
+	}
+
+	require.NotEmpty(t, helloLine, "should find 'hello' line in output")
+	require.NotEmpty(t, blankLine, "should find blank line after 'hello'")
+	require.NotEmpty(t, worldLine, "should find 'world' line in output")
+
+	// All three lines should have the same visible width (same background extent).
+	helloWidth := ansi.StringWidth(helloLine)
+	blankWidth := ansi.StringWidth(blankLine)
+	worldWidth := ansi.StringWidth(worldLine)
+
+	assert.Equal(t, helloWidth, blankWidth,
+		"blank line width (%d) should match hello line width (%d)\nblank: %q\nhello: %q",
+		blankWidth, helloWidth, blankLine, helloLine)
+	assert.Equal(t, helloWidth, worldWidth,
+		"world line width (%d) should match hello line width (%d)",
+		worldWidth, helloWidth)
+}

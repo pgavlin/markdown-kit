@@ -550,6 +550,14 @@ func (r *Renderer) write(w io.Writer, buf []byte) (int, error) {
 				padWidth = r.padToWrap[len(r.padToWrap)-1]
 			}
 			if padWidth > 0 {
+				// For blank lines, beginLine was skipped because there was no visible
+				// content. But with active padding we still need the prefix so the
+				// padded background starts at the same column as non-blank lines.
+				if r.atNewline && writtenWidth == 0 && len(r.prefix) > 0 {
+					if err := r.beginLine(w); err != nil {
+						return written, err
+					}
+				}
 				// pad out to the target width if necessary
 				remaining := padWidth - (r.lineWidth + writtenWidth)
 				if remaining > 0 {
