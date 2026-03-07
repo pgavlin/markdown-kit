@@ -21,6 +21,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/pgavlin/markdown-kit/docsearch"
 	mdk "github.com/pgavlin/markdown-kit/view"
+	"github.com/pgavlin/picky"
 	"github.com/skratchdot/open-golang/open"
 )
 
@@ -253,7 +254,7 @@ type markdownReader struct {
 	errorURL  string // URL that failed, for "open in browser" fallback
 
 	// File picker state.
-	picker         fuzzyPicker
+	picker         picky.Model
 	showPicker     bool
 	pickerStartup  bool            // true when picker is shown at startup (no content loaded yet)
 	pickerNewTab   bool            // true when the picker should open the selected file in a new tab
@@ -337,7 +338,7 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style, viewO
 	helpModel.ShowAll = true
 
 	wd, _ := fsys.Getwd()
-	fp := newFuzzyPicker(wd, viewableExtsList(registry), fsys)
+	fp := picky.New(wd, picky.WithAllowedTypes(viewableExtsList(registry)))
 
 	return markdownReader{
 		tabs: []tab{{
@@ -514,7 +515,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					r.pickerURLInput.SetValue("")
 					return r, nil
 				}
-				if r.picker.input.Value() == "" {
+				if r.picker.FilterValue() == "" {
 					if r.pickerStartup {
 						return r, tea.Quit
 					}
@@ -522,8 +523,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return r, nil
 				}
 				// Clear the filter text instead of dismissing.
-				r.picker.input.SetValue("")
-				r.picker.filter()
+				r.picker.SetFilterValue("")
 				return r, nil
 			case "ctrl+l":
 				r.pickerURLMode = !r.pickerURLMode
@@ -539,7 +539,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					r.pickerURLInput.SetWidth(innerW - lipgloss.Width(r.pickerURLInput.Prompt) - 1)
 					return r, r.pickerURLInput.Focus()
 				}
-				return r, r.picker.input.Focus()
+				return r, r.picker.Focus()
 			}
 		}
 
@@ -574,7 +574,9 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// File mode.
 		var cmd tea.Cmd
 		r.picker, cmd = r.picker.Update(msg)
-		if didSelect, path := r.picker.DidSelect(); didSelect {
+		if selPath := r.picker.Selected(); selPath != "" {
+			r.picker.ClearSelected()
+			path := "/" + selPath
 			r.showPicker = false
 			r.pickerStartup = false
 			r.loading = true
@@ -866,14 +868,14 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.pickerStartup = false
 			r.pickerNewTab = false
 			r.pickerURLMode = false
-			r.picker.selected = ""
+			r.picker.ClearSelected()
 			return r, r.picker.Init()
 		case "ctrl+t":
 			r.showPicker = true
 			r.pickerStartup = false
 			r.pickerNewTab = true
 			r.pickerURLMode = false
-			r.picker.selected = ""
+			r.picker.ClearSelected()
 			return r, r.picker.Init()
 		case "ctrl+l":
 			r.showURLInput = true

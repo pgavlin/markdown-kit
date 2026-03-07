@@ -12,12 +12,12 @@ require (
 	github.com/atotto/clipboard v0.1.4
 	github.com/charmbracelet/glamour v0.10.0
 	github.com/charmbracelet/x/ansi v0.11.6
-	github.com/dustin/go-humanize v1.0.1
 	github.com/eliukblau/pixterm v1.3.2
 	github.com/mattn/go-sqlite3 v1.14.34
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/pgavlin/goldmark v1.1.33-0.20210916052350-16f491902b32
-	github.com/pgavlin/mermaid-ascii v0.0.0-20260306062738-41fbf76a4a4d
+	github.com/pgavlin/mermaid-ascii v0.0.0-20260306083030-434c6822b6fb
+	github.com/pgavlin/picky v0.0.0-20260307030235-a0dfa1421619
 	github.com/pgavlin/svg2 v0.0.0-20210919231505-4ace7308edc1
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	github.com/stretchr/testify v1.11.1
@@ -43,6 +43,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/disintegration/imaging v1.6.2 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
+	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/elliotchance/orderedmap/v2 v2.2.0 // indirect
 	github.com/flopp/go-findfont v0.1.0 // indirect
 	github.com/fogleman/gg v1.3.0 // indirect
