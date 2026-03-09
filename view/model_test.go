@@ -1056,7 +1056,7 @@ func TestVisualMode_EnterExit(t *testing.T) {
 	// Press 'v' to enter visual mode.
 	m, _ = m.Update(keyMsg('v'))
 	assert.True(t, m.VisualMode(), "should be in visual mode after 'v'")
-	assert.Equal(t, m.lineOffset, m.cursorLine, "cursor should start at top of viewport")
+	assert.Equal(t, m.lineOffset+m.pageSize/2, m.cursorLine, "cursor should start at center of viewport")
 	assert.Equal(t, 0, m.cursorCol, "cursor should start at column 0")
 
 	// Press Esc to exit.
@@ -1171,6 +1171,9 @@ func TestVisualMode_YankContent(t *testing.T) {
 	m.SetText("test.md", "Hello world.\n\nSecond line.\n")
 	m.SetSize(80, 24)
 
+	// Use cursor mode to position at line 0, then enter visual mode.
+	m, _ = m.Update(keyMsg('c'))
+	m, _ = m.Update(keyMsg('g'))
 	m, _ = m.Update(keyMsg('v'))
 	// Move to end of first line.
 	m, _ = m.Update(keyMsg('$'))
@@ -1185,6 +1188,9 @@ func TestVisualMode_YankMultipleLines(t *testing.T) {
 	m.SetText("test.md", "Line one.\n\nLine two.\n")
 	m.SetSize(80, 24)
 
+	// Use cursor mode to position at line 0, then enter visual mode.
+	m, _ = m.Update(keyMsg('c'))
+	m, _ = m.Update(keyMsg('g'))
 	m, _ = m.Update(keyMsg('v'))
 	// Move down to include second line.
 	m, _ = m.Update(keyMsg('j'))
@@ -1257,4 +1263,77 @@ func TestVisualMode_WordMotions(t *testing.T) {
 	// e should move to end of word.
 	m, _ = m.Update(keyMsg('e'))
 	assert.True(t, m.cursorCol > 0, "e should advance cursor")
+}
+
+func TestCursorMode_EnterExit(t *testing.T) {
+	m := setupLongDoc(t)
+
+	assert.False(t, m.CursorMode(), "should not start in cursor mode")
+
+	// Press 'c' to enter cursor mode.
+	m, _ = m.Update(keyMsg('c'))
+	assert.True(t, m.CursorMode(), "should be in cursor mode after 'c'")
+	assert.Equal(t, m.lineOffset+m.pageSize/2, m.cursorLine, "cursor should start at center of viewport")
+
+	// Press Esc to exit.
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	assert.False(t, m.CursorMode(), "should exit cursor mode on Esc")
+}
+
+func TestCursorMode_CAgainExits(t *testing.T) {
+	m := setupLongDoc(t)
+
+	m, _ = m.Update(keyMsg('c'))
+	assert.True(t, m.CursorMode())
+
+	m, _ = m.Update(keyMsg('c'))
+	assert.False(t, m.CursorMode(), "pressing 'c' again should exit cursor mode")
+}
+
+func TestCursorMode_VEntersVisualMode(t *testing.T) {
+	m := setupLongDoc(t)
+
+	// Enter cursor mode, move down, then enter visual mode.
+	m, _ = m.Update(keyMsg('c'))
+	m, _ = m.Update(keyMsg('j'))
+	m, _ = m.Update(keyMsg('j'))
+	anchorLine := m.cursorLine
+
+	m, _ = m.Update(keyMsg('v'))
+	assert.False(t, m.CursorMode(), "cursor mode should end")
+	assert.True(t, m.VisualMode(), "visual mode should start")
+	assert.Equal(t, anchorLine, m.visualAnchorLine, "anchor should be at cursor position")
+}
+
+func TestCursorMode_RemembersCursorPosition(t *testing.T) {
+	m := setupLongDoc(t)
+
+	// Enter cursor mode, move cursor.
+	m, _ = m.Update(keyMsg('c'))
+	m, _ = m.Update(keyMsg('j'))
+	m, _ = m.Update(keyMsg('j'))
+	m, _ = m.Update(keyMsg('j'))
+	posLine := m.cursorLine
+
+	// Exit cursor mode.
+	m, _ = m.Update(keyMsg('c'))
+	assert.False(t, m.CursorMode())
+
+	// Re-enter cursor mode — cursor should be at the same position.
+	m, _ = m.Update(keyMsg('c'))
+	assert.Equal(t, posLine, m.cursorLine, "cursor position should be remembered")
+}
+
+func TestCursorMode_GutterIndicator(t *testing.T) {
+	m := NewModel(WithTheme(styles.Pulumi))
+	m.SetText("test.md", "# Hello\n\nSome text.\n")
+	m.SetGutter(true)
+	m.SetSize(80, 24)
+
+	m, _ = m.Update(keyMsg('c'))
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	lastLine := ansi.Strip(lines[len(lines)-1])
+	assert.Contains(t, lastLine, "-- CURSOR --", "gutter should show cursor mode indicator")
 }

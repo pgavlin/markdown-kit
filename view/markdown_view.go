@@ -367,12 +367,14 @@ type Model struct {
 	// The desired content width. 0 means use full viewport width.
 	contentWidth int
 
-	// Visual selection mode state.
-	visualMode       bool
-	cursorLine       int // cursor line index (in m.lines)
-	cursorCol        int // cursor visible column (0-based)
-	visualAnchorLine int // anchor line index
-	visualAnchorCol  int // anchor visible column
+	// Cursor and visual selection mode state.
+	cursorMode       bool // cursor-positioning mode
+	visualMode       bool // visual selection mode (extends from anchor)
+	cursorPositioned bool // true once cursor has been placed at least once
+	cursorLine       int  // cursor line index (in m.lines)
+	cursorCol        int  // cursor visible column (0-based)
+	visualAnchorLine int  // anchor line index
+	visualAnchorCol  int  // anchor visible column
 
 	// Search state.
 	search searchState
@@ -420,7 +422,9 @@ func (m *Model) Clear() {
 	m.highlightSelection = false
 	m.lineOffset = 0
 	m.columnOffset = 0
+	m.cursorMode = false
 	m.visualMode = false
+	m.cursorPositioned = false
 	m.search = searchState{}
 }
 
@@ -822,6 +826,16 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.exitVisualMode()
 	}
 
+	// Handle cursor mode keys.
+	if m.cursorMode {
+		cmd, handled := m.handleCursorKey(msg)
+		if handled {
+			return cmd
+		}
+		// Unhandled keys exit cursor mode and fall through.
+		m.exitCursorMode()
+	}
+
 	// Handle search-related keys when search is confirmed.
 	if m.search.confirmed {
 		switch {
@@ -838,6 +852,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 
 	switch {
+	case key.Matches(msg, m.KeyMap.CursorMode):
+		m.enterCursorMode()
+		return nil
+
 	case key.Matches(msg, m.KeyMap.VisualMode):
 		m.enterVisualMode()
 		return nil
@@ -991,6 +1009,11 @@ func (m Model) View() string {
 		// Apply visual selection highlighting.
 		if m.visualMode {
 			content = m.applyVisualSelection(lineOffset+i, content)
+		}
+
+		// Apply cursor highlight in cursor mode (single character).
+		if m.cursorMode && lineOffset+i == m.cursorLine {
+			content = m.applyCursorHighlight(content)
 		}
 
 		// Apply search match highlighting.
@@ -1178,6 +1201,10 @@ func (m *Model) renderGutter(width, lineOffset, lastLine int) string {
 	if m.visualMode {
 		// Show visual mode indicator.
 		name = "-- VISUAL --"
+		nameVisWidth = ansi.StringWidth(name)
+	} else if m.cursorMode {
+		// Show cursor mode indicator.
+		name = "-- CURSOR --"
 		nameVisWidth = ansi.StringWidth(name)
 	} else if m.statusMessage != "" {
 		// Show transient status message instead of normal gutter content.
@@ -1768,6 +1795,11 @@ func (m *Model) VisualMode() bool {
 	return m.visualMode
 }
 
+// CursorMode reports whether cursor positioning mode is active.
+func (m *Model) CursorMode() bool {
+	return m.cursorMode
+}
+
 // lineVisibleWidth returns the visible width of the given line index.
 func (m *Model) lineVisibleWidth(li int) int {
 	if li < 0 || li >= len(m.lines) {
@@ -1776,12 +1808,51 @@ func (m *Model) lineVisibleWidth(li int) int {
 	return ansi.StringWidth(expandTabs(m.lines[li].content, 8))
 }
 
-// enterVisualMode starts visual selection at the current viewport position.
-func (m *Model) enterVisualMode() {
-	m.visualMode = true
-	// Place cursor at top-left of viewport.
-	m.cursorLine = m.lineOffset
+// positionCursor places the cursor at a sensible location. If the cursor has
+// not been positioned before or is offscreen, it is placed at the beginning
+// of the line nearest to the center of the visible content.
+func (m *Model) positionCursor() {
+	if m.cursorPositioned &&
+		m.cursorLine >= m.lineOffset &&
+		m.cursorLine < m.lineOffset+m.pageSize {
+		// Cursor is already on screen — keep it.
+		return
+	}
+	m.cursorLine = m.lineOffset + m.pageSize/2
+	if m.cursorLine >= len(m.lines) {
+		m.cursorLine = len(m.lines) - 1
+	}
+	if m.cursorLine < 0 {
+		m.cursorLine = 0
+	}
 	m.cursorCol = 0
+	m.cursorPositioned = true
+}
+
+// enterCursorMode enters cursor positioning mode.
+func (m *Model) enterCursorMode() {
+	m.cursorMode = true
+	m.positionCursor()
+	// Clear node-based selection.
+	m.selection = nil
+	m.highlightSelection = false
+}
+
+// exitCursorMode leaves cursor positioning mode.
+func (m *Model) exitCursorMode() {
+	m.cursorMode = false
+}
+
+// enterVisualMode starts visual selection. If already in cursor mode, the
+// anchor is set at the current cursor position. Otherwise the cursor is
+// positioned first.
+func (m *Model) enterVisualMode() {
+	wasCursorMode := m.cursorMode
+	m.cursorMode = false
+	m.visualMode = true
+	if !wasCursorMode {
+		m.positionCursor()
+	}
 	m.visualAnchorLine = m.cursorLine
 	m.visualAnchorCol = m.cursorCol
 	// Clear node-based selection.
@@ -1956,6 +2027,25 @@ func (m *Model) moveCursorWordEnd() {
 	m.cursorCol = col
 }
 
+// applyCursorHighlight highlights the single character under the cursor using
+// reverse video, providing a visible cursor indicator in cursor mode.
+func (m *Model) applyCursorHighlight(content string) string {
+	lineWidth := ansi.StringWidth(content)
+	if lineWidth == 0 {
+		// Empty line — show a reverse-video space as cursor.
+		return "\033[7m \033[27m"
+	}
+	col := m.cursorCol
+	if col >= lineWidth {
+		col = lineWidth - 1
+	}
+	before := ansiSlice(content, 0, col)
+	middle := ansiSlice(content, col, col+1)
+	after := ansiSlice(content, col+1, lineWidth)
+	revIdx := firstNonANSIByteIndex(middle)
+	return before + middle[:revIdx] + "\033[7m" + middle[revIdx:] + "\033[27m" + after
+}
+
 // applyVisualSelection applies visual selection highlighting to a line's content.
 func (m *Model) applyVisualSelection(lineIdx int, content string) string {
 	startLine, startCol, endLine, endCol := m.visualSelectionBounds()
@@ -2031,6 +2121,97 @@ func (m *Model) yankVisualSelection() string {
 	return sb.String()
 }
 
+// handleCursorMotion handles cursor motion keys shared by cursor mode and
+// visual mode. Returns true if the key was a motion.
+func (m *Model) handleCursorMotion(msg tea.KeyPressMsg) bool {
+	switch {
+	case key.Matches(msg, m.KeyMap.Down): // j
+		if m.cursorLine+1 < len(m.lines) {
+			m.cursorLine++
+			m.clampCursorCol()
+		}
+		m.ensureCursorVisible()
+	case key.Matches(msg, m.KeyMap.Up): // k
+		if m.cursorLine > 0 {
+			m.cursorLine--
+			m.clampCursorCol()
+		}
+		m.ensureCursorVisible()
+	case key.Matches(msg, m.KeyMap.Right): // l
+		w := m.lineVisibleWidth(m.cursorLine)
+		if w > 0 && m.cursorCol < w-1 {
+			m.cursorCol++
+		}
+	case key.Matches(msg, m.KeyMap.Left): // h
+		if m.cursorCol > 0 {
+			m.cursorCol--
+		}
+	case key.Matches(msg, m.KeyMap.WordForward): // w
+		m.moveCursorWordForward()
+		m.ensureCursorVisible()
+	case key.Matches(msg, m.KeyMap.WordBack): // b
+		m.moveCursorWordBack()
+		m.ensureCursorVisible()
+	case key.Matches(msg, m.KeyMap.WordEnd): // e
+		m.moveCursorWordEnd()
+		m.ensureCursorVisible()
+	case key.Matches(msg, m.KeyMap.LineStart): // 0
+		m.cursorCol = 0
+	case key.Matches(msg, m.KeyMap.LineEnd): // $
+		w := m.lineVisibleWidth(m.cursorLine)
+		if w > 0 {
+			m.cursorCol = w - 1
+		}
+	case key.Matches(msg, m.KeyMap.GotoTop): // g
+		m.cursorLine = 0
+		m.clampCursorCol()
+		m.ensureCursorVisible()
+	case key.Matches(msg, m.KeyMap.GotoEnd): // G
+		if len(m.lines) > 0 {
+			m.cursorLine = len(m.lines) - 1
+			m.clampCursorCol()
+		}
+		m.ensureCursorVisible()
+	case key.Matches(msg, m.KeyMap.PageDown):
+		m.cursorLine += m.pageSize
+		if m.cursorLine >= len(m.lines) {
+			m.cursorLine = len(m.lines) - 1
+		}
+		m.clampCursorCol()
+		m.ensureCursorVisible()
+	case key.Matches(msg, m.KeyMap.PageUp):
+		m.cursorLine -= m.pageSize
+		if m.cursorLine < 0 {
+			m.cursorLine = 0
+		}
+		m.clampCursorCol()
+		m.ensureCursorVisible()
+	default:
+		return false
+	}
+	return true
+}
+
+// handleCursorKey handles key events during cursor positioning mode.
+// Returns (cmd, handled). If handled is false, the key was not consumed.
+func (m *Model) handleCursorKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	switch {
+	case key.Matches(msg, m.KeyMap.ClearSearch): // Esc
+		m.exitCursorMode()
+		return nil, true
+	case key.Matches(msg, m.KeyMap.CursorMode): // c again exits
+		m.exitCursorMode()
+		return nil, true
+	case key.Matches(msg, m.KeyMap.VisualMode): // v enters visual mode from cursor mode
+		m.enterVisualMode()
+		return nil, true
+	}
+	if m.handleCursorMotion(msg) {
+		return nil, true
+	}
+	return nil, false
+}
+
 // handleVisualKey handles key events during visual selection mode.
 // Returns (cmd, handled). If handled is false, the key was not consumed.
 func (m *Model) handleVisualKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
@@ -2046,82 +2227,11 @@ func (m *Model) handleVisualKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return tea.SetClipboard(content), true
 		}
 		return nil, true
-	case key.Matches(msg, m.KeyMap.Down): // j
-		if m.cursorLine+1 < len(m.lines) {
-			m.cursorLine++
-			m.clampCursorCol()
-		}
-		m.ensureCursorVisible()
-		return nil, true
-	case key.Matches(msg, m.KeyMap.Up): // k
-		if m.cursorLine > 0 {
-			m.cursorLine--
-			m.clampCursorCol()
-		}
-		m.ensureCursorVisible()
-		return nil, true
-	case key.Matches(msg, m.KeyMap.Right): // l
-		w := m.lineVisibleWidth(m.cursorLine)
-		if w > 0 && m.cursorCol < w-1 {
-			m.cursorCol++
-		}
-		return nil, true
-	case key.Matches(msg, m.KeyMap.Left): // h
-		if m.cursorCol > 0 {
-			m.cursorCol--
-		}
-		return nil, true
-	case key.Matches(msg, m.KeyMap.WordForward): // w
-		m.moveCursorWordForward()
-		m.ensureCursorVisible()
-		return nil, true
-	case key.Matches(msg, m.KeyMap.WordBack): // b
-		m.moveCursorWordBack()
-		m.ensureCursorVisible()
-		return nil, true
-	case key.Matches(msg, m.KeyMap.WordEnd): // e
-		m.moveCursorWordEnd()
-		m.ensureCursorVisible()
-		return nil, true
-	case key.Matches(msg, m.KeyMap.LineStart): // 0
-		m.cursorCol = 0
-		return nil, true
-	case key.Matches(msg, m.KeyMap.LineEnd): // $
-		w := m.lineVisibleWidth(m.cursorLine)
-		if w > 0 {
-			m.cursorCol = w - 1
-		}
-		return nil, true
-	case key.Matches(msg, m.KeyMap.GotoTop): // g
-		m.cursorLine = 0
-		m.clampCursorCol()
-		m.ensureCursorVisible()
-		return nil, true
-	case key.Matches(msg, m.KeyMap.GotoEnd): // G
-		if len(m.lines) > 0 {
-			m.cursorLine = len(m.lines) - 1
-			m.clampCursorCol()
-		}
-		m.ensureCursorVisible()
-		return nil, true
-	case key.Matches(msg, m.KeyMap.PageDown):
-		m.cursorLine += m.pageSize
-		if m.cursorLine >= len(m.lines) {
-			m.cursorLine = len(m.lines) - 1
-		}
-		m.clampCursorCol()
-		m.ensureCursorVisible()
-		return nil, true
-	case key.Matches(msg, m.KeyMap.PageUp):
-		m.cursorLine -= m.pageSize
-		if m.cursorLine < 0 {
-			m.cursorLine = 0
-		}
-		m.clampCursorCol()
-		m.ensureCursorVisible()
-		return nil, true
 	case key.Matches(msg, m.KeyMap.VisualMode): // v again exits
 		m.exitVisualMode()
+		return nil, true
+	}
+	if m.handleCursorMotion(msg) {
 		return nil, true
 	}
 	return nil, false
