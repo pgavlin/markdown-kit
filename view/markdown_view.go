@@ -367,6 +367,13 @@ type Model struct {
 	// The desired content width. 0 means use full viewport width.
 	contentWidth int
 
+	// Visual selection mode state.
+	visualMode       bool
+	cursorLine       int // cursor line index (in m.lines)
+	cursorCol        int // cursor visible column (0-based)
+	visualAnchorLine int // anchor line index
+	visualAnchorCol  int // anchor visible column
+
 	// Search state.
 	search searchState
 
@@ -413,6 +420,7 @@ func (m *Model) Clear() {
 	m.highlightSelection = false
 	m.lineOffset = 0
 	m.columnOffset = 0
+	m.visualMode = false
 	m.search = searchState{}
 }
 
@@ -804,6 +812,16 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.handleSearchKey(msg)
 	}
 
+	// Handle visual mode keys.
+	if m.visualMode {
+		cmd, handled := m.handleVisualKey(msg)
+		if handled {
+			return cmd
+		}
+		// Unhandled keys exit visual mode and fall through.
+		m.exitVisualMode()
+	}
+
 	// Handle search-related keys when search is confirmed.
 	if m.search.confirmed {
 		switch {
@@ -820,6 +838,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 
 	switch {
+	case key.Matches(msg, m.KeyMap.VisualMode):
+		m.enterVisualMode()
+		return nil
+
 	case key.Matches(msg, m.KeyMap.Search):
 		m.search = searchState{active: true}
 		return nil
@@ -964,6 +986,11 @@ func (m Model) View() string {
 		// Apply selection highlighting if needed.
 		if m.selection != nil && m.highlightSelection {
 			content = m.applySelection(ln, content)
+		}
+
+		// Apply visual selection highlighting.
+		if m.visualMode {
+			content = m.applyVisualSelection(lineOffset+i, content)
 		}
 
 		// Apply search match highlighting.
@@ -1148,7 +1175,11 @@ func (m *Model) renderGutter(width, lineOffset, lastLine int) string {
 	var name string
 	var nameVisWidth int
 
-	if m.statusMessage != "" {
+	if m.visualMode {
+		// Show visual mode indicator.
+		name = "-- VISUAL --"
+		nameVisWidth = ansi.StringWidth(name)
+	} else if m.statusMessage != "" {
 		// Show transient status message instead of normal gutter content.
 		name = m.statusMessage
 		nameVisWidth = ansi.StringWidth(name)
@@ -1730,6 +1761,370 @@ func ansiCut(s string, start, end int) string {
 		return truncated
 	}
 	return ansi.TruncateLeft(truncated, start, "")
+}
+
+// VisualMode reports whether visual selection mode is active.
+func (m *Model) VisualMode() bool {
+	return m.visualMode
+}
+
+// lineVisibleWidth returns the visible width of the given line index.
+func (m *Model) lineVisibleWidth(li int) int {
+	if li < 0 || li >= len(m.lines) {
+		return 0
+	}
+	return ansi.StringWidth(expandTabs(m.lines[li].content, 8))
+}
+
+// enterVisualMode starts visual selection at the current viewport position.
+func (m *Model) enterVisualMode() {
+	m.visualMode = true
+	// Place cursor at top-left of viewport.
+	m.cursorLine = m.lineOffset
+	m.cursorCol = 0
+	m.visualAnchorLine = m.cursorLine
+	m.visualAnchorCol = m.cursorCol
+	// Clear node-based selection.
+	m.selection = nil
+	m.highlightSelection = false
+}
+
+// exitVisualMode cancels visual selection mode.
+func (m *Model) exitVisualMode() {
+	m.visualMode = false
+}
+
+// clampCursorCol ensures cursorCol is within the line's visible width.
+func (m *Model) clampCursorCol() {
+	w := m.lineVisibleWidth(m.cursorLine)
+	if w > 0 {
+		w-- // cursor can be on the last character, not past it
+	}
+	if m.cursorCol > w {
+		m.cursorCol = w
+	}
+	if m.cursorCol < 0 {
+		m.cursorCol = 0
+	}
+}
+
+// ensureCursorVisible scrolls the viewport to keep the cursor visible.
+func (m *Model) ensureCursorVisible() {
+	if m.cursorLine < m.lineOffset {
+		m.lineOffset = m.cursorLine
+	} else if m.cursorLine >= m.lineOffset+m.pageSize {
+		m.lineOffset = m.cursorLine - m.pageSize + 1
+	}
+	m.clampOffsets()
+}
+
+// visualSelectionBounds returns the ordered (startLine, startCol, endLine, endCol)
+// of the visual selection. The end column is inclusive (the character under cursor
+// is included).
+func (m *Model) visualSelectionBounds() (int, int, int, int) {
+	al, ac := m.visualAnchorLine, m.visualAnchorCol
+	cl, cc := m.cursorLine, m.cursorCol
+
+	if al < cl || (al == cl && ac <= cc) {
+		return al, ac, cl, cc
+	}
+	return cl, cc, al, ac
+}
+
+// strippedLineContent returns the ANSI-stripped, tab-expanded content for a line.
+func (m *Model) strippedLineContent(li int) string {
+	if li < 0 || li >= len(m.lines) {
+		return ""
+	}
+	return ansi.Strip(expandTabs(m.lines[li].content, 8))
+}
+
+// moveCursorWordForward moves the cursor to the start of the next word.
+func (m *Model) moveCursorWordForward() {
+	text := m.strippedLineContent(m.cursorLine)
+	col := m.cursorCol
+	runes := []rune(text)
+	lineWidth := len(runes)
+
+	if col >= lineWidth {
+		// Move to next line.
+		if m.cursorLine+1 < len(m.lines) {
+			m.cursorLine++
+			m.cursorCol = 0
+		}
+		return
+	}
+
+	// Skip current word (non-space characters).
+	for col < lineWidth && runes[col] != ' ' && runes[col] != '\t' {
+		col++
+	}
+	// Skip whitespace.
+	for col < lineWidth && (runes[col] == ' ' || runes[col] == '\t') {
+		col++
+	}
+
+	if col >= lineWidth {
+		// Reached end of line; move to next line start.
+		if m.cursorLine+1 < len(m.lines) {
+			m.cursorLine++
+			m.cursorCol = 0
+		} else {
+			m.cursorCol = lineWidth - 1
+			if m.cursorCol < 0 {
+				m.cursorCol = 0
+			}
+		}
+	} else {
+		m.cursorCol = col
+	}
+}
+
+// moveCursorWordBack moves the cursor to the start of the previous word.
+func (m *Model) moveCursorWordBack() {
+	text := m.strippedLineContent(m.cursorLine)
+	col := m.cursorCol
+	runes := []rune(text)
+
+	if col <= 0 {
+		// Move to end of previous line.
+		if m.cursorLine > 0 {
+			m.cursorLine--
+			w := m.lineVisibleWidth(m.cursorLine)
+			if w > 0 {
+				m.cursorCol = w - 1
+			} else {
+				m.cursorCol = 0
+			}
+		}
+		return
+	}
+
+	if col > len(runes) {
+		col = len(runes)
+	}
+	col--
+
+	// Skip whitespace going back.
+	for col > 0 && (runes[col] == ' ' || runes[col] == '\t') {
+		col--
+	}
+	// Skip word characters going back.
+	for col > 0 && runes[col-1] != ' ' && runes[col-1] != '\t' {
+		col--
+	}
+	m.cursorCol = col
+}
+
+// moveCursorWordEnd moves the cursor to the end of the current/next word.
+func (m *Model) moveCursorWordEnd() {
+	text := m.strippedLineContent(m.cursorLine)
+	col := m.cursorCol
+	runes := []rune(text)
+	lineWidth := len(runes)
+
+	if col >= lineWidth-1 {
+		// Move to next line.
+		if m.cursorLine+1 < len(m.lines) {
+			m.cursorLine++
+			text = m.strippedLineContent(m.cursorLine)
+			runes = []rune(text)
+			lineWidth = len(runes)
+			col = 0
+		} else {
+			return
+		}
+	} else {
+		col++
+	}
+
+	// Skip whitespace.
+	for col < lineWidth && (runes[col] == ' ' || runes[col] == '\t') {
+		col++
+	}
+	// Skip to end of word.
+	for col < lineWidth-1 && runes[col+1] != ' ' && runes[col+1] != '\t' {
+		col++
+	}
+
+	if col >= lineWidth {
+		col = lineWidth - 1
+	}
+	if col < 0 {
+		col = 0
+	}
+	m.cursorCol = col
+}
+
+// applyVisualSelection applies visual selection highlighting to a line's content.
+func (m *Model) applyVisualSelection(lineIdx int, content string) string {
+	startLine, startCol, endLine, endCol := m.visualSelectionBounds()
+
+	if lineIdx < startLine || lineIdx > endLine {
+		return content
+	}
+
+	lineWidth := ansi.StringWidth(content)
+	if lineWidth == 0 {
+		return content
+	}
+
+	sc := 0
+	ec := lineWidth
+
+	if lineIdx == startLine {
+		sc = startCol
+	}
+	if lineIdx == endLine {
+		ec = endCol + 1 // endCol is inclusive
+		if ec > lineWidth {
+			ec = lineWidth
+		}
+	}
+
+	if sc >= ec || sc >= lineWidth {
+		return content
+	}
+
+	before := ansiSlice(content, 0, sc)
+	middle := ansiSlice(content, sc, ec)
+	after := ansiSlice(content, ec, lineWidth)
+
+	revIdx := firstNonANSIByteIndex(middle)
+	return before + middle[:revIdx] + "\033[7m" + middle[revIdx:] + "\033[27m" + after
+}
+
+// yankVisualSelection extracts the plain text within the visual selection.
+func (m *Model) yankVisualSelection() string {
+	if !m.visualMode || len(m.lines) == 0 {
+		return ""
+	}
+
+	startLine, startCol, endLine, endCol := m.visualSelectionBounds()
+
+	var sb strings.Builder
+	for li := startLine; li <= endLine && li < len(m.lines); li++ {
+		stripped := m.strippedLineContent(li)
+		runes := []rune(stripped)
+		lineLen := len(runes)
+
+		sc := 0
+		ec := lineLen
+
+		if li == startLine {
+			sc = startCol
+		}
+		if li == endLine {
+			ec = endCol + 1 // inclusive
+			if ec > lineLen {
+				ec = lineLen
+			}
+		}
+
+		if sc < ec && sc < lineLen {
+			sb.WriteString(string(runes[sc:ec]))
+		}
+		if li < endLine {
+			sb.WriteByte('\n')
+		}
+	}
+	return sb.String()
+}
+
+// handleVisualKey handles key events during visual selection mode.
+// Returns (cmd, handled). If handled is false, the key was not consumed.
+func (m *Model) handleVisualKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	switch {
+	case key.Matches(msg, m.KeyMap.ClearSearch): // Esc
+		m.exitVisualMode()
+		return nil, true
+	case key.Matches(msg, m.KeyMap.CopySelection): // y - yank
+		content := m.yankVisualSelection()
+		m.exitVisualMode()
+		if content != "" {
+			m.statusMessage = "yanked"
+			return tea.SetClipboard(content), true
+		}
+		return nil, true
+	case key.Matches(msg, m.KeyMap.Down): // j
+		if m.cursorLine+1 < len(m.lines) {
+			m.cursorLine++
+			m.clampCursorCol()
+		}
+		m.ensureCursorVisible()
+		return nil, true
+	case key.Matches(msg, m.KeyMap.Up): // k
+		if m.cursorLine > 0 {
+			m.cursorLine--
+			m.clampCursorCol()
+		}
+		m.ensureCursorVisible()
+		return nil, true
+	case key.Matches(msg, m.KeyMap.Right): // l
+		w := m.lineVisibleWidth(m.cursorLine)
+		if w > 0 && m.cursorCol < w-1 {
+			m.cursorCol++
+		}
+		return nil, true
+	case key.Matches(msg, m.KeyMap.Left): // h
+		if m.cursorCol > 0 {
+			m.cursorCol--
+		}
+		return nil, true
+	case key.Matches(msg, m.KeyMap.WordForward): // w
+		m.moveCursorWordForward()
+		m.ensureCursorVisible()
+		return nil, true
+	case key.Matches(msg, m.KeyMap.WordBack): // b
+		m.moveCursorWordBack()
+		m.ensureCursorVisible()
+		return nil, true
+	case key.Matches(msg, m.KeyMap.WordEnd): // e
+		m.moveCursorWordEnd()
+		m.ensureCursorVisible()
+		return nil, true
+	case key.Matches(msg, m.KeyMap.LineStart): // 0
+		m.cursorCol = 0
+		return nil, true
+	case key.Matches(msg, m.KeyMap.LineEnd): // $
+		w := m.lineVisibleWidth(m.cursorLine)
+		if w > 0 {
+			m.cursorCol = w - 1
+		}
+		return nil, true
+	case key.Matches(msg, m.KeyMap.GotoTop): // g
+		m.cursorLine = 0
+		m.clampCursorCol()
+		m.ensureCursorVisible()
+		return nil, true
+	case key.Matches(msg, m.KeyMap.GotoEnd): // G
+		if len(m.lines) > 0 {
+			m.cursorLine = len(m.lines) - 1
+			m.clampCursorCol()
+		}
+		m.ensureCursorVisible()
+		return nil, true
+	case key.Matches(msg, m.KeyMap.PageDown):
+		m.cursorLine += m.pageSize
+		if m.cursorLine >= len(m.lines) {
+			m.cursorLine = len(m.lines) - 1
+		}
+		m.clampCursorCol()
+		m.ensureCursorVisible()
+		return nil, true
+	case key.Matches(msg, m.KeyMap.PageUp):
+		m.cursorLine -= m.pageSize
+		if m.cursorLine < 0 {
+			m.cursorLine = 0
+		}
+		m.clampCursorCol()
+		m.ensureCursorVisible()
+		return nil, true
+	case key.Matches(msg, m.KeyMap.VisualMode): // v again exits
+		m.exitVisualMode()
+		return nil, true
+	}
+	return nil, false
 }
 
 // focusedContent returns the currently-selected content.

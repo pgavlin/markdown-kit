@@ -1043,3 +1043,218 @@ func TestSelected(t *testing.T) {
 	// Offset at end (exclusive) should return false.
 	assert.False(t, m.selected(m.selectionEnd))
 }
+
+// ---------------------------------------------------------------------------
+// Visual mode
+// ---------------------------------------------------------------------------
+
+func TestVisualMode_EnterExit(t *testing.T) {
+	m := setupLongDoc(t)
+
+	assert.False(t, m.VisualMode(), "should not start in visual mode")
+
+	// Press 'v' to enter visual mode.
+	m, _ = m.Update(keyMsg('v'))
+	assert.True(t, m.VisualMode(), "should be in visual mode after 'v'")
+	assert.Equal(t, m.lineOffset, m.cursorLine, "cursor should start at top of viewport")
+	assert.Equal(t, 0, m.cursorCol, "cursor should start at column 0")
+
+	// Press Esc to exit.
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape, Text: ""})
+	assert.False(t, m.VisualMode(), "should exit visual mode on Esc")
+}
+
+func TestVisualMode_VAgainExits(t *testing.T) {
+	m := setupLongDoc(t)
+
+	m, _ = m.Update(keyMsg('v'))
+	assert.True(t, m.VisualMode())
+
+	m, _ = m.Update(keyMsg('v'))
+	assert.False(t, m.VisualMode(), "pressing 'v' again should exit visual mode")
+}
+
+func TestVisualMode_CursorMovement(t *testing.T) {
+	m := setupLongDoc(t)
+
+	m, _ = m.Update(keyMsg('v'))
+	startLine := m.cursorLine
+
+	// Move down with j.
+	m, _ = m.Update(keyMsg('j'))
+	assert.Equal(t, startLine+1, m.cursorLine, "j should move cursor down")
+
+	// Move up with k.
+	m, _ = m.Update(keyMsg('k'))
+	assert.Equal(t, startLine, m.cursorLine, "k should move cursor back up")
+
+	// Move right with l.
+	m, _ = m.Update(keyMsg('l'))
+	assert.Equal(t, 1, m.cursorCol, "l should move cursor right")
+
+	// Move left with h.
+	m, _ = m.Update(keyMsg('h'))
+	assert.Equal(t, 0, m.cursorCol, "h should move cursor left")
+
+	// h at column 0 should stay at 0.
+	m, _ = m.Update(keyMsg('h'))
+	assert.Equal(t, 0, m.cursorCol, "h at col 0 should stay at 0")
+}
+
+func TestVisualMode_GotoTopBottom(t *testing.T) {
+	m := setupLongDoc(t)
+
+	m, _ = m.Update(keyMsg('v'))
+
+	// G should move cursor to last line.
+	m, _ = m.Update(keyMsg('G'))
+	assert.Equal(t, len(m.lines)-1, m.cursorLine, "G should move cursor to last line")
+
+	// g should move cursor to first line.
+	m, _ = m.Update(keyMsg('g'))
+	assert.Equal(t, 0, m.cursorLine, "g should move cursor to first line")
+}
+
+func TestVisualMode_LineStartEnd(t *testing.T) {
+	m := NewModel()
+	m.SetText("test.md", "Hello world here.\n")
+	m.SetSize(80, 24)
+
+	m, _ = m.Update(keyMsg('v'))
+
+	// $ should go to end of line.
+	m, _ = m.Update(keyMsg('$'))
+	lineWidth := m.lineVisibleWidth(m.cursorLine)
+	assert.Equal(t, lineWidth-1, m.cursorCol, "$ should move to last column")
+
+	// 0 should go to start of line.
+	m, _ = m.Update(keyMsg('0'))
+	assert.Equal(t, 0, m.cursorCol, "0 should move to column 0")
+}
+
+func TestVisualMode_SelectionBounds(t *testing.T) {
+	m := setupLongDoc(t)
+
+	m, _ = m.Update(keyMsg('v'))
+	anchorLine := m.cursorLine
+
+	// Move cursor down two lines.
+	m, _ = m.Update(keyMsg('j'))
+	m, _ = m.Update(keyMsg('j'))
+
+	sl, sc, el, ec := m.visualSelectionBounds()
+	assert.Equal(t, anchorLine, sl, "start line should be anchor")
+	assert.Equal(t, 0, sc, "start col should be anchor col")
+	assert.Equal(t, anchorLine+2, el, "end line should be cursor")
+	assert.Equal(t, m.cursorCol, ec, "end col should be cursor col")
+}
+
+func TestVisualMode_SelectionBoundsReversed(t *testing.T) {
+	m := setupLongDoc(t)
+
+	// Scroll down first so we have room to move up.
+	m, _ = m.Update(keyMsg('G'))
+	m, _ = m.Update(keyMsg('v'))
+	anchorLine := m.cursorLine
+
+	// Move cursor up - selection should be reversed.
+	m, _ = m.Update(keyMsg('k'))
+	m, _ = m.Update(keyMsg('k'))
+
+	sl, _, el, _ := m.visualSelectionBounds()
+	assert.Equal(t, anchorLine-2, sl, "start should be cursor (earlier)")
+	assert.Equal(t, anchorLine, el, "end should be anchor (later)")
+}
+
+func TestVisualMode_YankContent(t *testing.T) {
+	m := NewModel()
+	m.SetText("test.md", "Hello world.\n\nSecond line.\n")
+	m.SetSize(80, 24)
+
+	m, _ = m.Update(keyMsg('v'))
+	// Move to end of first line.
+	m, _ = m.Update(keyMsg('$'))
+
+	content := m.yankVisualSelection()
+	stripped := m.strippedLineContent(0)
+	assert.Equal(t, stripped, content, "yank of full first line should match stripped content")
+}
+
+func TestVisualMode_YankMultipleLines(t *testing.T) {
+	m := NewModel()
+	m.SetText("test.md", "Line one.\n\nLine two.\n")
+	m.SetSize(80, 24)
+
+	m, _ = m.Update(keyMsg('v'))
+	// Move down to include second line.
+	m, _ = m.Update(keyMsg('j'))
+	m, _ = m.Update(keyMsg('$'))
+
+	content := m.yankVisualSelection()
+	assert.Contains(t, content, "\n", "multi-line yank should contain newline")
+}
+
+func TestVisualMode_GutterIndicator(t *testing.T) {
+	m := NewModel(WithTheme(styles.Pulumi))
+	m.SetText("test.md", "# Hello\n\nSome text.\n")
+	m.SetGutter(true)
+	m.SetSize(80, 24)
+
+	m, _ = m.Update(keyMsg('v'))
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	lastLine := ansi.Strip(lines[len(lines)-1])
+	assert.Contains(t, lastLine, "-- VISUAL --", "gutter should show visual mode indicator")
+}
+
+func TestVisualMode_RenderHighlighting(t *testing.T) {
+	m := NewModel()
+	m.SetText("test.md", "Hello world here.\n")
+	m.SetSize(80, 24)
+
+	m, _ = m.Update(keyMsg('v'))
+	// Move right to select a few characters.
+	m, _ = m.Update(keyMsg('l'))
+	m, _ = m.Update(keyMsg('l'))
+	m, _ = m.Update(keyMsg('l'))
+
+	output := m.View()
+	// Should contain reverse video for the visual selection.
+	assert.Contains(t, output, "\033[7m", "visual selection should use reverse video")
+}
+
+func TestVisualMode_ClearsNodeSelection(t *testing.T) {
+	m := NewModel()
+	m.SetText("test.md", "# Hello\n\nSome text.\n")
+	m.SetSize(80, 24)
+
+	// Select a heading first.
+	m, _ = m.Update(keyMsg('}'))
+	require.NotNil(t, m.Selection())
+
+	// Enter visual mode - should clear node selection.
+	m, _ = m.Update(keyMsg('v'))
+	assert.Nil(t, m.Selection(), "visual mode should clear node selection")
+}
+
+func TestVisualMode_WordMotions(t *testing.T) {
+	m := NewModel()
+	m.SetText("test.md", "Hello world foo bar.\n")
+	m.SetSize(80, 24)
+
+	m, _ = m.Update(keyMsg('v'))
+
+	// w should move to next word.
+	m, _ = m.Update(keyMsg('w'))
+	assert.True(t, m.cursorCol > 0, "w should advance cursor")
+	wCol := m.cursorCol
+
+	// b should move back.
+	m, _ = m.Update(keyMsg('b'))
+	assert.True(t, m.cursorCol < wCol, "b should move cursor back")
+
+	// e should move to end of word.
+	m, _ = m.Update(keyMsg('e'))
+	assert.True(t, m.cursorCol > 0, "e should advance cursor")
+}
