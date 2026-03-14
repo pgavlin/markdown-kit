@@ -31,7 +31,7 @@ type pageLoadErrorMsg struct {
 
 // splitFragment splits a resolved link into the path/URL and an optional
 // fragment identifier. For HTTP(S) URLs it uses url.Parse; for file paths it
-// splits on the first '#'.
+// splits on the last '#'.
 func splitFragment(resolved string) (link, fragment string) {
 	if strings.HasPrefix(resolved, "http://") || strings.HasPrefix(resolved, "https://") {
 		u, err := url.Parse(resolved)
@@ -43,7 +43,7 @@ func splitFragment(resolved string) (link, fragment string) {
 		u.RawFragment = ""
 		return u.String(), fragment
 	}
-	if i := strings.IndexByte(resolved, '#'); i >= 0 {
+	if i := strings.LastIndexByte(resolved, '#'); i >= 0 {
 		return resolved[:i], resolved[i+1:]
 	}
 	return resolved, ""

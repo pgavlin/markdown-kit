@@ -461,6 +461,7 @@ func TestSplitFragment(t *testing.T) {
 		{"http_with_fragment", "http://example.com/page#heading", "http://example.com/page", "heading"},
 		{"https_with_fragment", "https://example.com/doc.md#install", "https://example.com/doc.md", "install"},
 		{"just_fragment", "#anchor", "", "anchor"},
+		{"hash_in_path", "/docs/C#/readme.md#section", "/docs/C#/readme.md", "section"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
