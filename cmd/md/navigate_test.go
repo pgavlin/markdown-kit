@@ -358,7 +358,7 @@ func TestFetchURLPage_Success(t *testing.T) {
 		},
 	}
 
-	cmd := fetchURLPage("http://example.com/doc.md", false, &fakeConverter{}, nil, nil, client, discardLogger())
+	cmd := fetchURLPage("http://example.com/doc.md", "", false, &fakeConverter{}, nil, nil, client, discardLogger())
 	msg := cmd()
 
 	loaded, ok := msg.(pageLoadedMsg)
@@ -383,7 +383,7 @@ func TestFetchURLPage_Error(t *testing.T) {
 		},
 	}
 
-	cmd := fetchURLPage("http://example.com", false, &fakeConverter{}, nil, nil, client, discardLogger())
+	cmd := fetchURLPage("http://example.com", "", false, &fakeConverter{}, nil, nil, client, discardLogger())
 	msg := cmd()
 
 	errMsg, ok := msg.(pageLoadErrorMsg)
@@ -413,7 +413,7 @@ func TestFetchURLPage_HTMLContent(t *testing.T) {
 		},
 	}
 
-	cmd := fetchURLPage("http://example.com", false, conv, nil, nil, client, discardLogger())
+	cmd := fetchURLPage("http://example.com", "", false, conv, nil, nil, client, discardLogger())
 	msg := cmd()
 
 	loaded, ok := msg.(pageLoadedMsg)
@@ -429,7 +429,7 @@ func TestLoadFilePage_Success(t *testing.T) {
 	fs := newMemFS()
 	fs.files["/docs/readme.md"] = []byte("# Hello World")
 
-	cmd := loadFilePage("/docs/readme.md", false, fs, discardLogger())
+	cmd := loadFilePage("/docs/readme.md", "", false, fs, discardLogger())
 	msg := cmd()
 
 	loaded, ok := msg.(pageLoadedMsg)
@@ -447,10 +447,78 @@ func TestLoadFilePage_Success(t *testing.T) {
 	}
 }
 
+func TestSplitFragment(t *testing.T) {
+	tests := []struct {
+		name         string
+		input        string
+		wantLink     string
+		wantFragment string
+	}{
+		{"no_fragment", "/docs/readme.md", "/docs/readme.md", ""},
+		{"file_with_fragment", "/docs/readme.md#section", "/docs/readme.md", "section"},
+		{"file_with_empty_fragment", "/docs/readme.md#", "/docs/readme.md", ""},
+		{"http_no_fragment", "http://example.com/page", "http://example.com/page", ""},
+		{"http_with_fragment", "http://example.com/page#heading", "http://example.com/page", "heading"},
+		{"https_with_fragment", "https://example.com/doc.md#install", "https://example.com/doc.md", "install"},
+		{"just_fragment", "#anchor", "", "anchor"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			link, fragment := splitFragment(tt.input)
+			if link != tt.wantLink {
+				t.Errorf("splitFragment(%q) link = %q, want %q", tt.input, link, tt.wantLink)
+			}
+			if fragment != tt.wantFragment {
+				t.Errorf("splitFragment(%q) fragment = %q, want %q", tt.input, fragment, tt.wantFragment)
+			}
+		})
+	}
+}
+
+func TestLoadFilePage_Fragment(t *testing.T) {
+	fs := newMemFS()
+	fs.files["/docs/readme.md"] = []byte("# Hello World")
+
+	cmd := loadFilePage("/docs/readme.md", "section", false, fs, discardLogger())
+	msg := cmd()
+
+	loaded, ok := msg.(pageLoadedMsg)
+	if !ok {
+		t.Fatalf("expected pageLoadedMsg, got %T", msg)
+	}
+	if loaded.fragment != "section" {
+		t.Errorf("fragment = %q, want %q", loaded.fragment, "section")
+	}
+}
+
+func TestFetchURLPage_Fragment(t *testing.T) {
+	client := &fakeHTTPClient{
+		handler: func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": {"text/markdown"}},
+				Body:       io.NopCloser(strings.NewReader("# Page")),
+				Request:    req,
+			}, nil
+		},
+	}
+
+	cmd := fetchURLPage("http://example.com/doc.md", "heading", false, &fakeConverter{}, nil, nil, client, discardLogger())
+	msg := cmd()
+
+	loaded, ok := msg.(pageLoadedMsg)
+	if !ok {
+		t.Fatalf("expected pageLoadedMsg, got %T", msg)
+	}
+	if loaded.fragment != "heading" {
+		t.Errorf("fragment = %q, want %q", loaded.fragment, "heading")
+	}
+}
+
 func TestLoadFilePage_Error(t *testing.T) {
 	fs := newMemFS()
 
-	cmd := loadFilePage("/docs/missing.md", false, fs, discardLogger())
+	cmd := loadFilePage("/docs/missing.md", "", false, fs, discardLogger())
 	msg := cmd()
 
 	errMsg, ok := msg.(pageLoadErrorMsg)

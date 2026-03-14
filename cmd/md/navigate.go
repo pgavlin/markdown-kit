@@ -18,14 +18,35 @@ type pageLoadedMsg struct {
 	name     string
 	markdown string
 	source   string
-	newTab   bool // when true, open in a new tab instead of current tab
-	reload   bool // when true, replace current content without pushing to back stack
+	newTab   bool   // when true, open in a new tab instead of current tab
+	reload   bool   // when true, replace current content without pushing to back stack
+	fragment string // optional anchor fragment to navigate to after loading
 }
 
 // pageLoadErrorMsg is sent when a page fails to load.
 type pageLoadErrorMsg struct {
 	url string
 	err error
+}
+
+// splitFragment splits a resolved link into the path/URL and an optional
+// fragment identifier. For HTTP(S) URLs it uses url.Parse; for file paths it
+// splits on the first '#'.
+func splitFragment(resolved string) (link, fragment string) {
+	if strings.HasPrefix(resolved, "http://") || strings.HasPrefix(resolved, "https://") {
+		u, err := url.Parse(resolved)
+		if err != nil || u.Fragment == "" {
+			return resolved, ""
+		}
+		fragment = u.Fragment
+		u.Fragment = ""
+		u.RawFragment = ""
+		return u.String(), fragment
+	}
+	if i := strings.IndexByte(resolved, '#'); i >= 0 {
+		return resolved[:i], resolved[i+1:]
+	}
+	return resolved, ""
 }
 
 // resolveLink resolves a link relative to the current document source.
@@ -115,7 +136,7 @@ func isMarkdownContentType(ct string) bool {
 }
 
 // loadFilePage reads a local markdown file and returns a pageLoadedMsg.
-func loadFilePage(path string, newTab bool, fsys fileSystem, logger *slog.Logger) tea.Cmd {
+func loadFilePage(path, fragment string, newTab bool, fsys fileSystem, logger *slog.Logger) tea.Cmd {
 	return func() tea.Msg {
 		data, err := fsys.ReadFile(path)
 		if err != nil {
@@ -127,13 +148,14 @@ func loadFilePage(path string, newTab bool, fsys fileSystem, logger *slog.Logger
 			markdown: string(data),
 			source:   path,
 			newTab:   newTab,
+			fragment: fragment,
 		}
 	}
 }
 
 // loadConvertFilePage reads a local file, converts it via the registry, and
 // returns a pageLoadedMsg. Results are cached by content hash.
-func loadConvertFilePage(path string, newTab bool, registry *converterRegistry, cache *conversionCache, fsys fileSystem, logger *slog.Logger) tea.Cmd {
+func loadConvertFilePage(path, fragment string, newTab bool, registry *converterRegistry, cache *conversionCache, fsys fileSystem, logger *slog.Logger) tea.Cmd {
 	return func() tea.Msg {
 		data, err := fsys.ReadFile(path)
 		if err != nil {
@@ -155,6 +177,7 @@ func loadConvertFilePage(path string, newTab bool, registry *converterRegistry, 
 				markdown: cached.Markdown,
 				source:   path,
 				newTab:   newTab,
+				fragment: fragment,
 			}
 		}
 
@@ -177,6 +200,7 @@ func loadConvertFilePage(path string, newTab bool, registry *converterRegistry, 
 			markdown: cr.markdown,
 			source:   path,
 			newTab:   newTab,
+			fragment: fragment,
 		}
 	}
 }
@@ -321,17 +345,18 @@ func fetchURL(rawURL string, conv converter, registry *converterRegistry, cache 
 }
 
 // fetchURLPage fetches a URL asynchronously as a tea.Cmd.
-func fetchURLPage(rawURL string, newTab bool, conv converter, registry *converterRegistry, cache *conversionCache, client httpClient, logger *slog.Logger) tea.Cmd {
+func fetchURLPage(rawURL, fragment string, newTab bool, conv converter, registry *converterRegistry, cache *conversionCache, client httpClient, logger *slog.Logger) tea.Cmd {
 	return func() tea.Msg {
 		result, err := fetchURL(rawURL, conv, registry, cache, client, logger)
 		if err != nil {
 			return pageLoadErrorMsg{url: rawURL, err: err}
 		}
 		return pageLoadedMsg{
-			name:            result.name,
-			markdown:        result.markdown,
-			source:          result.source,
-			newTab:          newTab,
+			name:     result.name,
+			markdown: result.markdown,
+			source:   result.source,
+			newTab:   newTab,
+			fragment: fragment,
 		}
 	}
 }

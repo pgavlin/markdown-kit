@@ -554,7 +554,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					r.loading = true
 					r.loadingURL = url
 					return r, tea.Batch(
-						fetchURLPage(url, r.pickerNewTab, r.converter, r.registry, r.cache, r.client, r.logger),
+						fetchURLPage(url, "", r.pickerNewTab, r.converter, r.registry, r.cache, r.client, r.logger),
 						r.spinner.Tick,
 					)
 				}
@@ -583,9 +583,9 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.loadingURL = path
 			var cmd tea.Cmd
 			if isConvertibleFile(path, r.registry) {
-				cmd = loadConvertFilePage(path, r.pickerNewTab, r.registry, r.cache, r.fsys, r.logger)
+				cmd = loadConvertFilePage(path, "", r.pickerNewTab, r.registry, r.cache, r.fsys, r.logger)
 			} else {
-				cmd = loadFilePage(path, r.pickerNewTab, r.fsys, r.logger)
+				cmd = loadFilePage(path, "", r.pickerNewTab, r.fsys, r.logger)
 			}
 			return r, tea.Batch(cmd, r.spinner.Tick)
 		}
@@ -682,9 +682,9 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.loading = true
 				r.loadingURL = path
 				if isConvertibleFile(path, r.registry) {
-					return r, tea.Batch(loadConvertFilePage(path, false, r.registry, r.cache, r.fsys, r.logger), r.spinner.Tick)
+					return r, tea.Batch(loadConvertFilePage(path, "", false, r.registry, r.cache, r.fsys, r.logger), r.spinner.Tick)
 				}
-				return r, tea.Batch(loadFilePage(path, false, r.fsys, r.logger), r.spinner.Tick)
+				return r, tea.Batch(loadFilePage(path, "", false, r.fsys, r.logger), r.spinner.Tick)
 			}
 			return r, nil
 		}
@@ -705,9 +705,9 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.loading = true
 				r.loadingURL = path
 				if isConvertibleFile(path, r.registry) {
-					return r, tea.Batch(loadConvertFilePage(path, false, r.registry, r.cache, r.fsys, r.logger), r.spinner.Tick)
+					return r, tea.Batch(loadConvertFilePage(path, "", false, r.registry, r.cache, r.fsys, r.logger), r.spinner.Tick)
 				}
-				return r, tea.Batch(loadFilePage(path, false, r.fsys, r.logger), r.spinner.Tick)
+				return r, tea.Batch(loadFilePage(path, "", false, r.fsys, r.logger), r.spinner.Tick)
 			}
 			return r, nil
 		}
@@ -738,6 +738,11 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		r.loading = false
 		r.loadingURL = ""
+
+		// Navigate to the fragment anchor if present.
+		if msg.fragment != "" {
+			r.active().view.SelectAnchor(msg.fragment)
+		}
 
 		// Index the document in the background.
 		// Use the view's resolved name (extracted from the first heading)
@@ -1028,25 +1033,29 @@ func (r *markdownReader) reloadCurrentPage() tea.Cmd {
 func (r *markdownReader) handleLinkNavigation(rawURL string, newTab bool) tea.Cmd {
 	resolved := resolveLink(rawURL, r.active().currentSource)
 
+	// Extract fragment from the resolved link.
+	var fragment string
+	resolved, fragment = splitFragment(resolved)
+
 	// HTTP/HTTPS URLs: fetch and convert.
 	if strings.HasPrefix(resolved, "http://") || strings.HasPrefix(resolved, "https://") {
 		r.loading = true
 		r.loadingURL = resolved
-		return tea.Batch(fetchURLPage(resolved, newTab, r.converter, r.registry, r.cache, r.client, r.logger), r.spinner.Tick)
+		return tea.Batch(fetchURLPage(resolved, fragment, newTab, r.converter, r.registry, r.cache, r.client, r.logger), r.spinner.Tick)
 	}
 
 	// Local markdown files.
 	if isMarkdownFile(resolved) {
 		r.loading = true
 		r.loadingURL = resolved
-		return tea.Batch(loadFilePage(resolved, newTab, r.fsys, r.logger), r.spinner.Tick)
+		return tea.Batch(loadFilePage(resolved, fragment, newTab, r.fsys, r.logger), r.spinner.Tick)
 	}
 
 	// Local files with a registered converter.
 	if isConvertibleFile(resolved, r.registry) {
 		r.loading = true
 		r.loadingURL = resolved
-		return tea.Batch(loadConvertFilePage(resolved, newTab, r.registry, r.cache, r.fsys, r.logger), r.spinner.Tick)
+		return tea.Batch(loadConvertFilePage(resolved, fragment, newTab, r.registry, r.cache, r.fsys, r.logger), r.spinner.Tick)
 	}
 
 	// Non-markdown files, mailto:, etc. — open in browser.

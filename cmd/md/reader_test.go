@@ -399,6 +399,31 @@ func TestUpdate_PageLoadedMsg_ClearsRawState(t *testing.T) {
 	}
 }
 
+func TestUpdate_PageLoadedMsg_WithFragment(t *testing.T) {
+	r := testReader("initial", "# Initial", "/doc.md")
+	// Set a size so the view can render and find anchors.
+	r.width = 80
+	r.height = 24
+	r.resizeAllViews()
+
+	msg := pageLoadedMsg{
+		name:     "new page",
+		markdown: "# Top\n\n## Section One\n\nContent.\n\n## Section Two\n\nMore content.",
+		source:   "/new.md",
+		fragment: "section-two",
+	}
+
+	m, _ := r.Update(msg)
+	reader := m.(markdownReader)
+
+	if reader.active().currentSource != "/new.md" {
+		t.Errorf("currentSource = %q", reader.active().currentSource)
+	}
+	if reader.loading {
+		t.Error("expected loading=false")
+	}
+}
+
 func TestUpdate_PageLoadErrorMsg(t *testing.T) {
 	r := testReader("test", "# Hello", "")
 	r.loading = true
@@ -564,6 +589,56 @@ func TestHandleLinkNavigation_LocalMarkdown(t *testing.T) {
 	}
 	if r.loadingURL != "/docs/other.md" {
 		t.Errorf("loadingURL = %q", r.loadingURL)
+	}
+	if cmd == nil {
+		t.Error("expected non-nil command")
+	}
+}
+
+func TestHandleLinkNavigation_LocalMarkdownWithFragment(t *testing.T) {
+	fs := newMemFS()
+	fs.files["/docs/other.md"] = []byte("# Other\n\n## Section\n\nContent here.")
+	r := testReader("test", "# Hello", "/docs/test.md")
+	r.fsys = fs
+
+	cmd := r.handleLinkNavigation("other.md#section", false)
+	if !r.loading {
+		t.Error("expected loading=true for local markdown file with fragment")
+	}
+	// The fragment should be stripped from the loading URL.
+	if r.loadingURL != "/docs/other.md" {
+		t.Errorf("loadingURL = %q, want %q", r.loadingURL, "/docs/other.md")
+	}
+	if cmd == nil {
+		t.Error("expected non-nil command")
+	}
+	// Fragment handling is tested in navigate_test.go via TestLoadFilePage_Fragment.
+}
+
+func TestHandleLinkNavigation_HTTPWithFragment(t *testing.T) {
+	r := testReader("test", "# Hello", "")
+	r.client = &fakeHTTPClient{
+		handler: func(req *http.Request) (*http.Response, error) {
+			// Verify the fragment is stripped from the request URL.
+			if req.URL.Fragment != "" {
+				t.Errorf("request URL should not have fragment, got %q", req.URL.Fragment)
+			}
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": {"text/markdown"}},
+				Body:       io.NopCloser(strings.NewReader("# Remote")),
+				Request:    req,
+			}, nil
+		},
+	}
+
+	cmd := r.handleLinkNavigation("http://example.com/page.md#section", false)
+	if !r.loading {
+		t.Error("expected loading=true for HTTP link with fragment")
+	}
+	// The fragment should be stripped from the loading URL.
+	if r.loadingURL != "http://example.com/page.md" {
+		t.Errorf("loadingURL = %q, want %q", r.loadingURL, "http://example.com/page.md")
 	}
 	if cmd == nil {
 		t.Error("expected non-nil command")
