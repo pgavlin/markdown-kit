@@ -3,10 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/BurntSushi/toml"
@@ -81,6 +85,52 @@ func main() {
 								os.Remove(dbPath + suffix)
 							}
 							fmt.Printf("Cleared search index: %s\n", dbPath)
+							return nil
+						},
+					},
+				},
+			},
+			{
+				Name:  "index",
+				Usage: "manage the background indexing daemon",
+				Commands: []*cli.Command{
+					{
+						Name:  "start",
+						Usage: "start the background indexing daemon",
+						Action: func(ctx context.Context, cmd *cli.Command) error {
+							return runIndexDaemon(ctx, false, logger)
+						},
+					},
+					{
+						Name:  "stop",
+						Usage: "stop the background indexing daemon",
+						Action: func(ctx context.Context, cmd *cli.Command) error {
+							running, pid := isDaemonRunning()
+							if !running {
+								fmt.Println("Daemon is not running.")
+								return nil
+							}
+							p, err := os.FindProcess(pid)
+							if err != nil {
+								return fmt.Errorf("finding process %d: %w", pid, err)
+							}
+							if err := p.Signal(syscall.SIGTERM); err != nil {
+								return fmt.Errorf("stopping daemon (pid %d): %w", pid, err)
+							}
+							fmt.Printf("Sent stop signal to daemon (pid %d).\n", pid)
+							return nil
+						},
+					},
+					{
+						Name:  "status",
+						Usage: "show the status of the indexing daemon",
+						Action: func(ctx context.Context, cmd *cli.Command) error {
+							running, pid := isDaemonRunning()
+							if running {
+								fmt.Printf("Daemon is running (pid %d).\n", pid)
+							} else {
+								fmt.Println("Daemon is not running.")
+							}
 							return nil
 						},
 					},
@@ -249,6 +299,13 @@ func main() {
 				model.activeTab = 0
 			}
 
+			// Auto-start the indexing daemon if roots are configured and it isn't already running.
+			if len(cfg.Index.Roots) > 0 {
+				if running, _ := isDaemonRunning(); !running {
+					startDaemonBackground(logger)
+				}
+			}
+
 			p := tea.NewProgram(model)
 
 			if _, err := p.Run(); err != nil {
@@ -263,4 +320,99 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// runIndexDaemon runs the indexing daemon in the foreground. If background is
+// true, the function is being called from a detached child process.
+func runIndexDaemon(ctx context.Context, background bool, logger *slog.Logger) error {
+	cfgPath, err := configPath()
+	if err != nil {
+		return fmt.Errorf("determining config path: %w", err)
+	}
+	cfg, err := loadConfig(cfgPath, osFileSystem{}, logger)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+	if len(cfg.Index.Roots) == 0 {
+		return fmt.Errorf("no index roots configured in %s", cfgPath)
+	}
+
+	// Check if another daemon is already running.
+	if running, pid := isDaemonRunning(); running {
+		if background {
+			return nil // Silently exit — another daemon won.
+		}
+		return fmt.Errorf("daemon already running (pid %d)", pid)
+	}
+
+	// Write PID file.
+	pidPath, err := pidFilePath()
+	if err != nil {
+		return fmt.Errorf("determining PID file path: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(pidPath), 0o755); err != nil {
+		return fmt.Errorf("creating data directory: %w", err)
+	}
+	if err := writePIDFile(pidPath); err != nil {
+		return fmt.Errorf("writing PID file: %w", err)
+	}
+	defer removePIDFile(pidPath)
+
+	// Open the search index.
+	dd, err := dataDir()
+	if err != nil {
+		return fmt.Errorf("determining data directory: %w", err)
+	}
+	dbPath := filepath.Join(dd, "index.db")
+	embedder := cfg.Search.newEmbedder()
+	index, err := docsearch.Open(dbPath, embedder)
+	if err != nil {
+		return fmt.Errorf("opening index: %w", err)
+	}
+	defer index.Close()
+
+	// Set up signal handling for clean shutdown.
+	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
+	defer cancel()
+
+	roots := cfg.Index.expandedRoots()
+	exclude := cfg.Index.excludeSet()
+	interval := cfg.Index.pollInterval()
+
+	if !background {
+		fmt.Printf("Indexing daemon started (pid %d), scanning %v\n", os.Getpid(), roots)
+	}
+	logger.Info("daemon_start", "pid", os.Getpid(), "roots", roots, "interval", interval)
+
+	err = runScanner(ctx, index, roots, exclude, interval, logger)
+	if err == context.Canceled {
+		logger.Info("daemon_stopped")
+		return nil
+	}
+	return err
+}
+
+// startDaemonBackground launches the indexing daemon as a detached child process.
+func startDaemonBackground(logger *slog.Logger) {
+	exe, err := os.Executable()
+	if err != nil {
+		logger.Warn("daemon_autostart_failed", "error", err)
+		return
+	}
+
+	cmd := exec.Command(exe, "index", "start")
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	cmd.Stdin = nil
+	// Detach the child process so it survives after the TUI exits.
+	setSysProcAttr(cmd)
+
+	if err := cmd.Start(); err != nil {
+		logger.Warn("daemon_autostart_failed", "error", err)
+		return
+	}
+
+	// Release so we don't wait for it.
+	cmd.Process.Release()
+	logger.Info("daemon_autostarted", "pid", cmd.Process.Pid)
 }

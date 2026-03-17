@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	"github.com/BurntSushi/toml"
@@ -112,6 +113,70 @@ func (c searchConfig) newEmbedder() docsearch.Embedder {
 	}
 }
 
+type indexConfig struct {
+	// Roots lists directory paths to scan for markdown files.
+	// Supports ~ for home directory (e.g. "~/Documents").
+	Roots []string `toml:"roots"`
+
+	// Exclude lists directory base names to skip during scanning
+	// (e.g. "node_modules", ".git"). These are matched against the
+	// final component of each directory path, not as glob patterns.
+	Exclude []string `toml:"exclude"`
+
+	// PollInterval controls how often the daemon re-walks roots after
+	// the initial scan. Parsed as a Go duration (e.g. "10m", "1h").
+	PollInterval string `toml:"poll_interval"`
+}
+
+func (c indexConfig) pollInterval() time.Duration {
+	if c.PollInterval == "" {
+		return 10 * time.Minute
+	}
+	d, err := time.ParseDuration(c.PollInterval)
+	if err != nil {
+		return 10 * time.Minute
+	}
+	return d
+}
+
+func (c indexConfig) excludeSet() map[string]bool {
+	defaults := map[string]bool{
+		"node_modules": true,
+		".git":         true,
+		"vendor":       true,
+		"target":       true,
+		"build":        true,
+	}
+	for _, e := range c.Exclude {
+		defaults[e] = true
+	}
+	return defaults
+}
+
+// expandedRoots returns the configured roots with ~ and environment
+// variables expanded.
+func (c indexConfig) expandedRoots() []string {
+	var roots []string
+	for _, r := range c.Roots {
+		r = os.ExpandEnv(r)
+		r = expandTilde(r)
+		roots = append(roots, r)
+	}
+	return roots
+}
+
+// expandTilde replaces a leading "~/" with the user's home directory.
+func expandTilde(path string) string {
+	if !strings.HasPrefix(path, "~/") {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	return filepath.Join(home, path[2:])
+}
+
 type config struct {
 	Theme         string                  `toml:"theme"`
 	StripDataURIs *bool                   `toml:"strip_data_uris"`
@@ -119,6 +184,7 @@ type config struct {
 	Converter     converterConfig         `toml:"converter"`
 	Converters    []formatConverterConfig `toml:"converters"`
 	Search        searchConfig            `toml:"search"`
+	Index         indexConfig             `toml:"index"`
 }
 
 func (c config) stripDataURIs() bool {
@@ -198,6 +264,15 @@ const defaultConfig = `# md configuration file
 # [search.command]
 # command = "my-embed-tool"
 # dimensions = 384
+
+# Background document indexing. Configure root directory paths to scan
+# for markdown files. A background daemon discovers and indexes files
+# for full-text (and optionally semantic) search. The daemon starts
+# automatically when the TUI launches.
+# [index]
+# roots = ["~/Documents", "~/code"]           # directory paths to scan
+# exclude = ["node_modules", ".git", "vendor"] # directory names to skip
+# poll_interval = "10m"                         # re-scan interval
 
 # Custom key bindings. Each key accepts a string or array of strings.
 # [keys]

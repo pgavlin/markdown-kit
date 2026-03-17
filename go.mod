@@ -13,6 +13,7 @@ require (
 	github.com/charmbracelet/glamour v0.10.0
 	github.com/charmbracelet/x/ansi v0.11.6
 	github.com/eliukblau/pixterm v1.3.2
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/mattn/go-sqlite3 v1.14.34
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/pgavlin/goldmark v1.1.33-0.20210916052350-16f491902b32

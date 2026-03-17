@@ -33,7 +33,7 @@ type Index struct {
 // Open opens (or creates) the index database at the given path.
 // If embedder is nil, only keyword search will be available.
 func Open(path string, embedder Embedder) (*Index, error) {
-	db, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_foreign_keys=on")
+	db, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000")
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)
 	}
@@ -394,6 +394,116 @@ func (idx *Index) FindSimilar(ctx context.Context, content, excludePath string, 
 		results = results[:limit]
 	}
 	return results, nil
+}
+
+// DocInfo holds basic document information for the embedding queue.
+type DocInfo struct {
+	ID       int64
+	Path     string
+	Markdown string
+}
+
+// ListPaths returns all document paths currently in the index.
+func (idx *Index) ListPaths(ctx context.Context) ([]string, error) {
+	rows, err := idx.db.QueryContext(ctx, `SELECT path FROM documents`)
+	if err != nil {
+		return nil, fmt.Errorf("listing paths: %w", err)
+	}
+	defer rows.Close()
+
+	var paths []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, fmt.Errorf("scanning path: %w", err)
+		}
+		paths = append(paths, p)
+	}
+	return paths, rows.Err()
+}
+
+// DocumentsNeedingEmbeddings returns documents that have no chunks (and thus
+// no embeddings). Only useful when an embedder is configured. If limit is 0,
+// all matching documents are returned.
+func (idx *Index) DocumentsNeedingEmbeddings(ctx context.Context, limit int) ([]DocInfo, error) {
+	var rows *sql.Rows
+	var err error
+	if limit > 0 {
+		rows, err = idx.db.QueryContext(ctx, `
+			SELECT d.id, d.path, d.content
+			FROM documents d
+			LEFT JOIN chunks c ON c.document_id = d.id
+			WHERE c.id IS NULL
+			LIMIT ?
+		`, limit)
+	} else {
+		rows, err = idx.db.QueryContext(ctx, `
+			SELECT d.id, d.path, d.content
+			FROM documents d
+			LEFT JOIN chunks c ON c.document_id = d.id
+			WHERE c.id IS NULL
+		`)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("querying documents needing embeddings: %w", err)
+	}
+	defer rows.Close()
+
+	var docs []DocInfo
+	for rows.Next() {
+		var d DocInfo
+		if err := rows.Scan(&d.ID, &d.Path, &d.Markdown); err != nil {
+			return nil, fmt.Errorf("scanning document: %w", err)
+		}
+		docs = append(docs, d)
+	}
+	return docs, rows.Err()
+}
+
+// AddFTSOnly indexes a document for full-text search only, without generating
+// embeddings. This is used by the background scanner to quickly populate FTS.
+func (idx *Index) AddFTSOnly(ctx context.Context, path, title, markdown string) error {
+	now := time.Now().Unix()
+	hash := contentHash(markdown)
+
+	// Check if the document exists with the same content hash.
+	var existingID int64
+	var existingHash string
+	err := idx.db.QueryRowContext(ctx,
+		`SELECT id, content_hash FROM documents WHERE path = ?`, path,
+	).Scan(&existingID, &existingHash)
+
+	if err == nil && existingHash == hash {
+		// Content unchanged — skip.
+		return nil
+	}
+
+	if err == nil {
+		// Existing document with changed content — update it.
+		_, err := idx.db.ExecContext(ctx,
+			`UPDATE documents SET title = ?, content = ?, content_hash = ?, indexed_at = ? WHERE id = ?`,
+			title, markdown, hash, now, existingID,
+		)
+		if err != nil {
+			return fmt.Errorf("updating document: %w", err)
+		}
+		return nil
+	}
+
+	if err != sql.ErrNoRows {
+		return fmt.Errorf("checking existing document: %w", err)
+	}
+
+	// New document — insert it. Triggers handle FTS.
+	_, err = idx.db.ExecContext(ctx,
+		`INSERT INTO documents (path, title, content, content_hash, last_opened, indexed_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		path, title, markdown, hash, now, now,
+	)
+	if err != nil {
+		return fmt.Errorf("inserting document: %w", err)
+	}
+
+	return nil
 }
 
 // Remove removes a document from the index.
