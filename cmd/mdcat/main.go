@@ -47,7 +47,7 @@ func main() {
 
 	var theme *chroma.Style
 	if term.IsTerminal(int(os.Stdout.Fd())) {
-		theme = styles.Pulumi
+		theme = styles.AutoTheme()
 
 		if *width == 0 {
 			w, _, err := term.GetSize(int(os.Stdout.Fd()))
