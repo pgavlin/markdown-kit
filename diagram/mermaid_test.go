@@ -10,7 +10,7 @@ import (
 
 func TestMermaidRendererFlowchart(t *testing.T) {
 	r := MermaidRenderer()
-	output, err := r("mermaid", []byte("graph LR\n    A-->B\n    B-->C\n"))
+	output, err := r("mermaid", []byte("graph LR\n    A-->B\n    B-->C\n"), 0)
 	require.NoError(t, err)
 
 	// The output should contain box-drawing characters.
@@ -23,7 +23,7 @@ func TestMermaidRendererFlowchart(t *testing.T) {
 
 func TestMermaidRendererUnsupportedLanguage(t *testing.T) {
 	r := MermaidRenderer()
-	_, err := r("python", []byte("print('hello')"))
+	_, err := r("python", []byte("print('hello')"), 0)
 	assert.Error(t, err, "should return error for unsupported language")
 	assert.Contains(t, err.Error(), "unsupported diagram language")
 }

@@ -11,11 +11,12 @@ import (
 // MermaidRenderer returns a DiagramRenderer that converts mermaid code blocks
 // into Unicode box-drawing art using the mermaid-ascii library.
 func MermaidRenderer() renderer.DiagramRenderer {
-	return func(language string, source []byte) (string, error) {
+	return func(language string, source []byte, targetWidth int) (string, error) {
 		if language != "mermaid" {
 			return "", fmt.Errorf("unsupported diagram language: %s", language)
 		}
 		config := mermaidDiagram.DefaultConfig()
+		config.TargetWidth = targetWidth
 		return render.Render(string(source), config)
 	}
 }

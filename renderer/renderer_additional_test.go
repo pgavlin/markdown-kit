@@ -1249,7 +1249,7 @@ func TestIndentedCodeBlockBlankLineWidth(t *testing.T) {
 // TestFencedCodeBlockDiagramRendering verifies that a diagram renderer replaces
 // code block content with rendered diagram text.
 func TestFencedCodeBlockDiagramRendering(t *testing.T) {
-	mockRenderer := func(language string, source []byte) (string, error) {
+	mockRenderer := func(language string, source []byte, targetWidth int) (string, error) {
 		if language == "mermaid" {
 			return "┌───┐     ┌───┐\n│ A ├────►│ B │\n└───┘     └───┘", nil
 		}
@@ -1276,7 +1276,7 @@ func TestFencedCodeBlockDiagramRendering(t *testing.T) {
 // TestFencedCodeBlockDiagramFallback verifies that when the diagram renderer
 // returns an error, normal code block rendering is used.
 func TestFencedCodeBlockDiagramFallback(t *testing.T) {
-	failingRenderer := func(language string, source []byte) (string, error) {
+	failingRenderer := func(language string, source []byte, targetWidth int) (string, error) {
 		return "", fmt.Errorf("rendering failed")
 	}
 

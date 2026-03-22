@@ -128,8 +128,9 @@ func (s *NodeSpan) Contains(offset int) bool {
 }
 
 // A DiagramRenderer converts diagram source code into rendered text.
+// targetWidth is the desired maximum output width in characters (0 = no constraint).
 // Returns an error for unsupported languages, causing fallback to normal code rendering.
-type DiagramRenderer func(language string, source []byte) (string, error)
+type DiagramRenderer func(language string, source []byte, targetWidth int) (string, error)
 
 // An ImageEncoder converts an image to a binary representation that can be displayed by the target output device.
 type ImageEncoder func(w io.Writer, image image.Image, r *Renderer) (int, error)
@@ -1014,7 +1015,7 @@ func (r *Renderer) RenderFencedCodeBlock(w util.BufWriter, source []byte, node a
 			line := lines.At(i)
 			src.Write(line.Value(source))
 		}
-		if rendered, err := r.diagramRenderer(string(language), []byte(src.String())); err == nil {
+		if rendered, err := r.diagramRenderer(string(language), []byte(src.String()), r.wordWrap); err == nil {
 			if err := r.OpenBlock(w, source, node); err != nil {
 				return ast.WalkStop, err
 			}
