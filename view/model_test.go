@@ -964,7 +964,7 @@ func TestClampOffsets_NegativeValues(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// isLink and isHeading selectors
+// isLink, isHeading, and other selectors
 // ---------------------------------------------------------------------------
 
 func TestIsLink(t *testing.T) {

@@ -192,11 +192,17 @@ This document is a succinct summary of our shared core engineering processes.
 	}
 
 	for _, want := range expectedLinks {
-		m, _ = m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
-		sel := m.Selection()
-		require.NotNil(t, sel, "should have selection for %s", want.dest)
-		require.Equal(t, goldmark_ast.KindLink, sel.Node.Kind(), "selection should be a Link")
+		// Press ] until we land on a link (] now navigates all items).
+		for {
+			m, _ = m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
+			sel := m.Selection()
+			require.NotNil(t, sel, "should have selection for %s", want.dest)
+			if sel.Node.Kind() == goldmark_ast.KindLink {
+				break
+			}
+		}
 
+		sel := m.Selection()
 		link := sel.Node.(*goldmark_ast.Link)
 		assert.Equal(t, want.dest, string(link.Destination), "link destination")
 

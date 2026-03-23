@@ -151,7 +151,7 @@ func (km readerKeyMap) FullHelp() [][]key.Binding {
 		// Movement
 		{km.Up, km.Down, km.PageUp, km.PageDown, km.GotoTop, km.GotoEnd, km.Left, km.Right},
 		// Navigation
-		{km.Home, km.End, km.NextLink, km.PrevLink, km.NextHeading, km.PrevHeading, km.NextCodeBlock, km.PrevCodeBlock},
+		{km.Home, km.End, km.NextItem, km.PrevItem, km.NextHeading, km.PrevHeading},
 		// Actions
 		{km.FollowLink, km.GoBack, km.History, km.SearchDocuments, km.FindSimilar, km.Reload, km.CopySelection, km.OpenFile, km.OpenURL, km.OpenBrowser, km.DecreaseWidth, km.IncreaseWidth},
 		// Search & View

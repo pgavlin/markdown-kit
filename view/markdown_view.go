@@ -291,6 +291,23 @@ func (m *Model) isHeadingOrAnchor(n ast.Node) (bool, bool) {
 	return false, false
 }
 
+// isNavigable matches all navigable elements: links, code blocks, headings,
+// and HTML anchor nodes.
+func (m *Model) isNavigable(n ast.Node) (bool, bool) {
+	switch n.Kind() {
+	case ast.KindAutoLink, ast.KindLink:
+		return true, true
+	case ast.KindCodeBlock, ast.KindFencedCodeBlock:
+		return true, true
+	case ast.KindHeading:
+		return true, true
+	}
+	if m.anchorNodes[n] {
+		return false, true
+	}
+	return false, false
+}
+
 // Selector is a function that determines whether a node should be selected.
 type Selector func(n ast.Node) (highlight, ok bool)
 
@@ -876,21 +893,13 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.ScrollLeft(1)
 	case key.Matches(msg, m.KeyMap.Right):
 		m.ScrollRight(1)
-	case key.Matches(msg, m.KeyMap.PrevLink):
-		if m.isSelectionVisible() || !m.SelectLastVisible(isLink) {
-			m.SelectPrevious(isLink)
+	case key.Matches(msg, m.KeyMap.PrevItem):
+		if m.isSelectionVisible() || !m.SelectLastVisible(m.isNavigable) {
+			m.SelectPrevious(m.isNavigable)
 		}
-	case key.Matches(msg, m.KeyMap.NextLink):
-		if m.isSelectionVisible() || !m.SelectFirstVisible(isLink) {
-			m.SelectNext(isLink)
-		}
-	case key.Matches(msg, m.KeyMap.PrevCodeBlock):
-		if m.isSelectionVisible() || !m.SelectLastVisible(isCodeBlock) {
-			m.SelectPrevious(isCodeBlock)
-		}
-	case key.Matches(msg, m.KeyMap.NextCodeBlock):
-		if m.isSelectionVisible() || !m.SelectFirstVisible(isCodeBlock) {
-			m.SelectNext(isCodeBlock)
+	case key.Matches(msg, m.KeyMap.NextItem):
+		if m.isSelectionVisible() || !m.SelectFirstVisible(m.isNavigable) {
+			m.SelectNext(m.isNavigable)
 		}
 	case key.Matches(msg, m.KeyMap.PrevHeading):
 		m.SelectPrevious(m.isHeadingOrAnchor)

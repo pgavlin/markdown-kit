@@ -6,14 +6,13 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/pgavlin/goldmark/ast"
 	"github.com/pgavlin/markdown-kit/styles"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestBracketNavigation_PrefersLinks(t *testing.T) {
-	// Document with both links and headings — ] should prefer links.
+func TestBracketNavigation_NavigatesAllItems(t *testing.T) {
+	// Document with headings, links, and code blocks — ] should navigate through all.
 	source, err := os.ReadFile(filepath.Join(testdataPath, "getting-started.md"))
 	require.NoError(t, err)
 
@@ -21,18 +20,16 @@ func TestBracketNavigation_PrefersLinks(t *testing.T) {
 	m.SetText("getting-started.md", string(source))
 	m.SetSize(80, 24)
 
-	// Press ] — should select a link (not a heading).
+	// Press ] — should select any navigable item.
 	m, _ = m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
 	require.NotNil(t, m.Selection())
-	assert.Equal(t, ast.KindLink, m.Selection().Node.Kind(), "] should select a link when links exist")
 
 	first := m.Selection().Start
 
-	// Press ] again — should advance to next link.
+	// Press ] again — should advance to next item.
 	m, _ = m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
 	require.NotNil(t, m.Selection())
-	assert.Equal(t, ast.KindLink, m.Selection().Node.Kind())
-	assert.Greater(t, m.Selection().Start, first, "should advance to next link")
+	assert.Greater(t, m.Selection().Start, first, "should advance to next item")
 }
 
 func TestBracketNavigation_SkipsNestedImages(t *testing.T) {
@@ -43,17 +40,15 @@ func TestBracketNavigation_SkipsNestedImages(t *testing.T) {
 	m.SetText("test.md", md)
 	m.SetSize(80, 24)
 
-	// Press ] three times — should get three distinct links, no image stops.
+	// Press ] repeatedly — should get distinct items with strictly increasing positions.
 	var starts []int
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 4; i++ {
 		m, _ = m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
 		require.NotNil(t, m.Selection(), "press %d should select something", i+1)
-		assert.Equal(t, ast.KindLink, m.Selection().Node.Kind(),
-			"press %d should select a Link, not an Image", i+1)
 		starts = append(starts, m.Selection().Start)
 	}
 
-	// All three starts should be strictly increasing (no duplicates, no image stops).
+	// All starts should be strictly increasing (no duplicates, no image stops).
 	for i := 1; i < len(starts); i++ {
 		assert.Greater(t, starts[i], starts[i-1],
 			"press %d should advance past press %d", i+1, i)

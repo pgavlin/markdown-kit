@@ -19,12 +19,10 @@ type KeyMap struct {
 	Left  key.Binding
 	Right key.Binding
 
-	NextLink      key.Binding
-	PrevLink      key.Binding
-	NextCodeBlock key.Binding
-	PrevCodeBlock key.Binding
-	NextHeading   key.Binding
-	PrevHeading   key.Binding
+	NextItem    key.Binding
+	PrevItem    key.Binding
+	NextHeading key.Binding
+	PrevHeading key.Binding
 
 	DecreaseWidth key.Binding
 	IncreaseWidth key.Binding
@@ -93,21 +91,13 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("l", "right"),
 			key.WithHelp("l/right", "scroll right"),
 		),
-		NextLink: key.NewBinding(
+		NextItem: key.NewBinding(
 			key.WithKeys("]"),
-			key.WithHelp("]", "next link"),
+			key.WithHelp("]", "next item"),
 		),
-		PrevLink: key.NewBinding(
+		PrevItem: key.NewBinding(
 			key.WithKeys("["),
-			key.WithHelp("[", "previous link"),
-		),
-		NextCodeBlock: key.NewBinding(
-			key.WithKeys("ctrl+]"),
-			key.WithHelp("ctrl+]", "next code block"),
-		),
-		PrevCodeBlock: key.NewBinding(
-			key.WithKeys("ctrl+["),
-			key.WithHelp("ctrl+[", "previous code block"),
+			key.WithHelp("[", "previous item"),
 		),
 		NextHeading: key.NewBinding(
 			key.WithKeys("}"),
@@ -191,7 +181,7 @@ func DefaultKeyMap() KeyMap {
 // ShortHelp returns a short list of key bindings for the help view.
 // Implements the help.KeyMap interface from charmbracelet/bubbles/help.
 func (km KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{km.Up, km.Down, km.NextLink, km.NextHeading, km.FollowLink, km.GoBack}
+	return []key.Binding{km.Up, km.Down, km.NextItem, km.NextHeading, km.FollowLink, km.GoBack}
 }
 
 // FullHelp returns the full set of key bindings for the help view.
@@ -200,7 +190,7 @@ func (km KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{km.Up, km.Down, km.PageUp, km.PageDown, km.GotoTop, km.GotoEnd},
 		{km.Left, km.Right, km.Home, km.End},
-		{km.NextLink, km.PrevLink, km.NextHeading, km.PrevHeading, km.NextCodeBlock, km.PrevCodeBlock},
+		{km.NextItem, km.PrevItem, km.NextHeading, km.PrevHeading},
 		{km.DecreaseWidth, km.IncreaseWidth},
 		{km.FollowLink, km.GoBack, km.CopySelection, km.CursorMode, km.VisualMode},
 		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch},
@@ -215,7 +205,7 @@ func (km *KeyMap) SetEnabled(enabled bool) {
 		&km.Up, &km.Down, &km.PageUp, &km.PageDown,
 		&km.GotoTop, &km.GotoEnd, &km.Home, &km.End,
 		&km.Left, &km.Right,
-		&km.NextLink, &km.PrevLink,
+		&km.NextItem, &km.PrevItem,
 		&km.NextHeading, &km.PrevHeading,
 		&km.DecreaseWidth, &km.IncreaseWidth,
 		&km.FollowLink, &km.GoBack,

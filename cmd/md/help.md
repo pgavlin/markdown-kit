@@ -46,21 +46,20 @@ terminal. Decrease it for a narrower column; increase it for wider text.
 
 ## Element Navigation
 
-Jump directly between headings, links, and code blocks:
+Jump directly between navigable elements (headings, links, code blocks, and
+anchors):
 
 | Key | Action |
 |-----|--------|
-| {{.NextLink}} | Jump to next link |
-| {{.PrevLink}} | Jump to previous link |
+| {{.NextItem}} | Jump to next item |
+| {{.PrevItem}} | Jump to previous item |
 | {{.NextHeading}} | Jump to next heading |
 | {{.PrevHeading}} | Jump to previous heading |
-| {{.NextCodeBlock}} | Jump to next code block |
-| {{.PrevCodeBlock}} | Jump to previous code block |
 
 ## Link Following
 
-`md` renders links as highlighted, navigable elements. Use {{.NextLink}} and
-{{.PrevLink}} to move between links, then:
+`md` renders links as highlighted, navigable elements. Use {{.NextItem}} and
+{{.PrevItem}} to move between items, then:
 
 | Key | Action |
 |-----|--------|
@@ -200,8 +199,8 @@ to the rendered view.
 |-----|--------|
 | {{.CopySelection}} | Copy the selected code block to clipboard |
 
-When a code block is selected (navigate to one using {{.NextCodeBlock}} /
-{{.PrevCodeBlock}}), press {{.CopySelection}} to copy its contents to your
+When a code block is selected (navigate to one using {{.NextItem}} /
+{{.PrevItem}}), press {{.CopySelection}} to copy its contents to your
 system clipboard.
 
 ## Export

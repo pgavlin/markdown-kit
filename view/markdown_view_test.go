@@ -70,9 +70,9 @@ func TestModel_Navigation(t *testing.T) {
 	assert.Equal(t, 0, m.lineOffset)
 	assert.Equal(t, 0, m.columnOffset)
 
-	// Next link selection.
+	// Next item selection.
 	m, _ = m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
-	assert.NotNil(t, m.Selection(), "should have selected a link")
+	assert.NotNil(t, m.Selection(), "should have selected an item")
 }
 
 func TestUpdateANSIState(t *testing.T) {
