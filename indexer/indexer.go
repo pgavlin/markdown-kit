@@ -101,6 +101,21 @@ func (i *indexer) walk(n ast.Node, enter bool) (ast.WalkStatus, error) {
 		return ast.WalkContinue, nil
 	}
 
+	// Collect anchors from block-level HTML (<a id="..."> on its own line).
+	if n.Kind() == ast.KindHTMLBlock {
+		lines := n.Lines()
+		for j := 0; j < lines.Len(); j++ {
+			line := lines.At(j)
+			if id, ok := anchorID(line.Value(i.source)); ok {
+				i.pendingAnchors = append(i.pendingAnchors, pendingAnchor{
+					id:   id,
+					node: n,
+				})
+			}
+		}
+		return ast.WalkContinue, nil
+	}
+
 	heading, ok := n.(*ast.Heading)
 	if !ok {
 		return ast.WalkContinue, nil

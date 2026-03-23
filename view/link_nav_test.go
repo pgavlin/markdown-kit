@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/pgavlin/goldmark/ast"
 	"github.com/pgavlin/markdown-kit/styles"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,6 +31,65 @@ func TestBracketNavigation_NavigatesAllItems(t *testing.T) {
 	m, _ = m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
 	require.NotNil(t, m.Selection())
 	assert.Greater(t, m.Selection().Start, first, "should advance to next item")
+}
+
+func TestBracketNavigation_IncludesHTMLBlockAnchors(t *testing.T) {
+	// An <a> tag split across lines is an HTMLBlock; ] should navigate to it.
+	md := "# Heading\n\n<a id=\"target\">\n</a>\n\nSome text with a [link](#target).\n"
+
+	m := NewModel(WithTheme(styles.Pulumi))
+	m.SetText("test.md", md)
+	m.SetSize(80, 24)
+
+	// Collect all navigable items via ] presses.
+	var kinds []ast.NodeKind
+	for i := 0; i < 10; i++ {
+		m, _ = m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
+		if m.Selection() == nil {
+			break
+		}
+		kinds = append(kinds, m.Selection().Node.Kind())
+		prev := m.Selection()
+		// peek if next press would advance
+		test := m
+		test, _ = test.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
+		if test.Selection() == prev {
+			break
+		}
+	}
+
+	assert.Contains(t, kinds, ast.KindHTMLBlock,
+		"HTMLBlock anchor should be reachable via ] navigation")
+}
+
+func TestHeadingNavigation_IncludesHTMLBlockAnchors(t *testing.T) {
+	// } should navigate through both headings and HTMLBlock anchors.
+	md := "# First\n\n<a id=\"anchor\">\n</a>\n\n## Second\n\nText.\n"
+
+	m := NewModel(WithTheme(styles.Pulumi))
+	m.SetText("test.md", md)
+	m.SetSize(80, 24)
+
+	// Collect items reachable via } (heading navigation).
+	var kinds []ast.NodeKind
+	for i := 0; i < 10; i++ {
+		m, _ = m.Update(tea.KeyPressMsg{Code: '}', Text: "}"})
+		if m.Selection() == nil {
+			break
+		}
+		kinds = append(kinds, m.Selection().Node.Kind())
+		prev := m.Selection()
+		test := m
+		test, _ = test.Update(tea.KeyPressMsg{Code: '}', Text: "}"})
+		if test.Selection() == prev {
+			break
+		}
+	}
+
+	assert.Contains(t, kinds, ast.KindHeading,
+		"headings should be reachable via } navigation")
+	assert.Contains(t, kinds, ast.KindHTMLBlock,
+		"HTMLBlock anchors should be reachable via } navigation")
 }
 
 func TestBracketNavigation_SkipsNestedImages(t *testing.T) {

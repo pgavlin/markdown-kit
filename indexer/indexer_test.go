@@ -594,6 +594,42 @@ func TestIndex_HTMLAnchorUnquoted(t *testing.T) {
 	require.Len(t, sections, 1)
 }
 
+func TestIndex_HTMLBlockAnchor(t *testing.T) {
+	// An <a> tag split across lines is parsed as an HTMLBlock, not RawHTML.
+	source := []byte("<a id=\"block-anchor\">\n</a>\n\n# Heading\n\nText.\n")
+	doc := parseMarkdown(t, source)
+	idx := Index(doc, source)
+
+	sections, ok := idx.Lookup("block-anchor")
+	require.True(t, ok, "block-level anchor should be found")
+	require.Len(t, sections, 1)
+	assert.Equal(t, 1, sections[0].Level)
+
+	// The HTMLBlock node should be in AnchorNodes.
+	anchorNodes := idx.AnchorNodes()
+	require.NotNil(t, anchorNodes, "AnchorNodes should not be nil")
+	found := false
+	for n := range anchorNodes {
+		if n.Kind() == ast.KindHTMLBlock {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "AnchorNodes should contain the HTMLBlock node")
+}
+
+func TestIndex_HTMLBlockAnchorNoFollowingHeading(t *testing.T) {
+	// Block-level anchor at end of document with no following heading.
+	source := []byte("# Hello\n\nText.\n\n<a id=\"end-block\">\n</a>\n")
+	doc := parseMarkdown(t, source)
+	idx := Index(doc, source)
+
+	sections, ok := idx.Lookup("end-block")
+	require.True(t, ok, "block anchor without following heading should be found")
+	require.Len(t, sections, 1)
+	assert.Equal(t, "hello", sections[0].Anchor)
+}
+
 func TestIndex_DeeplyNested(t *testing.T) {
 	source := []byte("# L1\n\n## L2\n\n### L3\n\n#### L4\n\n##### L5\n\n###### L6\n")
 	doc := parseMarkdown(t, source)
