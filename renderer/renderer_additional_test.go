@@ -758,6 +758,77 @@ func TestRawHTML(t *testing.T) {
 	assert.True(t, strings.Contains(output, "</em>"), "output should contain closing raw HTML tags")
 }
 
+// TestRawHTMLAnchorElided verifies that <a id="..."> and <a name="..."> anchors
+// are elided from rendered output.
+func TestRawHTMLAnchorElided(t *testing.T) {
+	input := "Text <a id=\"foo\"></a> here.\n"
+	output, _ := renderMarkdown(t, input)
+	stripped := ansi.Strip(output)
+
+	assert.NotContains(t, stripped, "<a")
+	assert.NotContains(t, stripped, "</a>")
+	assert.Contains(t, stripped, "Text")
+	assert.Contains(t, stripped, "here.")
+}
+
+// TestRawHTMLAnchorNameElided verifies that <a name="..."> anchors are elided.
+func TestRawHTMLAnchorNameElided(t *testing.T) {
+	input := "Text <a name=\"bar\"></a> here.\n"
+	output, _ := renderMarkdown(t, input)
+	stripped := ansi.Strip(output)
+
+	assert.NotContains(t, stripped, "<a")
+	assert.NotContains(t, stripped, "</a>")
+}
+
+// TestRawHTMLNonAnchorNotElided verifies that non-anchor HTML is still rendered.
+func TestRawHTMLNonAnchorNotElided(t *testing.T) {
+	input := "Text <em>emphasis</em> here.\n"
+	output, _ := renderMarkdown(t, input)
+
+	assert.Contains(t, output, "<em>")
+	assert.Contains(t, output, "</em>")
+}
+
+// TestRawHTMLAnchorSpanTracked verifies that elided anchors still have spans tracked.
+func TestRawHTMLAnchorSpanTracked(t *testing.T) {
+	input := "<a id=\"tracked\"></a>\n\n# Heading\n"
+	_, r := renderMarkdown(t, input)
+
+	tree := r.SpanTree()
+	require.NotNil(t, tree)
+
+	// Walk the span tree and look for a RawHTML node span.
+	var found bool
+	var walk func(s *NodeSpan)
+	walk = func(s *NodeSpan) {
+		if _, ok := s.Node.(*ast.RawHTML); ok {
+			found = true
+		}
+		if _, ok := s.Node.(*ast.HTMLBlock); ok {
+			found = true
+		}
+		for _, c := range s.Children {
+			walk(c)
+		}
+	}
+	walk(tree)
+	assert.True(t, found, "elided anchor should still have a tracked span")
+}
+
+// TestHTMLBlockAnchorElided verifies that an HTML block containing only
+// anchor tags is elided from rendered output.
+func TestHTMLBlockAnchorElided(t *testing.T) {
+	input := "<a id=\"section-1\"></a>\n\n# Section 1\n\nContent.\n"
+	output, _ := renderMarkdown(t, input)
+	stripped := ansi.Strip(output)
+
+	assert.NotContains(t, stripped, "<a")
+	assert.NotContains(t, stripped, "</a>")
+	assert.Contains(t, stripped, "Section 1")
+	assert.Contains(t, stripped, "Content.")
+}
+
 // TestTableRenderingWithThemeStyling verifies that the Pulumi theme applies distinct styles
 // to table header and body rows.
 func TestTableRenderingWithThemeStyling(t *testing.T) {

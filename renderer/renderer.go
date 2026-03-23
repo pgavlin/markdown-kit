@@ -29,6 +29,7 @@ import (
 	"github.com/pgavlin/markdown-kit/internal/kitty"
 	"github.com/pgavlin/markdown-kit/styles"
 	svg "github.com/pgavlin/svg2"
+	"golang.org/x/net/html"
 )
 
 type blockState struct {
@@ -205,8 +206,9 @@ type Renderer struct {
 	lineWidth   int
 	atNewline   bool
 	byteOffset  int
-	inImage     bool
-	inDiagram   bool
+	inImage          bool
+	inDiagram        bool
+	htmlAnchorDepth  int
 }
 
 // A RendererOption represents a configuration option for a Renderer.
@@ -1112,6 +1114,65 @@ func (r *Renderer) RenderFencedCodeBlock(w util.BufWriter, source []byte, node a
 	return ast.WalkContinue, nil
 }
 
+// isHTMLAnchorBlock reports whether an HTML block contains only <a> anchor
+// tags with id or name attributes (and their closing tags). Such blocks are
+// elided from rendered output while their spans are still tracked.
+func isHTMLAnchorBlock(source []byte, node ast.Node) bool {
+	var buf bytes.Buffer
+	lines := node.Lines()
+	for i := 0; i < lines.Len(); i++ {
+		line := lines.At(i)
+		buf.Write(line.Value(source))
+	}
+	if hb, ok := node.(*ast.HTMLBlock); ok && hb.HasClosure() {
+		buf.Write(hb.ClosureLine.Value(source))
+	}
+
+	data := buf.Bytes()
+	if len(bytes.TrimSpace(data)) == 0 {
+		return false
+	}
+
+	hasAnchor := false
+	z := html.NewTokenizer(bytes.NewReader(data))
+	for {
+		tt := z.Next()
+		switch tt {
+		case html.ErrorToken:
+			return hasAnchor
+		case html.StartTagToken, html.SelfClosingTagToken:
+			tn, hasAttr := z.TagName()
+			if !bytes.EqualFold(tn, []byte("a")) || !hasAttr {
+				return false
+			}
+			foundAnchorAttr := false
+			for hasAttr {
+				var key []byte
+				key, _, hasAttr = z.TagAttr()
+				k := string(key)
+				if k == "id" || k == "name" {
+					foundAnchorAttr = true
+				}
+			}
+			if !foundAnchorAttr {
+				return false
+			}
+			hasAnchor = true
+		case html.EndTagToken:
+			tn, _ := z.TagName()
+			if !bytes.EqualFold(tn, []byte("a")) {
+				return false
+			}
+		case html.TextToken:
+			if len(bytes.TrimSpace(z.Text())) > 0 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+}
+
 // RenderHTMLBlock renders an *ast.HTMLBlock node to the given BufWriter.
 func (r *Renderer) RenderHTMLBlock(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if !enter {
@@ -1129,15 +1190,20 @@ func (r *Renderer) RenderHTMLBlock(w util.BufWriter, source []byte, node ast.Nod
 
 	r.PushWordWrap(false)
 
+	// Elide HTML blocks that contain only anchor tags.
+	if isHTMLAnchorBlock(source, node) {
+		return ast.WalkContinue, nil
+	}
+
 	// Write the contents of the HTML block.
 	if err := r.writeLines(w, source, node.Lines()); err != nil {
 		return ast.WalkStop, err
 	}
 
 	// Write the closure line, if any.
-	html := node.(*ast.HTMLBlock)
-	if html.HasClosure() {
-		if _, err := r.Write(w, html.ClosureLine.Value(source)); err != nil {
+	htmlBlock := node.(*ast.HTMLBlock)
+	if htmlBlock.HasClosure() {
+		if _, err := r.Write(w, htmlBlock.ClosureLine.Value(source)); err != nil {
 			return ast.WalkStop, err
 		}
 	}
@@ -1743,6 +1809,48 @@ func (r *Renderer) RenderLink(w util.BufWriter, source []byte, node ast.Node, en
 	return ast.WalkContinue, nil
 }
 
+// isHTMLAnchorOpen checks if data contains an <a> tag with an id or name attribute.
+func isHTMLAnchorOpen(data []byte) bool {
+	z := html.NewTokenizer(bytes.NewReader(data))
+	for {
+		tt := z.Next()
+		switch tt {
+		case html.ErrorToken:
+			return false
+		case html.StartTagToken, html.SelfClosingTagToken:
+			tn, hasAttr := z.TagName()
+			if !hasAttr || !bytes.EqualFold(tn, []byte("a")) {
+				continue
+			}
+			for hasAttr {
+				var key []byte
+				key, _, hasAttr = z.TagAttr()
+				k := string(key)
+				if k == "id" || k == "name" {
+					return true
+				}
+			}
+		}
+	}
+}
+
+// isHTMLAnchorClose checks if data is a </a> closing tag.
+func isHTMLAnchorClose(data []byte) bool {
+	z := html.NewTokenizer(bytes.NewReader(data))
+	for {
+		tt := z.Next()
+		switch tt {
+		case html.ErrorToken:
+			return false
+		case html.EndTagToken:
+			tn, _ := z.TagName()
+			if bytes.EqualFold(tn, []byte("a")) {
+				return true
+			}
+		}
+	}
+}
+
 // RenderRawHTML renders an *ast.RawHTML node to the given BufWriter.
 func (r *Renderer) RenderRawHTML(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if !enter {
@@ -1755,6 +1863,23 @@ func (r *Renderer) RenderRawHTML(w util.BufWriter, source []byte, node ast.Node,
 	r.PushWordWrap(false)
 
 	raw := node.(*ast.RawHTML)
+
+	// Elide HTML anchor tags (<a id="..."> / <a name="...">) and their
+	// corresponding </a> close tags. The span is still tracked so that
+	// the indexer/view can navigate to the anchor position.
+	for i := 0; i < raw.Segments.Len(); i++ {
+		seg := raw.Segments.At(i)
+		data := seg.Value(source)
+		if isHTMLAnchorOpen(data) {
+			r.htmlAnchorDepth++
+			return ast.WalkSkipChildren, nil
+		}
+		if r.htmlAnchorDepth > 0 && isHTMLAnchorClose(data) {
+			r.htmlAnchorDepth--
+			return ast.WalkSkipChildren, nil
+		}
+	}
+
 	for i := 0; i < raw.Segments.Len(); i++ {
 		segment := raw.Segments.At(i)
 		if _, err := r.Write(w, segment.Value(source)); err != nil {
