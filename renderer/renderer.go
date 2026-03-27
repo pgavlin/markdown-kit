@@ -148,9 +148,14 @@ type TableRenderContext struct {
 }
 
 // WriteString writes content through the renderer's pipeline, tracking byte
-// offsets for span alignment. Word wrap is disabled during table rendering.
+// offsets for span alignment. Word wrap is disabled during table rendering
+// because the custom renderer is responsible for sizing its output to fit
+// within the available width.
 func (ctx *TableRenderContext) WriteString(s string) (int, error) {
-	return ctx.r.WriteString(ctx.w, s)
+	ctx.r.PushWordWrap(false)
+	n, err := ctx.r.WriteString(ctx.w, s)
+	ctx.r.PopWordWrap()
+	return n, err
 }
 
 // ByteOffset returns the current byte offset in rendered output.

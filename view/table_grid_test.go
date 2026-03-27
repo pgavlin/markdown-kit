@@ -332,9 +332,11 @@ func TestTeaGridTable_BorderStructure(t *testing.T) {
 	assert.Contains(t, stripped, "2")
 }
 
-// TestTeaGridTable_BlankRowSeparators documents that the tea-grid renderer
-// inserts blank lines between each data row, unlike the built-in renderer.
-func TestTeaGridTable_BlankRowSeparators(t *testing.T) {
+// TestTeaGridTable_NoBlankRowSeparators verifies that the tea-grid renderer
+// does not insert blank lines between data rows. (Earlier versions had a bug
+// where the word wrapper injected spurious newlines because grid output lines
+// are exactly wrap-width wide, triggering an off-by-one in the >= check.)
+func TestTeaGridTable_NoBlankRowSeparators(t *testing.T) {
 	input := "| Name | Age |\n| ---- | --- |\n| Alice | 30 |\n| Bob | 25 |\n| Carol | 35 |\n"
 
 	tr := NewTeaGridTableRenderer(styles.Pulumi)
@@ -345,16 +347,7 @@ func TestTeaGridTable_BlankRowSeparators(t *testing.T) {
 	}
 	teagridOutput := ansi.Strip(renderTableDoc(t, []byte(input), opts...))
 
-	builtinOutput := ansi.Strip(renderTableDoc(t, []byte(input),
-		renderer.WithWordWrap(80),
-	))
-
 	teagridLines := strings.Split(strings.TrimRight(teagridOutput, "\n"), "\n")
-	builtinLines := strings.Split(strings.TrimRight(builtinOutput, "\n"), "\n")
-
-	// Tea-grid produces more lines due to blank separators.
-	assert.Greater(t, len(teagridLines), len(builtinLines),
-		"tea-grid should produce more lines than built-in due to blank row separators")
 
 	// Count blank lines in tea-grid output.
 	blankCount := 0
@@ -363,7 +356,7 @@ func TestTeaGridTable_BlankRowSeparators(t *testing.T) {
 			blankCount++
 		}
 	}
-	assert.Greater(t, blankCount, 0, "tea-grid should have blank lines between rows")
+	assert.Equal(t, 0, blankCount, "tea-grid should not have blank lines between rows")
 }
 
 // TestTeaGridTable_EqualColumnWidths documents that the tea-grid renderer
