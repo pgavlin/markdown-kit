@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
@@ -252,9 +251,8 @@ type markdownReader struct {
 	spinner    spinner.Model
 
 	// Help overlay.
-	keys      readerKeyMap
-	helpModel help.Model
-	showHelp  bool
+	keys     readerKeyMap
+	showHelp bool
 
 	// Error dialog state.
 	showError bool
@@ -347,9 +345,6 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style, viewO
 	view.SetText(name, markdown)
 	view.KeyMap = keys.KeyMap
 
-	helpModel := help.New()
-	helpModel.ShowAll = true
-
 	wd, _ := fsys.Getwd()
 	fp := picky.New(wd, picky.WithAllowedTypes(viewableExtsList(registry)))
 
@@ -369,7 +364,6 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style, viewO
 		client:      client,
 		fsys:        fsys,
 		keys:        keys,
-		helpModel:   helpModel,
 		spinner:     spinner.New(spinner.WithSpinner(spinner.Dot)),
 		picker:      fp,
 		searchIndex: searchIndex,
@@ -580,7 +574,6 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.width = ws.Width
 				r.height = ws.Height
 				r.resizeAllViews()
-				r.helpModel.SetWidth(ws.Width)
 			}
 			return r, cmd
 		}
@@ -608,7 +601,6 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.width = ws.Width
 			r.height = ws.Height
 			r.resizeAllViews()
-			r.helpModel.SetWidth(ws.Width)
 			r.picker.SetHeight(min(ws.Height-2, 20))
 			r.picker.SetWidth(ws.Width)
 		}
@@ -824,7 +816,6 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.width = msg.Width
 		r.height = msg.Height
 		r.resizeAllViews()
-		r.helpModel.SetWidth(msg.Width)
 		r.picker.SetHeight(min(msg.Height-2, 20))
 		r.picker.SetWidth(msg.Width)
 		return r, nil
@@ -1194,13 +1185,7 @@ func (r markdownReader) View() tea.View {
 		result = r.overlayDialog(base, "Loading", loadingText)
 	} else if r.showHelp {
 		maxH := r.height * 3 / 4
-
-		// Give the help model enough width to render all columns, then
-		// let the overlay size itself to the actual rendered content.
-		r.helpModel.SetWidth(r.width - 4) // account for border + padding
-		content := r.helpModel.View(r.keys)
-
-		// Skip wordWrap — help.Model already formats its own columns.
+		content := renderHelpOverlay(r.keys)
 		result = r.renderOverlay(base, content, r.width-2, maxH)
 	} else if r.showError {
 		result = r.overlayDialog(base, "Error", r.errorText)
