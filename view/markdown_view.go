@@ -1005,14 +1005,36 @@ type OpenLinkMsg struct {
 // to the previous page.
 type GoBackMsg struct{}
 
+// GridEventMsg wraps a tea.Msg emitted by the focused grid component.
+// Embedders can type-switch on Event to respond to grid-level events
+// such as grid.FocusChangedMsg, grid.SortChangedMsg, etc.
+type GridEventMsg struct {
+	Event tea.Msg
+}
+
 func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// Grid focus intercept: forward all keys to the focused grid except Esc.
 	if m.gridFocused && m.focusedGrid != nil {
-		if msg.String() == "esc" {
+		if msg.String() == "esc" && !m.focusedGrid.model.Filtering() {
 			m.exitGridFocus()
 			return nil
 		}
-		m.updateGridLines(msg)
+		// Intercept FollowLink (Enter) on data rows to check for links.
+		if key.Matches(msg, m.KeyMap.FollowLink) && !m.focusedGrid.model.Filtering() {
+			pos := m.focusedGrid.model.FocusedCell()
+			if pos.Row >= 0 {
+				if url := m.focusedGridLinkDestination(); url != "" {
+					if !m.followGridLink(url) {
+						return func() tea.Msg { return OpenLinkMsg{URL: url} }
+					}
+					return nil
+				}
+			}
+		}
+		cmd := m.updateGridLines(msg)
+		if cmd != nil {
+			return func() tea.Msg { return GridEventMsg{Event: cmd()} }
+		}
 		return nil
 	}
 
@@ -2568,16 +2590,76 @@ func (m *Model) exitGridFocus() {
 	m.focusedGrid = nil
 }
 
+// focusedGridLinkDestination returns the destination URL of the first link
+// in the currently focused grid cell, or an empty string if no link is found.
+func (m *Model) focusedGridLinkDestination() string {
+	if m.focusedGrid == nil {
+		return ""
+	}
+	row, ok := m.focusedGrid.model.FocusedRowData()
+	if !ok {
+		return ""
+	}
+	col := m.focusedGrid.model.FocusedCell().Col
+	if col < 0 || col >= len(row.cells) {
+		return ""
+	}
+	cell := row.cells[col]
+	for _, link := range cell.links {
+		switch n := link.(type) {
+		case *ast.AutoLink:
+			return string(n.URL(m.markdown))
+		case *ast.Link:
+			return string(n.Destination)
+		}
+	}
+	return ""
+}
+
+// followGridLink follows the given URL if it is an internal anchor.
+// Returns true if navigation occurred.
+func (m *Model) followGridLink(url string) bool {
+	anchor, ok := m.documentAnchor(url)
+	if !ok {
+		return false
+	}
+	m.exitGridFocus()
+	m.SelectAnchor(anchor)
+	return true
+}
+
+// FocusedGridLinkDestination returns the destination URL of the first link
+// in the currently focused grid cell, or an empty string if no link is found
+// or no grid is focused.
+func (m *Model) FocusedGridLinkDestination() string {
+	if !m.gridFocused {
+		return ""
+	}
+	return m.focusedGridLinkDestination()
+}
+
+// FocusedGridCell returns the row and column of the currently focused grid
+// cell. Returns (-1, -1, false) if no grid is focused.
+func (m *Model) FocusedGridCell() (row, col int, ok bool) {
+	if !m.gridFocused || m.focusedGrid == nil {
+		return -1, -1, false
+	}
+	pos := m.focusedGrid.model.FocusedCell()
+	return pos.Row, pos.Col, true
+}
+
 // updateGridLines forwards a message to the focused grid and replaces
 // the corresponding lines in m.lines with the updated grid output.
-func (m *Model) updateGridLines(msg tea.Msg) {
+// It returns any command produced by the grid's Update method.
+func (m *Model) updateGridLines(msg tea.Msg) tea.Cmd {
 	gs := m.focusedGrid
 	if gs == nil || gs.startLine < 0 || gs.endLine < 0 {
-		return
+		return nil
 	}
 
+	var cmd tea.Cmd
 	if msg != nil {
-		gs.model, _ = gs.model.Update(msg)
+		gs.model, cmd = gs.model.Update(msg)
 	}
 
 	output := gs.model.View()
@@ -2614,4 +2696,5 @@ func (m *Model) updateGridLines(msg tea.Msg) {
 		m.lines = result
 		gs.endLine = gs.startLine + newLen
 	}
+	return cmd
 }
