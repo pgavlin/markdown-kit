@@ -101,6 +101,7 @@ type tableState struct {
 	cellIndex   int
 
 	measuring bool
+	custom    bool
 }
 
 // A NodeSpan maps from an AST node to its representative span in a rendered document. The NodeSpans for an AST form
@@ -132,6 +133,83 @@ func (s *NodeSpan) Contains(offset int) bool {
 // targetWidth is the desired maximum output width in characters (0 = no constraint).
 // Returns an error for unsupported languages, causing fallback to normal code rendering.
 type DiagramRenderer func(language string, source []byte, targetWidth int) (string, error)
+
+// TableRenderContext provides controlled access to the renderer for custom
+// table rendering. Methods mirror the DiagramRenderer integration pattern.
+type TableRenderContext struct {
+	Table      *xast.Table
+	Source     []byte
+	Width      int // available width (wordWrap)
+	Theme      *chroma.Style
+	Alignments []xast.Alignment
+
+	r *Renderer
+	w util.BufWriter
+}
+
+// WriteString writes content through the renderer's pipeline, tracking byte
+// offsets for span alignment. Word wrap is disabled during table rendering.
+func (ctx *TableRenderContext) WriteString(s string) (int, error) {
+	return ctx.r.WriteString(ctx.w, s)
+}
+
+// ByteOffset returns the current byte offset in rendered output.
+func (ctx *TableRenderContext) ByteOffset() int {
+	return ctx.r.byteOffset
+}
+
+// InsertSpan registers a span for an AST node (e.g. links in cells) at the
+// given absolute byte offsets. Used by the callback for navigation support.
+func (ctx *TableRenderContext) InsertSpan(node ast.Node, start, end int) {
+	ctx.r.insertSpan(node, start, end)
+}
+
+// RenderCell renders a table cell's inline content to a styled string.
+// rowIndex is used to determine the row style (0 = header, odd/even for body rows).
+// Returns rendered content and link nodes found in the cell.
+func (ctx *TableRenderContext) RenderCell(cell ast.Node, width int, rowIndex int) (string, []ast.Node, error) {
+	var rowStyleToken chroma.TokenType
+	switch {
+	case rowIndex == 0:
+		rowStyleToken = styles.TableHeader
+	case rowIndex%2 == 0:
+		rowStyleToken = styles.TableRowAlt
+	default:
+		rowStyleToken = styles.TableRow
+	}
+
+	cr := &Renderer{
+		theme:         ctx.r.theme,
+		wordWrap:      0,
+		hyperlinks:    ctx.r.hyperlinks,
+		images:        ctx.r.images,
+		maxImageWidth: ctx.r.maxImageWidth,
+		contentRoot:   ctx.r.contentRoot,
+		softBreak:     ctx.r.softBreak,
+		tableStack:    []tableState{{measuring: true}},
+		styles:        ctx.r.styles,
+	}
+	if resolved, ok := cr.resolveStyle(rowStyleToken); ok {
+		cr.styles = append(cr.styles[:len(cr.styles):len(cr.styles)], resolved)
+	}
+
+	var buf bytes.Buffer
+	cellRenderer := renderer.NewRenderer(renderer.WithNodeRenderers(util.Prioritized(cr, 100)))
+	if err := cellRenderer.Render(&buf, ctx.Source, cell); err != nil {
+		return "", nil, err
+	}
+
+	content := strings.TrimRight(buf.String(), "\n")
+	if width > 0 {
+		content = ansi.Wrap(content, width, "")
+	}
+	links := collectLinks(cell)
+	return content, links, nil
+}
+
+// A TableRenderer renders a table using a custom implementation. If the
+// renderer returns an error, the built-in table rendering is used as a fallback.
+type TableRenderer func(ctx *TableRenderContext) error
 
 // An ImageEncoder converts an image to a binary representation that can be displayed by the target output device.
 type ImageEncoder func(w io.Writer, image image.Image, r *Renderer) (int, error)
@@ -186,6 +264,7 @@ type Renderer struct {
 	contentRoot   string
 	imageEncoder    ImageEncoder
 	diagramRenderer DiagramRenderer
+	tableRenderer   TableRenderer
 	softBreak       bool
 	padToWrap     []int
 	noBreak       int // nesting counter; when > 0, spaces don't break words
@@ -300,6 +379,15 @@ func WithImageEncoder(encoder ImageEncoder) RendererOption {
 func WithDiagramRenderer(dr DiagramRenderer) RendererOption {
 	return func(r *Renderer) {
 		r.diagramRenderer = dr
+	}
+}
+
+// WithTableRenderer sets the table renderer used to render tables with a custom
+// implementation (e.g. an interactive grid widget). If the renderer returns an
+// error, the built-in static table rendering is used as a fallback.
+func WithTableRenderer(tr TableRenderer) RendererOption {
+	return func(r *Renderer) {
+		r.tableRenderer = tr
 	}
 }
 
@@ -2122,6 +2210,14 @@ func (r *Renderer) renderTableBorder(w util.BufWriter, left, join, right rune) e
 // RenderTable renders an *xast.Table to the given BufWriter.
 func (r *Renderer) RenderTable(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if !enter {
+		if len(r.tableStack) > 0 && r.tableStack[len(r.tableStack)-1].custom {
+			r.tableStack = r.tableStack[:len(r.tableStack)-1]
+			if err := r.CloseBlock(w); err != nil {
+				return ast.WalkStop, err
+			}
+			return ast.WalkContinue, nil
+		}
+
 		if err := r.renderTableBorder(w, borders.bottomLeft(), borders.bottomJoin(), borders.bottomRight()); err != nil {
 			return ast.WalkStop, err
 		}
@@ -2135,6 +2231,26 @@ func (r *Renderer) RenderTable(w util.BufWriter, source []byte, node ast.Node, e
 
 	if err := r.OpenBlock(w, source, node); err != nil {
 		return ast.WalkStop, err
+	}
+
+	table := node.(*xast.Table)
+
+	// Attempt custom table rendering if configured.
+	if r.tableRenderer != nil {
+		ctx := &TableRenderContext{
+			Table:      table,
+			Source:     source,
+			Width:      r.wordWrap,
+			Theme:      r.theme,
+			Alignments: table.Alignments,
+			r:          r,
+			w:          w,
+		}
+		if err := r.tableRenderer(ctx); err == nil {
+			r.tableStack = append(r.tableStack, tableState{custom: true})
+			return ast.WalkSkipChildren, nil
+		}
+		// Fall through to built-in rendering on error.
 	}
 
 	// A table is structured like so:
@@ -2152,7 +2268,6 @@ func (r *Renderer) RenderTable(w util.BufWriter, source []byte, node ast.Node, e
 	//     TableCell
 	//     ...
 	//     TableCell
-	table := node.(*xast.Table)
 
 	// First, measure the width of each column by rendering each cell in each column's contents into an infinitely-wide
 	// buffer and finding the maximum. This also allows us to count the columns.

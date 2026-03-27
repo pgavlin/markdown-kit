@@ -14,6 +14,7 @@ import (
 	"github.com/pgavlin/goldmark"
 	"github.com/pgavlin/goldmark/ast"
 	"github.com/pgavlin/goldmark/extension"
+	xast "github.com/pgavlin/goldmark/extension/ast"
 	goldmark_parser "github.com/pgavlin/goldmark/parser"
 	goldmark_renderer "github.com/pgavlin/goldmark/renderer"
 	"github.com/pgavlin/goldmark/text"
@@ -301,6 +302,8 @@ func (m *Model) isNavigable(n ast.Node) (bool, bool) {
 		return true, true
 	case ast.KindHeading:
 		return true, true
+	case xast.KindTable:
+		return true, true
 	}
 	if m.anchorNodes[n] {
 		return false, true
@@ -401,6 +404,9 @@ type Model struct {
 
 	// Diagram renderer for converting diagram code blocks to text.
 	diagramRenderer renderer.DiagramRenderer
+
+	// Table renderer for custom table rendering (e.g. interactive grid).
+	tableRenderer renderer.TableRenderer
 }
 
 // effectiveWidth returns the width to use for rendering content.
@@ -546,6 +552,9 @@ func (m *Model) render(width int) {
 	}
 	if m.diagramRenderer != nil {
 		opts = append(opts, renderer.WithDiagramRenderer(m.diagramRenderer))
+	}
+	if m.tableRenderer != nil {
+		opts = append(opts, renderer.WithTableRenderer(m.tableRenderer))
 	}
 	r := renderer.New(opts...)
 

@@ -70,6 +70,14 @@ func WithDiagramRenderer(dr renderer.DiagramRenderer) Option {
 	}
 }
 
+// WithTableRenderer sets the table renderer used to render tables with a custom
+// implementation (e.g. an interactive grid widget).
+func WithTableRenderer(tr renderer.TableRenderer) Option {
+	return func(m *Model) {
+		m.tableRenderer = tr
+	}
+}
+
 // WithDocumentTransformer adds a document transformer that will be applied
 // to the parsed AST before rendering.
 func WithDocumentTransformer(t DocumentTransformer) Option {

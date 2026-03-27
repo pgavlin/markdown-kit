@@ -1362,3 +1362,126 @@ func TestFencedCodeBlockDiagramFallback(t *testing.T) {
 	// Fence markers should appear in normal rendering.
 	assert.True(t, strings.Contains(stripped, "```"), "output should contain fence markers on fallback")
 }
+
+// TestTableRenderer_CallbackInvoked verifies that a custom TableRenderer callback
+// is invoked and its output appears in the rendered bytes.
+func TestTableRenderer_CallbackInvoked(t *testing.T) {
+	input := "| A | B |\n| - | - |\n| 1 | 2 |\n"
+
+	called := false
+	customRenderer := func(ctx *TableRenderContext) error {
+		called = true
+		_, err := ctx.WriteString("CUSTOM_TABLE_OUTPUT\n")
+		return err
+	}
+
+	output, _ := renderMarkdownWithTables(t, input, WithTableRenderer(customRenderer))
+	assert.True(t, called, "TableRenderer callback should be called")
+	assert.True(t, strings.Contains(output, "CUSTOM_TABLE_OUTPUT"), "output should contain custom renderer output")
+	// Built-in box-drawing should NOT appear.
+	stripped := ansi.Strip(output)
+	assert.False(t, strings.ContainsRune(stripped, '╭'), "output should not contain built-in borders")
+}
+
+// TestTableRenderer_FallbackOnError verifies that when the custom TableRenderer
+// returns an error, the built-in table rendering is used as a fallback.
+func TestTableRenderer_FallbackOnError(t *testing.T) {
+	input := "| A | B |\n| - | - |\n| 1 | 2 |\n"
+
+	failingRenderer := func(ctx *TableRenderContext) error {
+		return fmt.Errorf("unsupported")
+	}
+
+	output, _ := renderMarkdownWithTables(t, input, WithTableRenderer(failingRenderer), WithTheme(styles.Pulumi))
+	stripped := ansi.Strip(output)
+
+	// Built-in box-drawing SHOULD appear since the custom renderer failed.
+	assert.True(t, strings.ContainsRune(stripped, '╭'), "output should contain top-left corner on fallback")
+	assert.True(t, strings.Contains(stripped, "A"), "output should contain header cell A")
+	assert.True(t, strings.Contains(stripped, "1"), "output should contain data cell 1")
+}
+
+// TestTableRenderer_NoCallbackExistingBehavior verifies that when no custom
+// TableRenderer is configured, the built-in table rendering is used.
+func TestTableRenderer_NoCallbackExistingBehavior(t *testing.T) {
+	input := "| X | Y |\n| - | - |\n| a | b |\n"
+
+	output, _ := renderMarkdownWithTables(t, input, WithTheme(styles.Pulumi))
+	stripped := ansi.Strip(output)
+
+	assert.True(t, strings.ContainsRune(stripped, '╭'), "output should contain built-in borders")
+	assert.True(t, strings.Contains(stripped, "X"), "output should contain header")
+	assert.True(t, strings.Contains(stripped, "a"), "output should contain data")
+}
+
+// TestTableRenderer_RenderCell verifies that RenderCell produces styled content
+// and extracts link nodes.
+func TestTableRenderer_RenderCell(t *testing.T) {
+	input := "| [link](http://example.com) |\n| --- |\n| plain |\n"
+
+	var capturedLinks []ast.Node
+	var capturedContent string
+	customRenderer := func(ctx *TableRenderContext) error {
+		// Render the header cell (first row, first cell).
+		row := ctx.Table.FirstChild()
+		cell := row.FirstChild()
+		content, links, err := ctx.RenderCell(cell, 0, 0)
+		if err != nil {
+			return err
+		}
+		capturedContent = content
+		capturedLinks = links
+		_, err = ctx.WriteString("RENDERED\n")
+		return err
+	}
+
+	_, _ = renderMarkdownWithTables(t, input, WithTableRenderer(customRenderer), WithTheme(styles.Pulumi))
+
+	assert.NotEmpty(t, capturedContent, "RenderCell should produce content")
+	assert.True(t, strings.Contains(ansi.Strip(capturedContent), "link"), "rendered content should contain 'link'")
+	assert.Len(t, capturedLinks, 1, "should find one link node")
+}
+
+// TestTableRenderer_SpanTree verifies that link spans registered by the callback
+// appear in the span tree.
+func TestTableRenderer_SpanTree(t *testing.T) {
+	input := "| [link](http://example.com) |\n| --- |\n| plain |\n"
+
+	customRenderer := func(ctx *TableRenderContext) error {
+		start := ctx.ByteOffset()
+		if _, err := ctx.WriteString("TABLE_CONTENT\n"); err != nil {
+			return err
+		}
+		end := ctx.ByteOffset()
+
+		// Walk the table to find and register link nodes.
+		for row := ctx.Table.FirstChild(); row != nil; row = row.NextSibling() {
+			for cell := row.FirstChild(); cell != nil; cell = cell.NextSibling() {
+				_, links, _ := ctx.RenderCell(cell, 0, 0)
+				for _, link := range links {
+					ctx.InsertSpan(link, start, end)
+				}
+			}
+		}
+		return nil
+	}
+
+	_, r := renderMarkdownWithTables(t, input, WithTableRenderer(customRenderer), WithTheme(styles.Pulumi))
+
+	// Walk the span tree to find a Link span.
+	spanTree := r.SpanTree()
+	require.NotNil(t, spanTree, "span tree should exist")
+
+	found := false
+	var walkSpans func(s *NodeSpan)
+	walkSpans = func(s *NodeSpan) {
+		if s.Node.Kind() == ast.KindLink {
+			found = true
+		}
+		for _, child := range s.Children {
+			walkSpans(child)
+		}
+	}
+	walkSpans(spanTree)
+	assert.True(t, found, "span tree should contain a Link span registered by the callback")
+}
