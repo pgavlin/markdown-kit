@@ -324,9 +324,9 @@ func (r *markdownReader) newTab() tab {
 	}, r.viewOpts...)
 	view := mdk.NewModel(opts...)
 	// Sync table renderer state: interactive tables are off by default,
-	// so add the tea-grid renderer when they have been toggled on.
+	// so add the grid renderer when they have been toggled on.
 	if r.interactiveTables {
-		view.SetTableRenderer(mdk.NewTeaGridTableRenderer(r.theme))
+		view.SetGridTableRenderer(mdk.NewGridTableRenderer(r.theme))
 	}
 	view.KeyMap = r.keys.KeyMap
 	if r.width > 0 && r.height > 0 {
@@ -884,12 +884,15 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return r, nil
 		case "I":
 			r.interactiveTables = !r.interactiveTables
-			var tr mdk.TableRenderer
 			if r.interactiveTables {
-				tr = mdk.NewTeaGridTableRenderer(r.theme)
-			}
-			for i := range r.tabs {
-				r.tabs[i].view.SetTableRenderer(tr)
+				gtr := mdk.NewGridTableRenderer(r.theme)
+				for i := range r.tabs {
+					r.tabs[i].view.SetGridTableRenderer(gtr)
+				}
+			} else {
+				for i := range r.tabs {
+					r.tabs[i].view.SetGridTableRenderer(nil)
+				}
 			}
 			return r, nil
 		case "ctrl+o":

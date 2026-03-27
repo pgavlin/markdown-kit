@@ -111,8 +111,8 @@ github.com/pgavlin/picky v0.0.0-20260307030235-a0dfa1421619 h1:NuCFWgfJSRN2SxiPk
 github.com/pgavlin/picky v0.0.0-20260307030235-a0dfa1421619/go.mod h1:ydJM+XTvjyZavkhxT1IxiXKvsTHzjDaqiLkuBnk09RE=
 github.com/pgavlin/svg2 v0.0.0-20210919231505-4ace7308edc1 h1:pZyspNrqK1cqSk3oIUYgwE2/Si20ZYSGypML1Br3zEU=
 github.com/pgavlin/svg2 v0.0.0-20210919231505-4ace7308edc1/go.mod h1:/bl9WWdq/0JAXp6wvglMkCf9fcBPhT2SoxG7jP+hYqc=
-github.com/pgavlin/tea-grid v0.0.0-20260309044613-bd3611c1e0cb h1:5qv9G1OBZcgynf4ZvJWSVqh1OkyLzmrCnMcFY9Rjgfc=
-github.com/pgavlin/tea-grid v0.0.0-20260309044613-bd3611c1e0cb/go.mod h1:e7t572fAgfLrcFRK+xrKjMiITHYN4gQvvNJ6u75gSqU=
+github.com/pgavlin/tea-grid v0.0.0-20260327125714-60d3add40bbd h1:Go47J4PX7be3mZS4+zBCVU+Kna+2wzIJ83Ksod3XP+g=
+github.com/pgavlin/tea-grid v0.0.0-20260327125714-60d3add40bbd/go.mod h1:e7t572fAgfLrcFRK+xrKjMiITHYN4gQvvNJ6u75gSqU=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/rivo/uniseg v0.1.0/go.mod h1:J6wj4VEh+S6ZtnVlnTBMWIodfgj8LQOQFoIToxlJtxc=

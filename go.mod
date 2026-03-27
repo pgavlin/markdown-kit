@@ -20,7 +20,7 @@ require (
 	github.com/pgavlin/mermaid-ascii v0.0.0-20260322123205-ab8074a98bef
 	github.com/pgavlin/picky v0.0.0-20260307030235-a0dfa1421619
 	github.com/pgavlin/svg2 v0.0.0-20210919231505-4ace7308edc1
-	github.com/pgavlin/tea-grid v0.0.0-20260309044613-bd3611c1e0cb
+	github.com/pgavlin/tea-grid v0.0.0-20260327125714-60d3add40bbd
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli/v3 v3.6.2

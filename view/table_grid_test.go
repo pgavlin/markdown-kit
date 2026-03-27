@@ -418,10 +418,9 @@ func TestTeaGridTable_EqualColumnWidths(t *testing.T) {
 	}
 }
 
-// TestTeaGridTable_ContentTruncation documents that the tea-grid renderer
-// truncates long cell content with … instead of wrapping it into multi-line
-// rows like the built-in renderer does.
-func TestTeaGridTable_ContentTruncation(t *testing.T) {
+// TestTeaGridTable_ContentWrapping verifies that the tea-grid renderer wraps
+// long cell content into multi-line rows instead of truncating with ….
+func TestTeaGridTable_ContentWrapping(t *testing.T) {
 	input := "| Package | Description |\n| ------- | ----------- |\n| `renderer` | Terminal renderer with ANSI colorization, word wrapping, table rendering using Unicode box-drawing characters, and document span tracking |\n"
 
 	tr := NewTeaGridTableRenderer(styles.Pulumi)
@@ -433,25 +432,19 @@ func TestTeaGridTable_ContentTruncation(t *testing.T) {
 	}
 	teagridOutput := ansi.Strip(renderTableDoc(t, []byte(input), opts...))
 
-	builtinOutput := ansi.Strip(renderTableDoc(t, []byte(input),
-		renderer.WithWordWrap(60),
-		renderer.WithSoftBreak(true),
-	))
+	// Tea-grid should NOT truncate with ….
+	assert.NotContains(t, teagridOutput, "…", "tea-grid should wrap, not truncate with …")
 
-	// Tea-grid truncates with … instead of wrapping.
-	assert.Contains(t, teagridOutput, "…", "tea-grid should truncate long content with …")
-
-	// Built-in wraps content into multiple lines.
-	builtinLines := strings.Split(strings.TrimRight(builtinOutput, "\n"), "\n")
+	// Tea-grid should have multiple data lines for the wrapped content.
 	teagridLines := strings.Split(strings.TrimRight(teagridOutput, "\n"), "\n")
-
-	// Count data lines in each (lines with │ content, excluding borders).
-	builtinDataLines := countDataLines(builtinLines)
 	teagridDataLines := countDataLines(teagridLines)
+	assert.Greater(t, teagridDataLines, 1,
+		"tea-grid should have multiple data lines due to wrapping")
 
-	// Built-in should have more data lines due to wrapping.
-	assert.Greater(t, builtinDataLines, teagridDataLines,
-		"built-in should have more data lines (wrapping) vs tea-grid (truncation)")
+	// All content should be present.
+	assert.Contains(t, teagridOutput, "renderer")
+	assert.Contains(t, teagridOutput, "Terminal renderer")
+	assert.Contains(t, teagridOutput, "span tracking")
 }
 
 // countDataLines counts lines containing │ but not border characters.

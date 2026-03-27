@@ -1,5 +1,28 @@
  Package           │ Description       │ Status             
 ────────────────────────────────────────────────────────────
- `renderer`        │ Terminal rendere… │ Stable             
- `view`            │ Interactive Bubb… │ Beta               
- `docsearch`       │ SQLite-backed do… │ Alpha              
+ `renderer`        │ Terminal renderer │ Stable             
+                   │ with ANSI         │                    
+                   │ colorization,     │                    
+                   │ word wrapping,    │                    
+                   │ table rendering   │                    
+                   │ using Unicode     │                    
+                   │ box-drawing       │                    
+                   │ characters, and   │                    
+                   │ document span     │                    
+                   │ tracking          │                    
+ `view`            │ Interactive       │ Beta               
+                   │ Bubble Tea model  │                    
+                   │ for displaying    │                    
+                   │ and navigating    │                    
+                   │ Markdown in a     │                    
+                   │ terminal UI with  │                    
+                   │ heading and URL   │                    
+                   │ navigation        │                    
+ `docsearch`       │ SQLite-backed     │ Alpha              
+                   │ document index    │                    
+                   │ supporting FTS5   │                    
+                   │ keyword search    │                    
+                   │ and vector        │                    
+                   │ similarity search │                    
+                   │ with heading-     │                    
+                   │ based chunking    │                    

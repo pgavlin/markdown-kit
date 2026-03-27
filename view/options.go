@@ -81,6 +81,17 @@ func WithTableRenderer(tr renderer.TableRenderer) Option {
 	}
 }
 
+// WithGridTableRenderer sets the grid table renderer, enabling both
+// interactive table rendering and grid focus mode.
+func WithGridTableRenderer(gtr *GridTableRenderer) Option {
+	return func(m *Model) {
+		m.gridRenderer = gtr
+		if gtr != nil {
+			m.tableRenderer = gtr.Renderer()
+		}
+	}
+}
+
 // WithDocumentTransformer adds a document transformer that will be applied
 // to the parsed AST before rendering.
 func WithDocumentTransformer(t DocumentTransformer) Option {

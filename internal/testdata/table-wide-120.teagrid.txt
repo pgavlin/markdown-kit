@@ -1,5 +1,15 @@
  Package                               │ Description                           │ Status                                 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- `renderer`                            │ Terminal renderer with ANSI coloriza… │ Stable                                 
- `view`                                │ Interactive Bubble Tea model for dis… │ Beta                                   
- `docsearch`                           │ SQLite-backed document index support… │ Alpha                                  
+ `renderer`                            │ Terminal renderer with ANSI           │ Stable                                 
+                                       │ colorization, word wrapping, table    │                                        
+                                       │ rendering using Unicode box-drawing   │                                        
+                                       │ characters, and document span         │                                        
+                                       │ tracking                              │                                        
+ `view`                                │ Interactive Bubble Tea model for      │ Beta                                   
+                                       │ displaying and navigating Markdown in │                                        
+                                       │ a terminal UI with heading and URL    │                                        
+                                       │ navigation                            │                                        
+ `docsearch`                           │ SQLite-backed document index          │ Alpha                                  
+                                       │ supporting FTS5 keyword search and    │                                        
+                                       │ vector similarity search with         │                                        
+                                       │ heading-based chunking                │                                        

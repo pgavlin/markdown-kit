@@ -414,6 +414,11 @@ type Model struct {
 
 	// Table renderer for custom table rendering (e.g. interactive grid).
 	tableRenderer renderer.TableRenderer
+
+	// Grid focus mode state.
+	gridFocused  bool
+	focusedGrid  *gridState
+	gridRenderer *GridTableRenderer
 }
 
 // effectiveWidth returns the width to use for rendering content.
@@ -455,6 +460,8 @@ func (m *Model) Clear() {
 	m.cursorMode = false
 	m.visualMode = false
 	m.cursorPositioned = false
+	m.gridFocused = false
+	m.focusedGrid = nil
 	m.search = searchState{}
 }
 
@@ -510,6 +517,24 @@ func (m *Model) SetContentWidth(width int) {
 // the built-in static table rendering. The view is re-rendered on the next frame.
 func (m *Model) SetTableRenderer(tr renderer.TableRenderer) {
 	m.tableRenderer = tr
+	m.gridRenderer = nil
+	m.gridFocused = false
+	m.focusedGrid = nil
+	m.invalidateLines()
+	m.ensureRendered()
+}
+
+// SetGridTableRenderer sets or clears the grid table renderer. When set, both
+// the table renderer and grid state tracking are enabled for interactive focus.
+func (m *Model) SetGridTableRenderer(gtr *GridTableRenderer) {
+	m.gridRenderer = gtr
+	m.gridFocused = false
+	m.focusedGrid = nil
+	if gtr != nil {
+		m.tableRenderer = gtr.Renderer()
+	} else {
+		m.tableRenderer = nil
+	}
 	m.invalidateLines()
 	m.ensureRendered()
 }
@@ -656,9 +681,18 @@ func (m *Model) render(width int) {
 		return
 	}
 
+	// Exit grid focus on re-render since line indices will change.
+	m.gridFocused = false
+	m.focusedGrid = nil
+
 	if m.document == nil {
 		m.lines = []line{}
 		return
+	}
+
+	// Reset grid renderer state before re-render.
+	if m.gridRenderer != nil {
+		m.gridRenderer.Reset()
 	}
 
 	wrap := 0
@@ -697,6 +731,12 @@ func (m *Model) render(width int) {
 
 	// Restore scroll, cursor, and selection positions after re-render.
 	m.restorePositions()
+
+	// Compute line ranges for each grid by matching grid View() output
+	// against rendered lines.
+	if m.gridRenderer != nil {
+		m.computeGridLineRanges()
+	}
 
 	// Re-execute search after re-render if stale.
 	if m.search.stale && m.search.query != "" {
@@ -959,6 +999,16 @@ type OpenLinkMsg struct {
 type GoBackMsg struct{}
 
 func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
+	// Grid focus intercept: forward all keys to the focused grid except Esc.
+	if m.gridFocused && m.focusedGrid != nil {
+		if msg.String() == "esc" {
+			m.exitGridFocus()
+			return nil
+		}
+		m.updateGridLines(msg)
+		return nil
+	}
+
 	if m.search.active {
 		return m.handleSearchKey(msg)
 	}
@@ -1048,6 +1098,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, m.KeyMap.IncreaseWidth):
 		m.IncreaseContentWidth()
 	case key.Matches(msg, m.KeyMap.FollowLink):
+		// Try entering grid focus first if selection is a table.
+		if m.enterGridFocus() {
+			return nil
+		}
 		if !m.FollowLink() {
 			if url := m.FocusedLinkDestination(); url != "" {
 				return func() tea.Msg { return OpenLinkMsg{URL: url} }
@@ -2401,4 +2455,140 @@ func (m *Model) focusedContent() string {
 		return sb.String()
 	}
 	return ""
+}
+
+// computeGridLineRanges assigns startLine/endLine to each grid state by
+// finding the grid's View() output within the rendered lines.
+func (m *Model) computeGridLineRanges() {
+	if m.gridRenderer == nil {
+		return
+	}
+	grids := m.gridRenderer.Grids()
+	if len(grids) == 0 {
+		return
+	}
+
+	// For each grid, get its view output and find matching lines.
+	searchFrom := 0
+	for _, gs := range grids {
+		output := gs.model.View()
+		gridLines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+		if len(gridLines) == 0 {
+			continue
+		}
+
+		// Find the first grid line in m.lines starting from searchFrom.
+		firstGridLine := stripANSI(gridLines[0])
+		found := false
+		for i := searchFrom; i < len(m.lines); i++ {
+			if stripANSI(m.lines[i].content) == firstGridLine {
+				gs.startLine = i
+				gs.endLine = i + len(gridLines)
+				if gs.endLine > len(m.lines) {
+					gs.endLine = len(m.lines)
+				}
+				searchFrom = gs.endLine
+				found = true
+				break
+			}
+		}
+		if !found {
+			gs.startLine = -1
+			gs.endLine = -1
+		}
+	}
+}
+
+// enterGridFocus enters grid focus mode if the current selection is a table
+// and we have a grid renderer with matching state.
+func (m *Model) enterGridFocus() bool {
+	if m.gridRenderer == nil || m.selection == nil {
+		return false
+	}
+
+	// Check if selection is a table node.
+	if m.selection.Node.Kind() != xast.KindTable {
+		return false
+	}
+
+	// Find which grid corresponds to this table by checking if the
+	// selection's byte range overlaps the grid's line range.
+	selStart := m.selection.Start
+	grids := m.gridRenderer.Grids()
+	for _, gs := range grids {
+		if gs.startLine < 0 {
+			continue
+		}
+		// Check if the selection start falls within this grid's line range.
+		gridStart := m.lines[gs.startLine].start
+		gridEnd := m.lines[gs.endLine-1].end
+		if selStart >= gridStart && selStart < gridEnd {
+			gs.model.Focus()
+			m.gridFocused = true
+			m.focusedGrid = gs
+			// Re-render the grid lines with focus state.
+			m.updateGridLines(nil)
+			return true
+		}
+	}
+	return false
+}
+
+// exitGridFocus leaves grid focus mode.
+func (m *Model) exitGridFocus() {
+	if m.focusedGrid != nil {
+		m.focusedGrid.model.Blur()
+		// Re-render grid lines without focus.
+		m.updateGridLines(nil)
+	}
+	m.gridFocused = false
+	m.focusedGrid = nil
+}
+
+// updateGridLines forwards a message to the focused grid and replaces
+// the corresponding lines in m.lines with the updated grid output.
+func (m *Model) updateGridLines(msg tea.Msg) {
+	gs := m.focusedGrid
+	if gs == nil || gs.startLine < 0 || gs.endLine < 0 {
+		return
+	}
+
+	if msg != nil {
+		gs.model, _ = gs.model.Update(msg)
+	}
+
+	output := gs.model.View()
+	newLines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+
+	// Build replacement line structs.
+	replacements := make([]line, len(newLines))
+	baseOffset := 0
+	if gs.startLine < len(m.lines) {
+		baseOffset = m.lines[gs.startLine].start
+	}
+	offset := baseOffset
+	for i, content := range newLines {
+		replacements[i] = line{
+			start:   offset,
+			end:     offset + len(content),
+			content: content,
+		}
+		offset += len(content) + 1 // +1 for newline
+	}
+
+	// Replace the old grid lines with new ones.
+	oldLen := gs.endLine - gs.startLine
+	newLen := len(replacements)
+
+	if newLen == oldLen {
+		copy(m.lines[gs.startLine:gs.endLine], replacements)
+	} else {
+		// Build new lines slice.
+		result := make([]line, 0, len(m.lines)-oldLen+newLen)
+		result = append(result, m.lines[:gs.startLine]...)
+		result = append(result, replacements...)
+		result = append(result, m.lines[gs.endLine:]...)
+		m.lines = result
+		gs.endLine = gs.startLine + newLen
+	}
 }
