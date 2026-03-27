@@ -1532,3 +1532,76 @@ func TestUpdate_PageLoadedMsg_Reload_DoesNotPushStack(t *testing.T) {
 		t.Error("expected reloaded content")
 	}
 }
+
+func TestUpdate_GridFocusDefersToView(t *testing.T) {
+	// When a table is focused in grid mode, the reader should defer all
+	// key presses to the view instead of handling them (e.g. "q" should
+	// not quit while interacting with a grid).
+	md := "# Title\n\n| Name | Age |\n| ---- | --- |\n| Alice | 30 |\n| Bob | 25 |\n"
+	r := testReader("test", md, "")
+	r.width = 80
+	r.height = 24
+	for i := range r.tabs {
+		r.tabs[i].view.SetSize(80, 23)
+	}
+	_ = r.View() // initial render
+
+	// Toggle interactive tables on.
+	m, _ := r.Update(keyMsg("I"))
+	r = m.(markdownReader)
+	if !r.interactiveTables {
+		t.Fatal("expected interactiveTables=true after toggle")
+	}
+
+	// Navigate to the table.
+	for i := 0; i < 20; i++ {
+		m, _ = r.Update(keyMsg("]"))
+		r = m.(markdownReader)
+	}
+
+	// Press Enter to enter grid focus.
+	m, _ = r.Update(keyMsg("enter"))
+	r = m.(markdownReader)
+	if !r.active().view.GridFocused() {
+		t.Fatal("expected GridFocused()=true after pressing Enter on a table")
+	}
+
+	// Pressing "q" should NOT quit — it should be forwarded to the view.
+	_, cmd := r.Update(keyMsg("q"))
+	if cmd != nil {
+		t.Error("expected no command from 'q' during grid focus (should not quit)")
+	}
+}
+
+func TestUpdate_ToggleInteractiveTables_SeparateRenderers(t *testing.T) {
+	// Each tab should get its own GridTableRenderer when toggling.
+	md := "# Title\n\n| A | B |\n| - | - |\n| 1 | 2 |\n"
+	r := testReader("test", md, "")
+	r.width = 80
+	r.height = 24
+	for i := range r.tabs {
+		r.tabs[i].view.SetSize(80, 23)
+	}
+
+	// Open a second tab with same content.
+	r.openNewTab("test2", md, "")
+	for i := range r.tabs {
+		r.tabs[i].view.SetSize(80, 23)
+	}
+
+	// Toggle interactive tables on.
+	m, _ := r.Update(keyMsg("I"))
+	r = m.(markdownReader)
+
+	// Navigate to table in active tab and verify grid focus works.
+	for i := 0; i < 20; i++ {
+		m, _ = r.Update(keyMsg("]"))
+		r = m.(markdownReader)
+	}
+
+	m, _ = r.Update(keyMsg("enter"))
+	r = m.(markdownReader)
+	if !r.active().view.GridFocused() {
+		t.Error("expected GridFocused()=true for active tab")
+	}
+}

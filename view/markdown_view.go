@@ -421,6 +421,13 @@ type Model struct {
 	gridRenderer *GridTableRenderer
 }
 
+// GridFocused returns true when the view is in interactive grid focus mode.
+// Embedders should defer all key input to the view while grid focus is active,
+// similar to how search input is handled via Searching().
+func (m *Model) GridFocused() bool {
+	return m.gridFocused
+}
+
 // effectiveWidth returns the width to use for rendering content.
 func (m *Model) effectiveWidth() int {
 	if m.contentWidth > 0 && m.contentWidth < m.width {

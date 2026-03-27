@@ -862,8 +862,8 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		at := r.active()
 
-		// Defer to view during search input.
-		if at.view.Searching() {
+		// Defer to view during search input or grid focus.
+		if at.view.Searching() || at.view.GridFocused() {
 			var cmd tea.Cmd
 			at.view, cmd = at.view.Update(msg)
 			return r, cmd
@@ -885,9 +885,8 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "I":
 			r.interactiveTables = !r.interactiveTables
 			if r.interactiveTables {
-				gtr := mdk.NewGridTableRenderer(r.theme)
 				for i := range r.tabs {
-					r.tabs[i].view.SetGridTableRenderer(gtr)
+					r.tabs[i].view.SetGridTableRenderer(mdk.NewGridTableRenderer(r.theme))
 				}
 			} else {
 				for i := range r.tabs {

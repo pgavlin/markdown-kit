@@ -771,3 +771,88 @@ func TestModel_GridFocusEnter(t *testing.T) {
 	assert.True(t, m.gridFocused, "gridFocused should be true after entering grid focus")
 	assert.NotNil(t, m.focusedGrid, "focusedGrid should be set")
 }
+
+func TestModel_GridFocusAfterToggle(t *testing.T) {
+	// Simulate the md command flow: start without interactive tables,
+	// render, then toggle them on and try to interact.
+	md := "# Title\n\n| Name | Age |\n| ---- | --- |\n| Alice | 30 |\n| Bob | 25 |\n"
+
+	m := NewModel(WithTheme(styles.Pulumi))
+	// Enable bindings as the md command does.
+	m.KeyMap.FollowLink.SetEnabled(true)
+	m.KeyMap.GoBack.SetEnabled(true)
+
+	m.SetText("test.md", md)
+	m.SetSize(80, 24)
+	_ = m.View() // initial render without interactive tables
+
+	// Toggle interactive tables ON (simulates pressing "I" in md).
+	gtr := NewGridTableRenderer(styles.Pulumi)
+	m.SetGridTableRenderer(gtr)
+	_ = m.View() // re-render with interactive tables
+
+	// Navigate to the table.
+	found := false
+	for i := 0; i < 20; i++ {
+		m, _ = m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
+		if m.selection != nil && m.selection.Node.Kind() == xast.KindTable {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "should be able to navigate to the table")
+
+	// Try to enter grid focus via Enter key (same as in md command).
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	assert.True(t, m.gridFocused, "gridFocused should be true after pressing Enter")
+	assert.NotNil(t, m.focusedGrid, "focusedGrid should be set")
+
+	// Verify grid responds to arrow key input.
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	assert.True(t, m.gridFocused, "gridFocused should remain true after Down key")
+
+	// Verify Esc exits grid focus.
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	assert.False(t, m.gridFocused, "gridFocused should be false after Esc")
+}
+
+func TestModel_GridFocusToggleOffOn(t *testing.T) {
+	// Test toggling interactive tables off then on again, and verify grid
+	// focus still works.
+	md := "# Title\n\n| Name | Age |\n| ---- | --- |\n| Alice | 30 |\n| Bob | 25 |\n"
+
+	m := NewModel(WithTheme(styles.Pulumi))
+	m.KeyMap.FollowLink.SetEnabled(true)
+
+	// Start with interactive tables ON.
+	gtr := NewGridTableRenderer(styles.Pulumi)
+	m.SetGridTableRenderer(gtr)
+	m.SetText("test.md", md)
+	m.SetSize(80, 24)
+	_ = m.View()
+
+	// Toggle OFF.
+	m.SetGridTableRenderer(nil)
+	_ = m.View()
+
+	// Toggle ON again.
+	gtr2 := NewGridTableRenderer(styles.Pulumi)
+	m.SetGridTableRenderer(gtr2)
+	_ = m.View()
+
+	// Navigate to the table.
+	found := false
+	for i := 0; i < 20; i++ {
+		m, _ = m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
+		if m.selection != nil && m.selection.Node.Kind() == xast.KindTable {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "should navigate to table after toggle off/on")
+
+	// Enter grid focus.
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	assert.True(t, m.gridFocused, "gridFocused should be true after toggle off/on")
+	assert.NotNil(t, m.focusedGrid, "focusedGrid should be set after toggle off/on")
+}
