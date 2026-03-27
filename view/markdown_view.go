@@ -1055,6 +1055,15 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 
+	// Clear node selection on Esc when no search/visual/cursor is active.
+	if key.Matches(msg, m.KeyMap.ClearSelection) && m.selection != nil {
+		m.selection = nil
+		m.selectionStart = 0
+		m.selectionEnd = 0
+		m.highlightSelection = false
+		return nil
+	}
+
 	switch {
 	case key.Matches(msg, m.KeyMap.CursorMode):
 		m.enterCursorMode()

@@ -30,7 +30,8 @@ type KeyMap struct {
 	FollowLink key.Binding
 	GoBack     key.Binding
 
-	CopySelection key.Binding
+	CopySelection  key.Binding
+	ClearSelection key.Binding
 
 	CursorMode  key.Binding
 	VisualMode  key.Binding
@@ -131,6 +132,10 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("y"),
 			key.WithHelp("y", "copy current selection"),
 		),
+		ClearSelection: key.NewBinding(
+			key.WithKeys("esc"),
+			key.WithHelp("esc", "clear selection"),
+		),
 		CursorMode: key.NewBinding(
 			key.WithKeys("c"),
 			key.WithHelp("c", "cursor positioning mode"),
@@ -192,7 +197,7 @@ func (km KeyMap) FullHelp() [][]key.Binding {
 		{km.Left, km.Right, km.Home, km.End},
 		{km.NextItem, km.PrevItem, km.NextHeading, km.PrevHeading},
 		{km.DecreaseWidth, km.IncreaseWidth},
-		{km.FollowLink, km.GoBack, km.CopySelection, km.CursorMode, km.VisualMode},
+		{km.FollowLink, km.GoBack, km.CopySelection, km.ClearSelection, km.CursorMode, km.VisualMode},
 		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch},
 	}
 }
@@ -209,6 +214,7 @@ func (km *KeyMap) SetEnabled(enabled bool) {
 		&km.NextHeading, &km.PrevHeading,
 		&km.DecreaseWidth, &km.IncreaseWidth,
 		&km.FollowLink, &km.GoBack,
+		&km.ClearSelection,
 		&km.CursorMode, &km.VisualMode, &km.WordForward, &km.WordBack, &km.WordEnd,
 		&km.LineStart, &km.LineEnd,
 		&km.Search, &km.NextMatch, &km.PrevMatch, &km.ClearSearch,
