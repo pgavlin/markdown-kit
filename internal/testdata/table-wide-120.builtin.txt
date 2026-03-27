@@ -1,0 +1,10 @@
+╭───────────┬───────────────────────────────────────────────────────────────────────────────────────────────────┬──────╮
+│Package    │Description                                                                                        │Status│
+├───────────┼───────────────────────────────────────────────────────────────────────────────────────────────────┼──────┤
+│`renderer` │Terminal renderer with ANSI colorization, word wrapping, table rendering using Unicode box-drawing │Stable│
+│           │characters, and document span tracking                                                             │      │
+│`view`     │Interactive Bubble Tea model for displaying and navigating Markdown in a terminal UI with heading  │Beta  │
+│           │and URL navigation                                                                                 │      │
+│`docsearch`│SQLite-backed document index supporting FTS5 keyword search and vector similarity search with      │Alpha │
+│           │heading-based chunking                                                                             │      │
+╰───────────┴───────────────────────────────────────────────────────────────────────────────────────────────────┴──────╯

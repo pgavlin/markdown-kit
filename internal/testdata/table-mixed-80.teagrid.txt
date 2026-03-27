@@ -1,0 +1,17 @@
+## API Reference
+
+The following table summarizes the available endpoints:
+
+ Method                   │ Endpoint                 │ Description              
+
+────────────────────────────────────────────────────────────────────────────────
+ GET                      │ `/api/users`             │ List all users           
+
+ POST                     │ `/api/users`             │ Create a new user        
+
+ GET                      │ `/api/users/:id`         │ Get user by ID           
+
+ DELETE                   │ `/api/users/:id`         │ Delete a user            
+
+
+See the [full documentation](https://example.com/docs) for more details.

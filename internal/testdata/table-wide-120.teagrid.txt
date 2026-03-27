@@ -1,0 +1,9 @@
+ Package                               │ Description                           │ Status                                 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ `renderer`                            │ Terminal renderer with ANSI coloriza… │ Stable                                 
+
+ `view`                                │ Interactive Bubble Tea model for dis… │ Beta                                   
+
+ `docsearch`                           │ SQLite-backed document index support… │ Alpha                                  
+

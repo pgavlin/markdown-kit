@@ -1,0 +1,9 @@
+ Package           │ Description       │ Status             
+
+────────────────────────────────────────────────────────────
+ `renderer`        │ Terminal rendere… │ Stable             
+
+ `view`            │ Interactive Bubb… │ Beta               
+
+ `docsearch`       │ SQLite-backed do… │ Alpha              
+

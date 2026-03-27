@@ -1,0 +1,11 @@
+╭───────────┬───────────────────────────────────────────────────────────┬──────╮
+│Package    │Description                                                │Status│
+├───────────┼───────────────────────────────────────────────────────────┼──────┤
+│`renderer` │Terminal renderer with ANSI colorization, word wrapping,   │Stable│
+│           │table rendering using Unicode box-drawing characters, and  │      │
+│           │document span tracking                                     │      │
+│`view`     │Interactive Bubble Tea model for displaying and navigating │Beta  │
+│           │Markdown in a terminal UI with heading and URL navigation  │      │
+│`docsearch`│SQLite-backed document index supporting FTS5 keyword search│Alpha │
+│           │and vector similarity search with heading-based chunking   │      │
+╰───────────┴───────────────────────────────────────────────────────────┴──────╯
