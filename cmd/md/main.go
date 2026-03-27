@@ -166,6 +166,7 @@ func main() {
 
 			var viewOpts []mdk.Option
 			viewOpts = append(viewOpts, mdk.WithDiagramRenderer(diagram.MermaidRenderer()))
+			viewOpts = append(viewOpts, mdk.WithTableRenderer(mdk.NewTeaGridTableRenderer(theme)))
 			if cfg.stripDataURIs() {
 				viewOpts = append(viewOpts, mdk.WithDocumentTransformer(mdk.StripDataURIs))
 			}

@@ -501,6 +501,14 @@ func (m *Model) SetContentWidth(width int) {
 	m.search.stale = true
 }
 
+// SetTableRenderer sets or clears the table renderer. Passing nil reverts to
+// the built-in static table rendering. The view is re-rendered on the next frame.
+func (m *Model) SetTableRenderer(tr renderer.TableRenderer) {
+	m.tableRenderer = tr
+	m.lines = nil
+	m.search.stale = true
+}
+
 // SetGutter sets whether to show the gutter with document name and position.
 func (m *Model) SetGutter(showGutter bool) {
 	m.showGutter = showGutter

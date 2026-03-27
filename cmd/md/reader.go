@@ -47,6 +47,7 @@ type readerKeyMap struct {
 	UserGuide             key.Binding
 	BugReport             key.Binding
 	ExportGist            key.Binding
+	ToggleInteractiveTables key.Binding
 	Help                  key.Binding
 	Quit                  key.Binding
 }
@@ -127,6 +128,10 @@ func defaultReaderKeyMap() readerKeyMap {
 			key.WithKeys("ctrl+g"),
 			key.WithHelp("ctrl+g", "export gist"),
 		),
+		ToggleInteractiveTables: key.NewBinding(
+			key.WithKeys("I"),
+			key.WithHelp("I", "toggle interactive tables"),
+		),
 		Help: key.NewBinding(
 			key.WithKeys("?"),
 			key.WithHelp("?", "toggle help"),
@@ -155,7 +160,7 @@ func (km readerKeyMap) FullHelp() [][]key.Binding {
 		// Actions
 		{km.FollowLink, km.GoBack, km.History, km.SearchDocuments, km.FindSimilar, km.Reload, km.CopySelection, km.OpenFile, km.OpenURL, km.OpenBrowser, km.DecreaseWidth, km.IncreaseWidth},
 		// Search & View
-		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.ToggleSource},
+		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.ToggleSource, km.ToggleInteractiveTables},
 		// Tabs & General
 		{km.NextTab, km.PrevTab, km.CloseTab, km.CloseAllTabs, km.NewTab, km.OpenFileNewTab, km.UserGuide, km.BugReport, km.ExportGist, km.Help, km.Quit},
 	}
@@ -217,6 +222,9 @@ type markdownReader struct {
 
 	// Options for creating new view models.
 	viewOpts []mdk.Option
+
+	// Whether interactive tea-grid tables are enabled.
+	interactiveTables bool
 
 	width, height int
 
@@ -315,6 +323,12 @@ func (r *markdownReader) newTab() tab {
 		mdk.WithContentWidth(defaultContentWidth),
 	}, r.viewOpts...)
 	view := mdk.NewModel(opts...)
+	// Sync table renderer state: the view was created with the initial
+	// viewOpts which always include the tea-grid renderer, so clear it
+	// when interactive tables have been toggled off.
+	if !r.interactiveTables {
+		view.SetTableRenderer(nil)
+	}
 	view.KeyMap = r.keys.KeyMap
 	if r.width > 0 && r.height > 0 {
 		view.SetSize(r.width, r.viewHeight())
@@ -345,9 +359,10 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style, viewO
 			view:          view,
 			currentSource: source,
 		}},
-		activeTab:   0,
-		theme:       theme,
-		viewOpts:    viewOpts,
+		activeTab:         0,
+		theme:             theme,
+		viewOpts:          viewOpts,
+		interactiveTables: true,
 		logger:      logger,
 		converter:   conv,
 		registry:    registry,
@@ -866,6 +881,16 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.saveSourceState()
 				at.view.SetText(at.sourceOrigName, fenceSource(at.sourceOrigMarkdown))
 				at.showSource = true
+			}
+			return r, nil
+		case "I":
+			r.interactiveTables = !r.interactiveTables
+			var tr mdk.TableRenderer
+			if r.interactiveTables {
+				tr = mdk.NewTeaGridTableRenderer(r.theme)
+			}
+			for i := range r.tabs {
+				r.tabs[i].view.SetTableRenderer(tr)
 			}
 			return r, nil
 		case "ctrl+o":

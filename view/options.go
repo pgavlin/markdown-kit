@@ -10,6 +10,9 @@ import (
 // before rendering. It can be used to remove or modify nodes in the document.
 type DocumentTransformer func(doc ast.Node, source []byte)
 
+// TableRenderer is an alias for renderer.TableRenderer, exported for convenience.
+type TableRenderer = renderer.TableRenderer
+
 // Option configures a [Model] during construction.
 type Option func(*Model)
 
