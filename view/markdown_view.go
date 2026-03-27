@@ -511,6 +511,7 @@ func (m *Model) SetContentWidth(width int) {
 func (m *Model) SetTableRenderer(tr renderer.TableRenderer) {
 	m.tableRenderer = tr
 	m.invalidateLines()
+	m.ensureRendered()
 }
 
 // SetGutter sets whether to show the gutter with document name and position.

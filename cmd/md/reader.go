@@ -323,11 +323,10 @@ func (r *markdownReader) newTab() tab {
 		mdk.WithContentWidth(defaultContentWidth),
 	}, r.viewOpts...)
 	view := mdk.NewModel(opts...)
-	// Sync table renderer state: the view was created with the initial
-	// viewOpts which always include the tea-grid renderer, so clear it
-	// when interactive tables have been toggled off.
-	if !r.interactiveTables {
-		view.SetTableRenderer(nil)
+	// Sync table renderer state: interactive tables are off by default,
+	// so add the tea-grid renderer when they have been toggled on.
+	if r.interactiveTables {
+		view.SetTableRenderer(mdk.NewTeaGridTableRenderer(r.theme))
 	}
 	view.KeyMap = r.keys.KeyMap
 	if r.width > 0 && r.height > 0 {
@@ -362,7 +361,7 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style, viewO
 		activeTab:         0,
 		theme:             theme,
 		viewOpts:          viewOpts,
-		interactiveTables: true,
+		interactiveTables: false,
 		logger:      logger,
 		converter:   conv,
 		registry:    registry,
