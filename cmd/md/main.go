@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"github.com/pgavlin/markdown-kit/docsearch"
 	mdk "github.com/pgavlin/markdown-kit/view"
 	"github.com/urfave/cli/v3"
+	"golang.org/x/term"
 )
 
 func main() {
@@ -186,8 +188,18 @@ func main() {
 				}
 			}
 
+			// Check if stdin has piped data.
+			stdinPiped := !term.IsTerminal(int(os.Stdin.Fd()))
+
 			var model markdownReader
-			if cmd.Args().Len() == 0 {
+			if cmd.Args().Len() == 0 && stdinPiped {
+				// Read markdown from stdin.
+				source, err := io.ReadAll(os.Stdin)
+				if err != nil {
+					return fmt.Errorf("error reading stdin: %w", err)
+				}
+				model = newMarkdownReader("", string(source), "", theme, viewOpts, conv, registry, cache, httpCl, fsys, searchIndex, logger)
+			} else if cmd.Args().Len() == 0 {
 				// No args — start with file picker.
 				model = newMarkdownReader("", "", "", theme, viewOpts, conv, registry, cache, httpCl, fsys, searchIndex, logger)
 				model.showPicker = true
@@ -307,7 +319,17 @@ func main() {
 				}
 			}
 
-			p := tea.NewProgram(model)
+			var progOpts []tea.ProgramOption
+			if stdinPiped {
+				tty, err := openTTY()
+				if err != nil {
+					return fmt.Errorf("error opening terminal for keyboard input: %w", err)
+				}
+				defer tty.Close()
+				progOpts = append(progOpts, tea.WithInput(tty))
+			}
+
+			p := tea.NewProgram(model, progOpts...)
 
 			if _, err := p.Run(); err != nil {
 				return fmt.Errorf("error running app: %w", err)
