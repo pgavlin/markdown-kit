@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	xast "github.com/pgavlin/goldmark/extension/ast"
 	"github.com/pgavlin/markdown-kit/styles"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -736,4 +737,37 @@ func TestSetWidth_PreservesCursorLine(t *testing.T) {
 		assert.Equal(t, cursorBreadcrumbs[len(cursorBreadcrumbs)-1], newBreadcrumbs[len(newBreadcrumbs)-1],
 			"cursor should be at the same heading after SetWidth")
 	}
+}
+
+func TestModel_GridFocusEnter(t *testing.T) {
+	// A heading followed by a table — the table has blank previous lines,
+	// so its span starts before the grid content. This used to prevent
+	// enterGridFocus from matching the grid.
+	md := "# Title\n\n| Name | Age |\n| ---- | --- |\n| Alice | 30 |\n| Bob | 25 |\n"
+
+	gtr := NewGridTableRenderer(styles.Pulumi)
+	m := NewModel(WithTheme(styles.Pulumi))
+	m.SetGridTableRenderer(gtr)
+	m.SetText("test.md", md)
+	m.SetSize(80, 24)
+
+	_ = m.View() // trigger rendering
+
+	// Navigate to the table via SelectNext with isNavigable.
+	// Tables are navigable, so tab through items until we reach one.
+	found := false
+	for i := 0; i < 20; i++ {
+		m, _ = m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
+		if m.selection != nil && m.selection.Node.Kind() == xast.KindTable {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "should be able to navigate to the table")
+
+	// Press Enter to focus the grid.
+	ok := m.enterGridFocus()
+	assert.True(t, ok, "enterGridFocus should succeed when selection is on a table")
+	assert.True(t, m.gridFocused, "gridFocused should be true after entering grid focus")
+	assert.NotNil(t, m.focusedGrid, "focusedGrid should be set")
 }

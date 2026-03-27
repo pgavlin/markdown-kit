@@ -2512,17 +2512,21 @@ func (m *Model) enterGridFocus() bool {
 	}
 
 	// Find which grid corresponds to this table by checking if the
-	// selection's byte range overlaps the grid's line range.
+	// grid's byte range falls within the selection's byte range.
+	// The selection span (from OpenSpan) may start before the grid
+	// content because OpenBlock can write a blank-line separator
+	// between the span opening and the actual grid output.
 	selStart := m.selection.Start
+	selEnd := m.selection.End
 	grids := m.gridRenderer.Grids()
 	for _, gs := range grids {
 		if gs.startLine < 0 {
 			continue
 		}
-		// Check if the selection start falls within this grid's line range.
+		// Check if the grid's byte range is contained within the selection.
 		gridStart := m.lines[gs.startLine].start
 		gridEnd := m.lines[gs.endLine-1].end
-		if selStart >= gridStart && selStart < gridEnd {
+		if gridStart >= selStart && gridEnd <= selEnd {
 			gs.model.Focus()
 			m.gridFocused = true
 			m.focusedGrid = gs
