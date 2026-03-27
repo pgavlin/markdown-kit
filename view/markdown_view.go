@@ -1202,7 +1202,10 @@ func (m Model) View() string {
 		content := expandTabs(ln.content, 8)
 
 		// Apply selection highlighting if needed.
-		if m.selection != nil && m.highlightSelection {
+		// Skip selection inversion when the grid is focused — the grid
+		// itself shows focus styling; inverted background is only for
+		// selected-but-not-focused state.
+		if m.selection != nil && m.highlightSelection && !m.gridFocused {
 			content = m.applySelection(ln, content)
 		}
 
