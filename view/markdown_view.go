@@ -357,6 +357,13 @@ type Model struct {
 	// The processed lines.
 	lines []line
 
+	// Saved position state for restoring after re-render.
+	savedScrollNode    ast.Node // AST node at lineOffset before re-render
+	savedCursorNode    ast.Node // AST node at cursorLine before re-render
+	savedSelectionNode ast.Node // AST node of selection before re-render
+	savedHighlight     bool     // highlightSelection before re-render
+	savedBackstack     []ast.Node // AST nodes from backstack before re-render
+
 	// The last width for which the content was rendered.
 	lastWidth int
 
@@ -488,8 +495,7 @@ func (m *Model) SetText(name, markdown string) {
 // SetWrap sets whether long lines should be wrapped.
 func (m *Model) SetWrap(wrap bool) {
 	if m.wrap != wrap {
-		m.lines = nil
-		m.search.stale = true
+		m.invalidateLines()
 	}
 	m.wrap = wrap
 }
@@ -497,16 +503,14 @@ func (m *Model) SetWrap(wrap bool) {
 // SetContentWidth sets the desired content width. 0 means use full viewport width.
 func (m *Model) SetContentWidth(width int) {
 	m.contentWidth = width
-	m.lines = nil
-	m.search.stale = true
+	m.invalidateLines()
 }
 
 // SetTableRenderer sets or clears the table renderer. Passing nil reverts to
 // the built-in static table rendering. The view is re-rendered on the next frame.
 func (m *Model) SetTableRenderer(tr renderer.TableRenderer) {
 	m.tableRenderer = tr
-	m.lines = nil
-	m.search.stale = true
+	m.invalidateLines()
 }
 
 // SetGutter sets whether to show the gutter with document name and position.
@@ -530,10 +534,119 @@ func (m *Model) SetSize(width, height int) {
 	m.height = height
 	// Re-render if width changed and wrapping
 	if m.wrap {
-		m.lines = nil
-		m.search.stale = true
+		m.invalidateLines()
 	}
 	m.ensureRendered()
+}
+
+// findSpanForNode walks the span tree to find the NodeSpan for the given AST node.
+func (m *Model) findSpanForNode(node ast.Node) *renderer.NodeSpan {
+	for s := m.spanTree; s != nil; s = s.Next {
+		if s.Node == node {
+			return s
+		}
+	}
+	return nil
+}
+
+// findSpanAtOffset returns the deepest NodeSpan containing the given byte offset.
+func (m *Model) findSpanAtOffset(offset int) *renderer.NodeSpan {
+	var best *renderer.NodeSpan
+	for s := m.spanTree; s != nil; s = s.Next {
+		if s.Start > offset {
+			break
+		}
+		if offset < s.End {
+			best = s
+		}
+	}
+	return best
+}
+
+// invalidateLines saves position state and clears rendered lines so that
+// the next render pass can restore scroll/cursor/selection positions.
+func (m *Model) invalidateLines() {
+	if m.lines == nil {
+		m.search.stale = true
+		return
+	}
+
+	// Save scroll position.
+	if m.lineOffset < len(m.lines) && m.spanTree != nil {
+		if span := m.findSpanAtOffset(m.lines[m.lineOffset].start); span != nil {
+			m.savedScrollNode = span.Node
+		}
+	}
+
+	// Save cursor position.
+	if m.cursorPositioned && m.cursorLine < len(m.lines) && m.spanTree != nil {
+		if span := m.findSpanAtOffset(m.lines[m.cursorLine].start); span != nil {
+			m.savedCursorNode = span.Node
+		}
+	}
+
+	// Save selection.
+	if m.selection != nil {
+		m.savedSelectionNode = m.selection.Node
+		m.savedHighlight = m.highlightSelection
+	}
+
+	// Save backstack.
+	if len(m.backstack) > 0 {
+		m.savedBackstack = make([]ast.Node, len(m.backstack))
+		for i, s := range m.backstack {
+			m.savedBackstack[i] = s.Node
+		}
+	}
+
+	m.lines = nil
+	m.search.stale = true
+}
+
+// restorePositions restores scroll, cursor, and selection state after re-render.
+func (m *Model) restorePositions() {
+	// Restore scroll position.
+	if m.savedScrollNode != nil {
+		if span := m.findSpanForNode(m.savedScrollNode); span != nil {
+			m.lineOffset = m.findLineForOffset(span.Start)
+		}
+		m.savedScrollNode = nil
+	}
+
+	// Restore cursor position.
+	if m.savedCursorNode != nil {
+		if span := m.findSpanForNode(m.savedCursorNode); span != nil {
+			m.cursorLine = m.findLineForOffset(span.Start)
+		}
+		m.savedCursorNode = nil
+	}
+
+	// Restore selection.
+	if m.savedSelectionNode != nil {
+		if span := m.findSpanForNode(m.savedSelectionNode); span != nil {
+			m.selection = span
+			m.highlightSelection = m.savedHighlight
+			m.calculateSelectionSpan(span)
+		} else {
+			m.selection = nil
+			m.selectionStart = 0
+			m.selectionEnd = 0
+			m.highlightSelection = false
+		}
+		m.savedSelectionNode = nil
+	}
+
+	// Restore backstack.
+	if m.savedBackstack != nil {
+		newBackstack := make([]*renderer.NodeSpan, 0, len(m.savedBackstack))
+		for _, node := range m.savedBackstack {
+			if span := m.findSpanForNode(node); span != nil {
+				newBackstack = append(newBackstack, span)
+			}
+		}
+		m.backstack = newBackstack
+		m.savedBackstack = nil
+	}
 }
 
 // render renders the markdown into lines for display.
@@ -580,6 +693,9 @@ func (m *Model) render(width int) {
 	if m.lines == nil {
 		m.lines = []line{}
 	}
+
+	// Restore scroll, cursor, and selection positions after re-render.
+	m.restorePositions()
 
 	// Re-execute search after re-render if stale.
 	if m.search.stale && m.search.query != "" {
@@ -706,8 +822,7 @@ func (m *Model) DecreaseContentWidth() {
 	if m.contentWidth < 40 {
 		m.contentWidth = 40
 	}
-	m.lines = nil
-	m.search.stale = true
+	m.invalidateLines()
 }
 
 // IncreaseContentWidth increases the content width by 10 columns.
@@ -719,8 +834,7 @@ func (m *Model) IncreaseContentWidth() {
 			m.contentWidth = 0
 		}
 	}
-	m.lines = nil
-	m.search.stale = true
+	m.invalidateLines()
 }
 
 // AtTop reports whether the viewport is scrolled to the top.
@@ -805,8 +919,7 @@ func (m *Model) SetWidth(width int) {
 	m.width = width
 	// Re-render if width changed and wrapping
 	if m.wrap {
-		m.lines = nil
-		m.search.stale = true
+		m.invalidateLines()
 	}
 	m.ensureRendered()
 }
@@ -825,8 +938,7 @@ func (m *Model) ensureRendered() {
 
 	ew := m.effectiveWidth()
 	if ew != m.lastWidth && m.wrap {
-		m.lines = nil
-		m.search.stale = true
+		m.invalidateLines()
 	}
 	m.lastWidth = ew
 

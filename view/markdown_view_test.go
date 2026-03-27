@@ -643,3 +643,97 @@ func TestSetText_ClampsLineOffset(t *testing.T) {
 		m, _ = m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
 	}, "SelectFirstVisible should not panic after SetText with shorter content")
 }
+
+func TestSetWidth_PreservesScrollPosition(t *testing.T) {
+	// Regression test: SetWidth re-renders with different wrapping, which
+	// changes line indices. The scroll position (lineOffset) should be
+	// remapped to the same logical document position.
+
+	var doc strings.Builder
+	for i := 0; i < 50; i++ {
+		fmt.Fprintf(&doc, "## Heading %d\n\nParagraph %d with some content that might wrap.\n\n", i, i)
+	}
+
+	m := NewModel(WithTheme(styles.Pulumi))
+	m.SetText("test.md", doc.String())
+	m.SetSize(80, 24)
+	m.SetGutter(true)
+
+	// Scroll to heading ~25 (roughly middle of document).
+	m.GotoBottom()
+	midLine := len(m.lines) / 2
+	m.SetLineOffset(midLine)
+
+	// Record which heading is visible at the top via breadcrumbs.
+	breadcrumbsBefore := m.headingBreadcrumbs(m.lineOffset)
+	require.NotEmpty(t, breadcrumbsBefore, "should have breadcrumbs at midpoint")
+
+	// Narrow the width, causing re-render with more wrapped lines.
+	m.SetWidth(40)
+
+	breadcrumbsAfter := m.headingBreadcrumbs(m.lineOffset)
+	require.NotEmpty(t, breadcrumbsAfter, "should still have breadcrumbs after resize")
+	assert.Equal(t, breadcrumbsBefore[len(breadcrumbsBefore)-1], breadcrumbsAfter[len(breadcrumbsAfter)-1],
+		"should be at the same heading after SetWidth")
+}
+
+func TestSetWidth_PreservesSelection(t *testing.T) {
+	// When a node is selected and SetWidth triggers re-render,
+	// the selection should point to the same AST node in the new span tree.
+
+	doc := "# Title\n\nSome text.\n\n## Section A\n\n```go\nfunc main() {}\n```\n\n## Section B\n\nMore text.\n"
+
+	m := NewModel(WithTheme(styles.Pulumi))
+	m.SetText("test.md", doc)
+	m.SetSize(80, 24)
+
+	// Navigate to a heading.
+	found := m.SelectNext(isHeading)
+	require.True(t, found, "should find a heading")
+	// Move to the next heading so we're not at the very top.
+	m.SelectNext(isHeading)
+	require.NotNil(t, m.Selection(), "selection should be set")
+
+	selectedNode := m.Selection().Node
+
+	// Narrow the width to trigger re-render.
+	m.SetWidth(40)
+
+	require.NotNil(t, m.Selection(), "selection should survive SetWidth")
+	assert.Equal(t, selectedNode, m.Selection().Node,
+		"selection should point to the same AST node after SetWidth")
+}
+
+func TestSetWidth_PreservesCursorLine(t *testing.T) {
+	// When cursor mode is active, cursorLine should be remapped after re-render.
+
+	var doc strings.Builder
+	for i := 0; i < 30; i++ {
+		fmt.Fprintf(&doc, "## Heading %d\n\nParagraph %d.\n\n", i, i)
+	}
+
+	m := NewModel(WithTheme(styles.Pulumi))
+	m.SetText("test.md", doc.String())
+	m.SetSize(80, 24)
+
+	// Enter cursor mode by pressing 'v' (toggles cursor/visual mode).
+	m, _ = m.Update(tea.KeyPressMsg{Code: 'v', Text: "v"})
+	require.True(t, m.cursorMode || m.visualMode, "should be in cursor or visual mode")
+
+	// Move cursor down several lines.
+	for i := 0; i < 20; i++ {
+		m, _ = m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	}
+
+	// Record which heading the cursor is at.
+	cursorBreadcrumbs := m.headingBreadcrumbs(m.cursorLine)
+
+	// Narrow width.
+	m.SetWidth(40)
+
+	newBreadcrumbs := m.headingBreadcrumbs(m.cursorLine)
+	if len(cursorBreadcrumbs) > 0 && len(newBreadcrumbs) > 0 {
+		assert.Equal(t, cursorBreadcrumbs[len(cursorBreadcrumbs)-1], newBreadcrumbs[len(newBreadcrumbs)-1],
+			"cursor should be at the same heading after SetWidth")
+	}
+}
