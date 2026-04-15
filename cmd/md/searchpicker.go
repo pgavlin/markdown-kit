@@ -250,7 +250,7 @@ func (sp searchPicker) View() string {
 			// Truncate path to fit.
 			pathMaxW := sp.width - ansi.StringWidth(title) - ansi.StringWidth(dateStr) - 10
 			path := result.Path
-			if pathMaxW > 0 && ansi.StringWidth(path) > pathMaxW {
+			if pathMaxW > 3 && ansi.StringWidth(path) > pathMaxW {
 				path = "..." + path[len(path)-pathMaxW+3:]
 			}
 
