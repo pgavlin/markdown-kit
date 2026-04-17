@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -578,16 +579,19 @@ func TestHandleLinkNavigation_HTTPS(t *testing.T) {
 }
 
 func TestHandleLinkNavigation_LocalMarkdown(t *testing.T) {
+	source := filepath.FromSlash("/docs/test.md")
+	wantURL := filepath.FromSlash("/docs/other.md")
+
 	fs := newMemFS()
-	fs.files["/docs/other.md"] = []byte("# Other")
-	r := testReader("test", "# Hello", "/docs/test.md")
+	fs.files[wantURL] = []byte("# Other")
+	r := testReader("test", "# Hello", source)
 	r.fsys = fs
 
 	cmd := r.handleLinkNavigation("other.md", false)
 	if !r.loading {
 		t.Error("expected loading=true for local markdown file")
 	}
-	if r.loadingURL != "/docs/other.md" {
+	if r.loadingURL != wantURL {
 		t.Errorf("loadingURL = %q", r.loadingURL)
 	}
 	if cmd == nil {
@@ -596,9 +600,12 @@ func TestHandleLinkNavigation_LocalMarkdown(t *testing.T) {
 }
 
 func TestHandleLinkNavigation_LocalMarkdownWithFragment(t *testing.T) {
+	source := filepath.FromSlash("/docs/test.md")
+	wantURL := filepath.FromSlash("/docs/other.md")
+
 	fs := newMemFS()
-	fs.files["/docs/other.md"] = []byte("# Other\n\n## Section\n\nContent here.")
-	r := testReader("test", "# Hello", "/docs/test.md")
+	fs.files[wantURL] = []byte("# Other\n\n## Section\n\nContent here.")
+	r := testReader("test", "# Hello", source)
 	r.fsys = fs
 
 	cmd := r.handleLinkNavigation("other.md#section", false)
@@ -606,8 +613,8 @@ func TestHandleLinkNavigation_LocalMarkdownWithFragment(t *testing.T) {
 		t.Error("expected loading=true for local markdown file with fragment")
 	}
 	// The fragment should be stripped from the loading URL.
-	if r.loadingURL != "/docs/other.md" {
-		t.Errorf("loadingURL = %q, want %q", r.loadingURL, "/docs/other.md")
+	if r.loadingURL != wantURL {
+		t.Errorf("loadingURL = %q, want %q", r.loadingURL, wantURL)
 	}
 	if cmd == nil {
 		t.Error("expected non-nil command")

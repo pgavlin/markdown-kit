@@ -5,12 +5,24 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestResolveLink(t *testing.T) {
+	fileSource := filepath.FromSlash("/home/user/docs/readme.md")
+	relativeWant := filepath.FromSlash("/home/user/docs/other.md")
+
+	absLink := "/abs/path.md"
+	absWant := "/abs/path.md"
+	if runtime.GOOS == "windows" {
+		absLink = `C:\abs\path.md`
+		absWant = `C:\abs\path.md`
+	}
+
 	tests := []struct {
 		name   string
 		link   string
@@ -19,8 +31,8 @@ func TestResolveLink(t *testing.T) {
 	}{
 		{"absolute_url", "https://other.com/page", "https://example.com/doc.md", "https://other.com/page"},
 		{"relative_to_url", "page2.md", "https://example.com/docs/page1.md", "https://example.com/docs/page2.md"},
-		{"relative_to_file", "other.md", "/home/user/docs/readme.md", "/home/user/docs/other.md"},
-		{"absolute_path", "/abs/path.md", "/home/user/docs/readme.md", "/abs/path.md"},
+		{"relative_to_file", "other.md", fileSource, relativeWant},
+		{"absolute_path", absLink, fileSource, absWant},
 		{"empty_source", "page.md", "", "page.md"},
 	}
 	for _, tt := range tests {

@@ -30,8 +30,9 @@ func TestLogDir_DefaultFallback(t *testing.T) {
 	if dir == "" {
 		t.Error("expected non-empty log dir")
 	}
-	if !strings.HasSuffix(dir, "md") {
-		t.Errorf("expected dir to end with 'md', got %q", dir)
+	sep := string(filepath.Separator)
+	if !strings.Contains(sep+dir+sep, sep+"md"+sep) {
+		t.Errorf("expected 'md' as a path component, got %q", dir)
 	}
 }
 
