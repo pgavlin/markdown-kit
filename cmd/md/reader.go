@@ -29,26 +29,26 @@ import (
 type readerKeyMap struct {
 	mdk.KeyMap // embed the view KeyMap
 
-	ToggleSource key.Binding
-	OpenFile     key.Binding
-	OpenBrowser           key.Binding
-	OpenFileNewTab        key.Binding
-	OpenURL               key.Binding
-	NextTab               key.Binding
-	PrevTab               key.Binding
-	CloseTab              key.Binding
-	CloseAllTabs          key.Binding
-	NewTab                key.Binding
-	Reload                key.Binding
-	History               key.Binding
-	SearchDocuments       key.Binding
-	FindSimilar           key.Binding
-	UserGuide             key.Binding
-	BugReport             key.Binding
-	ExportGist            key.Binding
+	ToggleSource            key.Binding
+	OpenFile                key.Binding
+	OpenBrowser             key.Binding
+	OpenFileNewTab          key.Binding
+	OpenURL                 key.Binding
+	NextTab                 key.Binding
+	PrevTab                 key.Binding
+	CloseTab                key.Binding
+	CloseAllTabs            key.Binding
+	NewTab                  key.Binding
+	Reload                  key.Binding
+	History                 key.Binding
+	SearchDocuments         key.Binding
+	FindSimilar             key.Binding
+	UserGuide               key.Binding
+	BugReport               key.Binding
+	ExportGist              key.Binding
 	ToggleInteractiveTables key.Binding
-	Help                  key.Binding
-	Quit                  key.Binding
+	Help                    key.Binding
+	Quit                    key.Binding
 }
 
 func defaultReaderKeyMap() readerKeyMap {
@@ -191,9 +191,9 @@ type page struct {
 
 // tab holds all per-document state for a single tab.
 type tab struct {
-	view            mdk.Model
-	currentSource   string
-	pageStack       []page
+	view               mdk.Model
+	currentSource      string
+	pageStack          []page
 	showSource         bool
 	sourceOrigName     string
 	sourceOrigMarkdown string
@@ -357,16 +357,16 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style, viewO
 		theme:             theme,
 		viewOpts:          viewOpts,
 		interactiveTables: false,
-		logger:      logger,
-		converter:   conv,
-		registry:    registry,
-		cache:       cache,
-		client:      client,
-		fsys:        fsys,
-		keys:        keys,
-		spinner:     spinner.New(spinner.WithSpinner(spinner.Dot)),
-		picker:      fp,
-		searchIndex: searchIndex,
+		logger:            logger,
+		converter:         conv,
+		registry:          registry,
+		cache:             cache,
+		client:            client,
+		fsys:              fsys,
+		keys:              keys,
+		spinner:           spinner.New(spinner.WithSpinner(spinner.Dot)),
+		picker:            fp,
+		searchIndex:       searchIndex,
 	}
 }
 
@@ -1386,7 +1386,7 @@ type bugReportData struct {
 	termEnv        string
 	colorTerm      string
 	themeName      string
-	showSource        bool
+	showSource     bool
 	tabCount       int
 	activeTab      int
 	goVersion      string
@@ -1415,7 +1415,7 @@ func (r *markdownReader) captureBugReport() {
 		termEnv:        os.Getenv("TERM"),
 		colorTerm:      os.Getenv("COLORTERM"),
 		themeName:      r.theme.Name,
-		showSource:        at.showSource,
+		showSource:     at.showSource,
 		tabCount:       len(r.tabs),
 		activeTab:      r.activeTab,
 		goVersion:      runtime.Version(),

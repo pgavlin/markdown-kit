@@ -221,9 +221,9 @@ func fetchURL(rawURL string, conv converter, registry *converterRegistry, cache 
 	if cached != nil && fresh {
 		logger.Info("cache_hit", "url", rawURL, "fresh", true)
 		return fetchResult{
-			name:            cached.Name,
-			markdown:        cached.Markdown,
-			source:          rawURL,
+			name:     cached.Name,
+			markdown: cached.Markdown,
+			source:   rawURL,
 		}, nil
 	}
 	if cached != nil {
@@ -277,9 +277,9 @@ func fetchURL(rawURL string, conv converter, registry *converterRegistry, cache 
 		}
 		cache.storeHTTP(rawURL, updated, logger)
 		return fetchResult{
-			name:            cached.Name,
-			markdown:        cached.Markdown,
-			source:          rawURL,
+			name:     cached.Name,
+			markdown: cached.Markdown,
+			source:   rawURL,
 		}, nil
 	}
 
@@ -435,10 +435,10 @@ func reloadURLPage(rawURL string, conv converter, registry *converterRegistry, c
 			return pageLoadErrorMsg{url: rawURL, err: err}
 		}
 		return pageLoadedMsg{
-			name:            result.name,
-			markdown:        result.markdown,
-			source:          result.source,
-			reload:          true,
+			name:     result.name,
+			markdown: result.markdown,
+			source:   result.source,
+			reload:   true,
 		}
 	}
 }

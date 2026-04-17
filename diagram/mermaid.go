@@ -3,9 +3,9 @@ package diagram
 import (
 	"fmt"
 
+	"github.com/pgavlin/markdown-kit/renderer"
 	mermaidDiagram "github.com/pgavlin/mermaid-ascii/pkg/diagram"
 	"github.com/pgavlin/mermaid-ascii/pkg/render"
-	"github.com/pgavlin/markdown-kit/renderer"
 )
 
 // MermaidRenderer returns a DiagramRenderer that converts mermaid code blocks

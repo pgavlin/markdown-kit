@@ -87,4 +87,3 @@ func TestExternalConverter_EnvVarNames(t *testing.T) {
 		t.Errorf("output env var = %q, want %q", capturedOutputEnv, "MD_OUTPUT")
 	}
 }
-

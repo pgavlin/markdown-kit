@@ -257,22 +257,22 @@ func ANSIGraphicsEncoder(bg color.Color, ditherMode ansimage.DitheringMode) Imag
 // NodeRenderers that want to override rendering of particular node types should write through the Write* functions
 // provided by Renderer in order to retain proper indentation and prefices inside of lists and block quotes.
 type Renderer struct {
-	theme         *chroma.Style
-	cols          int
-	rows          int
-	width         int
-	height        int
-	wordWrap      int
-	hyperlinks    bool
-	images        bool
-	maxImageWidth int
-	contentRoot   string
+	theme           *chroma.Style
+	cols            int
+	rows            int
+	width           int
+	height          int
+	wordWrap        int
+	hyperlinks      bool
+	images          bool
+	maxImageWidth   int
+	contentRoot     string
 	imageEncoder    ImageEncoder
 	diagramRenderer DiagramRenderer
 	tableRenderer   TableRenderer
 	softBreak       bool
-	padToWrap     []int
-	noBreak       int // nesting counter; when > 0, spaces don't break words
+	padToWrap       []int
+	noBreak         int // nesting counter; when > 0, spaces don't break words
 
 	listStack  []listState
 	tableStack []tableState
@@ -283,16 +283,16 @@ type Renderer struct {
 
 	rootSpan *NodeSpan
 
-	styles      []chroma.StyleEntry
-	prefixStack []string
-	prefix      []byte
-	wordBuffer  bytes.Buffer
-	lineWidth   int
-	atNewline   bool
-	byteOffset  int
-	inImage          bool
-	inDiagram        bool
-	htmlAnchorDepth  int
+	styles          []chroma.StyleEntry
+	prefixStack     []string
+	prefix          []byte
+	wordBuffer      bytes.Buffer
+	lineWidth       int
+	atNewline       bool
+	byteOffset      int
+	inImage         bool
+	inDiagram       bool
+	htmlAnchorDepth int
 }
 
 // A RendererOption represents a configuration option for a Renderer.

@@ -1,6 +1,7 @@
 package view
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/pgavlin/goldmark"
@@ -11,8 +12,6 @@ import (
 	"github.com/pgavlin/markdown-kit/renderer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"bytes"
 )
 
 func renderWithTransformer(t *testing.T, input string, transformers ...DocumentTransformer) string {

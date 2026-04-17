@@ -358,10 +358,10 @@ type Model struct {
 	lines []line
 
 	// Saved position state for restoring after re-render.
-	savedScrollNode    ast.Node // AST node at lineOffset before re-render
-	savedCursorNode    ast.Node // AST node at cursorLine before re-render
-	savedSelectionNode ast.Node // AST node of selection before re-render
-	savedHighlight     bool     // highlightSelection before re-render
+	savedScrollNode    ast.Node   // AST node at lineOffset before re-render
+	savedCursorNode    ast.Node   // AST node at cursorLine before re-render
+	savedSelectionNode ast.Node   // AST node of selection before re-render
+	savedHighlight     bool       // highlightSelection before re-render
 	savedBackstack     []ast.Node // AST nodes from backstack before re-render
 
 	// The last width for which the content was rendered.

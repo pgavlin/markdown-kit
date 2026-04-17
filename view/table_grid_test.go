@@ -80,7 +80,7 @@ func TestTableGolden_Builtin(t *testing.T) {
 			goldenFile := filepath.Join(testdataPath, fmt.Sprintf("table-%s.builtin.txt", tc.name))
 
 			if *update {
-				err := os.WriteFile(goldenFile, []byte(stripped), 0644)
+				err := os.WriteFile(goldenFile, []byte(stripped), 0o644)
 				require.NoError(t, err)
 				return
 			}
@@ -112,7 +112,7 @@ func TestTableGolden_TeaGrid(t *testing.T) {
 			goldenFile := filepath.Join(testdataPath, fmt.Sprintf("table-%s.teagrid.txt", tc.name))
 
 			if *update {
-				err := os.WriteFile(goldenFile, []byte(stripped), 0644)
+				err := os.WriteFile(goldenFile, []byte(stripped), 0o644)
 				require.NoError(t, err)
 				return
 			}
@@ -400,7 +400,7 @@ func TestTeaGridTable_EqualColumnWidths(t *testing.T) {
 		if strings.Contains(line, "1") && strings.Contains(line, "Short") {
 			parts := strings.SplitN(line, "│", 3)
 			if len(parts) >= 3 {
-				idCol := parts[0]     // No leading │ in tea-grid
+				idCol := parts[0] // No leading │ in tea-grid
 				descCol := parts[1]
 				// Tea-grid gives columns equal width (both ~half of total).
 				idWidth := ansi.StringWidth(idCol)
