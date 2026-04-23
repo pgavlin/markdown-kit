@@ -1046,6 +1046,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.handleSearchKey(msg)
 	}
 
+	if m.toc.active {
+		return m.handleTOCKey(msg)
+	}
+
 	// Handle visual mode keys.
 	if m.visualMode {
 		cmd, handled := m.handleVisualKey(msg)
@@ -1101,6 +1105,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	case key.Matches(msg, m.KeyMap.Search):
 		m.search = searchState{active: true}
+		return nil
+
+	case key.Matches(msg, m.KeyMap.ToggleTOC):
+		m.openTOC()
 		return nil
 
 	case key.Matches(msg, m.KeyMap.GotoTop):

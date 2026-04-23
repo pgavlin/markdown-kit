@@ -1,6 +1,7 @@
 package view
 
 import (
+	tea "charm.land/bubbletea/v2"
 	"github.com/pgavlin/goldmark/ast"
 	"github.com/pgavlin/markdown-kit/indexer"
 )
@@ -78,4 +79,48 @@ func visitTOCSections(source []byte, sections []*indexer.Section, ancestors []st
 			visitTOCSections(source, s.Subsections, append(ancestors, text), out)
 		}
 	}
+}
+
+// Minimum viewport dimensions required to open the TOC overlay.
+const (
+	tocMinWidth  = 40
+	tocMinHeight = 6
+)
+
+// openTOC initializes and activates the overlay. Guards for missing index,
+// empty headings, and undersized viewport set a transient status message
+// instead of opening.
+func (m *Model) openTOC() {
+	if m.index == nil {
+		return
+	}
+	if m.width < tocMinWidth || m.height < tocMinHeight {
+		m.SetStatusMessage("Terminal too small for TOC")
+		return
+	}
+	entries := m.buildTOCEntries()
+	if len(entries) == 0 {
+		m.SetStatusMessage("No headings")
+		return
+	}
+	matches := make([]int, len(entries))
+	for i := range entries {
+		matches[i] = i
+	}
+	m.toc = tocState{
+		active:     true,
+		mode:       tocModeTree,
+		allEntries: entries,
+		matches:    matches,
+		cursor:     0,
+		scroll:     0,
+	}
+}
+
+// handleTOCKey routes keys while the overlay is active. Filled in by later
+// tasks; for now it handles nothing and returns nil (falling through swallows
+// the key while active).
+func (m *Model) handleTOCKey(msg tea.KeyPressMsg) tea.Cmd {
+	_ = msg
+	return nil
 }

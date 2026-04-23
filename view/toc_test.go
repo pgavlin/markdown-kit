@@ -3,6 +3,7 @@ package view
 import (
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/pgavlin/markdown-kit/styles"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -92,4 +93,59 @@ func TestBuildTOCEntries_EmptyDocument(t *testing.T) {
 	m.SetText("empty.md", "Just a paragraph, no headings.\n")
 	entries := m.buildTOCEntries()
 	assert.Empty(t, entries)
+}
+
+func pressKey(t *testing.T, m *Model, k string) {
+	t.Helper()
+	updated, _ := m.Update(tea.KeyPressMsg{Text: k})
+	*m = updated
+}
+
+func TestTOC_OpensOnToggleKey(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	assert.True(t, m.TOCActive())
+	assert.Equal(t, tocModeTree, m.toc.mode)
+	assert.NotEmpty(t, m.toc.allEntries)
+	assert.Len(t, m.toc.matches, len(m.toc.allEntries))
+}
+
+func TestTOC_NoHeadingsShowsStatusMessage(t *testing.T) {
+	mv := NewModel(
+		WithTheme(styles.Pulumi),
+		WithGutter(true),
+		WithWidth(80),
+		WithHeight(25),
+	)
+	m := &mv
+	m.SetText("flat.md", "Just a paragraph.\n")
+	pressKey(t, m, "t")
+	assert.False(t, m.TOCActive())
+	assert.Equal(t, "No headings", m.statusMessage)
+}
+
+func TestTOC_TerminalTooSmallShowsStatusMessage(t *testing.T) {
+	mv := NewModel(
+		WithTheme(styles.Pulumi),
+		WithGutter(true),
+		WithWidth(30),
+		WithHeight(5),
+	)
+	m := &mv
+	m.SetText("test.md", "# H1\n\n## H2\n")
+	pressKey(t, m, "t")
+	assert.False(t, m.TOCActive())
+	assert.Equal(t, "Terminal too small for TOC", m.statusMessage)
+}
+
+func TestTOC_NoIndexIsNoOp(t *testing.T) {
+	mv := NewModel(
+		WithTheme(styles.Pulumi),
+		WithWidth(80),
+		WithHeight(25),
+	)
+	m := &mv
+	// No SetText -> m.index is nil.
+	pressKey(t, m, "t")
+	assert.False(t, m.TOCActive())
 }
