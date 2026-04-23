@@ -84,3 +84,38 @@ func TestPlaceOverlay_EmptyInputs(t *testing.T) {
 	assert.NotPanics(t, func() { placeOverlay(5, 3, "", "abc\n.....\n.....") })
 	assert.NotPanics(t, func() { placeOverlay(5, 3, "XX\nXX", "") })
 }
+
+func TestRenderDialog_Basic(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	body := "line one\nline two"
+	out := m.renderDialog("TOC", body, 20)
+
+	rawLines := strings.Split(out, "\n")
+	require.GreaterOrEqual(t, len(rawLines), 4) // top border, 2 body, bottom border
+	stripped := make([]string, len(rawLines))
+	for i, ln := range rawLines {
+		stripped[i] = ansi.Strip(ln)
+	}
+
+	// Top border contains the title.
+	assert.Contains(t, stripped[0], "TOC")
+	// Top border starts with ╭ (rounded corner).
+	assert.True(t, strings.HasPrefix(stripped[0], "╭"))
+	// Bottom border ends with ╯.
+	last := stripped[len(stripped)-1]
+	assert.True(t, strings.HasSuffix(last, "╯"))
+	// Body lines are enclosed by │ on both sides.
+	assert.True(t, strings.HasPrefix(stripped[1], "│"))
+	assert.True(t, strings.HasSuffix(stripped[1], "│"))
+}
+
+func TestRenderDialog_NoTitle(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	out := m.renderDialog("", "body", 10)
+	first := ansi.Strip(strings.SplitN(out, "\n", 2)[0])
+	// First line is purely border characters, no title embedded.
+	for _, r := range first {
+		assert.True(t, r == '╭' || r == '╮' || r == '─',
+			"unexpected rune %q in border-only line", r)
+	}
+}

@@ -1,8 +1,11 @@
 package view
 
 import (
+	"fmt"
 	"strings"
 
+	"charm.land/lipgloss/v2"
+	"github.com/alecthomas/chroma"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -92,4 +95,55 @@ func placeOverlay(width, height int, dialog, base string) string {
 	}
 
 	return strings.Join(out, "\n")
+}
+
+// renderDialog renders body in a rounded-border box with an optional title
+// overlaid on the top border line. innerWidth is the visible content width
+// (excluding border + padding). Border color is drawn from chroma.Comment in
+// the current theme; defaults to no color if theme is nil.
+func (m *Model) renderDialog(title, body string, innerWidth int) string {
+	if innerWidth < 2 {
+		innerWidth = 2
+	}
+
+	// Derive border color from theme. Falls back to default when theme is nil.
+	border := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1).Width(innerWidth)
+	if m.theme != nil {
+		if c := m.theme.Get(chroma.Comment).Colour; c.IsSet() {
+			border = border.BorderForeground(lipgloss.Color(
+				fmt.Sprintf("#%02x%02x%02x", c.Red(), c.Green(), c.Blue())))
+		}
+	}
+
+	dialog := border.Render(body)
+	if title == "" {
+		return dialog
+	}
+
+	// Overlay the title on the top border: replace a portion of the ─'s with
+	// " title " starting at column 2 (just past the ╭ corner).
+	lines := strings.Split(dialog, "\n")
+	if len(lines) == 0 {
+		return dialog
+	}
+	top := lines[0]
+	prefix := ansiCut(top, 0, 2)
+	titleText := " " + title + " "
+	tw := ansi.StringWidth(titleText)
+	topW := ansi.StringWidth(top)
+	if tw+2 > topW {
+		// Title wider than border; skip overlay.
+		return dialog
+	}
+	remainder := ansiCut(top, 2+tw, topW)
+	// Render title in muted style if available.
+	titleStyle := lipgloss.NewStyle()
+	if m.theme != nil {
+		if c := m.theme.Get(chroma.Comment).Colour; c.IsSet() {
+			titleStyle = titleStyle.Foreground(lipgloss.Color(
+				fmt.Sprintf("#%02x%02x%02x", c.Red(), c.Green(), c.Blue())))
+		}
+	}
+	lines[0] = prefix + titleStyle.Render(titleText) + remainder
+	return strings.Join(lines, "\n")
 }
