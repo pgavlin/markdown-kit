@@ -128,6 +128,11 @@ func (m *Model) openTOC() {
 // findEnclosingTOCEntry returns the index of the entry whose section covers
 // the current scroll position. Falls back to 0 if no heading precedes
 // m.lineOffset.
+//
+// Entries are built in document order by buildTOCEntries, so the N-th
+// heading in the span walk maps to entries[N-1]. Counting instead of
+// matching by text avoids mispicking when multiple headings share the
+// same text.
 func (m *Model) findEnclosingTOCEntry(entries []tocEntry) int {
 	if len(entries) == 0 || m.spanTree == nil || len(m.lines) == 0 {
 		return 0
@@ -141,32 +146,23 @@ func (m *Model) findEnclosingTOCEntry(entries []tocEntry) int {
 	}
 	topOffset := m.lines[lineOffset].start
 
-	// Walk the span tree in document order; track the most recent heading
-	// whose start is at or before topOffset.
-	var lastHeadingText string
-	found := false
+	headingsBeforeOrAt := 0
 	for s := m.spanTree; s != nil; s = s.Next {
 		if s.Start > topOffset {
 			break
 		}
-		if h, ok := s.Node.(*ast.Heading); ok {
-			lastHeadingText = string(h.Text(m.markdown))
-			found = true
+		if _, ok := s.Node.(*ast.Heading); ok {
+			headingsBeforeOrAt++
 		}
 	}
-	if !found {
+	if headingsBeforeOrAt == 0 {
 		return 0
 	}
-
-	// Map heading text back to entry index. Multiple headings may share
-	// text; prefer the last occurrence at or before topOffset, so search
-	// from the end.
-	for i := len(entries) - 1; i >= 0; i-- {
-		if entries[i].text == lastHeadingText {
-			return i
-		}
+	idx := headingsBeforeOrAt - 1
+	if idx >= len(entries) {
+		idx = len(entries) - 1
 	}
-	return 0
+	return idx
 }
 
 // handleTOCKey routes keys while the overlay is active.
@@ -398,7 +394,16 @@ func (m *Model) renderTOCFilterBody(innerWidth int) string {
 			cursorMark = "> "
 		}
 
-		label := highlightMatch(entry.text, entry.matchCols)
+		// Skip per-character match highlights on the cursor row: the
+		// accent style wraps the whole line in reverse video, and a
+		// nested highlight's trailing \x1b[27m would turn the accent
+		// off mid-line.
+		var label string
+		if row == m.toc.cursor {
+			label = entry.text
+		} else {
+			label = highlightMatch(entry.text, entry.matchCols)
+		}
 		labelW := ansi.StringWidth(entry.text)
 
 		var crumb string

@@ -298,6 +298,45 @@ func TestTOC_DismissedOnSetText(t *testing.T) {
 	assert.False(t, m.TOCActive())
 }
 
+// Two headings share the same text, one above and one below topOffset.
+// Preselection must pick the one at or before topOffset (not the one after).
+func TestTOC_OpenPreselectsWithDuplicateHeadingText(t *testing.T) {
+	md := "# Examples\n\n"
+	for i := 0; i < 5; i++ {
+		md += "x\n\n"
+	}
+	md += "## Before\n\n"
+	for i := 0; i < 5; i++ {
+		md += "y\n\n"
+	}
+	md += "# Examples\n\n" // duplicate text, second occurrence
+	for i := 0; i < 3; i++ {
+		md += "z\n\n"
+	}
+
+	m := NewModel(
+		WithTheme(styles.Pulumi),
+		WithGutter(true),
+		WithWidth(80),
+		WithHeight(6),
+	)
+	m.SetText("dup.md", md)
+	mp := &m
+	// Scroll to the middle, which should land inside the "Before" section.
+	mp.lineOffset = len(mp.lines) / 2
+	mp.clampOffsets()
+
+	pressKey(t, mp, "t")
+	require.True(t, mp.TOCActive())
+
+	// The cursor should point at the "Before" entry (entry index 1),
+	// not at either "Examples" entry.
+	current := mp.toc.allEntries[mp.toc.matches[mp.toc.cursor]]
+	assert.Equal(t, "Before", current.text,
+		"expected cursor on 'Before' when scrolled into its section, got %q at index %d",
+		current.text, mp.toc.cursor)
+}
+
 func TestRenderTOCBody_TreeMode(t *testing.T) {
 	m := newTestModelWithTOC(t)
 	pressKey(t, m, "t")
@@ -491,6 +530,30 @@ func TestRenderTOCBody_FilterModeBreadcrumbOrder(t *testing.T) {
 	require.Greater(t, topIdx, 0)
 	require.Greater(t, secIdx, topIdx,
 		"expected crumb to render root-first (Top before Section A), got:\n%s", stripped)
+}
+
+// In filter mode, the cursor row is wrapped in reverse-video as its
+// selection indicator. A per-character match highlight on that row would
+// emit \x1b[27m inside the label, turning the row's reverse off for the
+// remainder — losing the selection indicator visually. The cursor row
+// must therefore render without per-character highlights; only non-cursor
+// rows show match highlights.
+func TestRenderTOCBody_FilterModeCursorRowNoInnerSGR(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	pressKey(t, m, "/")
+	pressKey(t, m, "s")
+	pressKey(t, m, "e")
+	pressKey(t, m, "c")
+	pressKey(t, m, "b")
+	require.Len(t, m.toc.matches, 1) // Section B
+	body := m.renderTOCBody(50)
+	// The cursor is on the only match (row 0). The rendered line must not
+	// contain any "\x1b[27m" that would break reverse mid-line.
+	lines := strings.Split(body, "\n")
+	require.GreaterOrEqual(t, len(lines), 1)
+	assert.NotContains(t, lines[0], "\x1b[27m",
+		"cursor-row label should not contain a match-highlight reset, got: %q", lines[0])
 }
 
 func TestTOC_FilterEscReturnsToTree(t *testing.T) {
