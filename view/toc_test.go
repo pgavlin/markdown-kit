@@ -285,3 +285,11 @@ func TestTOC_OpenPreselectsEnclosingHeading(t *testing.T) {
 	current := mp.toc.allEntries[mp.toc.matches[mp.toc.cursor]]
 	assert.Equal(t, "Target", current.text)
 }
+
+func TestTOC_DismissedOnSetText(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	require.True(t, m.TOCActive())
+	m.SetText("other.md", "# Other\n")
+	assert.False(t, m.TOCActive())
+}
