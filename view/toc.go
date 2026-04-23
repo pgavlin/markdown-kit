@@ -3,6 +3,7 @@ package view
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -459,4 +460,31 @@ func (m *Model) applyTOCScroll(lines []string, maxBody int) []string {
 		end = len(lines)
 	}
 	return lines[m.toc.scroll:end]
+}
+
+// subsequenceMatchPositions returns the visible column positions of the
+// runes of needle consumed from haystack, case-insensitive, greedy
+// left-to-right. Returns an empty slice for an empty needle, nil when the
+// needle is not a subsequence of haystack.
+func subsequenceMatchPositions(haystack, needle string) []int {
+	if len(needle) == 0 {
+		return []int{}
+	}
+	needleRunes := []rune(needle)
+	ni := 0
+	positions := make([]int, 0, len(needleRunes))
+	col := 0
+	for _, r := range haystack {
+		w := ansi.StringWidth(string(r))
+		if ni < len(needleRunes) &&
+			unicode.ToLower(r) == unicode.ToLower(needleRunes[ni]) {
+			positions = append(positions, col)
+			ni++
+		}
+		col += w
+	}
+	if ni < len(needleRunes) {
+		return nil
+	}
+	return positions
 }

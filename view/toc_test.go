@@ -360,3 +360,36 @@ func TestTOC_ViewOmitsOverlayWhenInactive(t *testing.T) {
 	out := m.View()
 	assert.NotContains(t, ansi.Strip(out), "╭")
 }
+
+func TestSubsequenceMatchPositions_Basic(t *testing.T) {
+	pos := subsequenceMatchPositions("Introduction", "intro")
+	assert.Equal(t, []int{0, 1, 2, 3, 4}, pos)
+}
+
+func TestSubsequenceMatchPositions_Gapped(t *testing.T) {
+	// "i" matches at 0, "t" at 2, "d" at 5.
+	pos := subsequenceMatchPositions("introduction", "itd")
+	assert.Equal(t, []int{0, 2, 5}, pos)
+}
+
+func TestSubsequenceMatchPositions_CaseInsensitive(t *testing.T) {
+	pos := subsequenceMatchPositions("HELLO", "hlo")
+	assert.Equal(t, []int{0, 2, 4}, pos)
+}
+
+func TestSubsequenceMatchPositions_NoMatch(t *testing.T) {
+	pos := subsequenceMatchPositions("abc", "xyz")
+	assert.Nil(t, pos)
+}
+
+func TestSubsequenceMatchPositions_EmptyNeedle(t *testing.T) {
+	pos := subsequenceMatchPositions("abc", "")
+	assert.Equal(t, []int{}, pos)
+}
+
+func TestSubsequenceMatchPositions_WideChars(t *testing.T) {
+	// Each CJK char has visual width 2; positions are visible column starts.
+	pos := subsequenceMatchPositions("a日b", "ab")
+	// "a" at col 0, "日" at cols 1-2, "b" at col 3.
+	assert.Equal(t, []int{0, 3}, pos)
+}
