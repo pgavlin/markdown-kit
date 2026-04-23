@@ -413,7 +413,7 @@ func (m *Model) renderTOCFilterBody(innerWidth int) string {
 			crumb = ""
 			crumbW = 0
 			if labelW > avail {
-				label = ansi.Truncate(entry.text, avail, "…")
+				label = ansi.Truncate(label, avail, "…")
 				labelW = ansi.StringWidth(label)
 			}
 		}

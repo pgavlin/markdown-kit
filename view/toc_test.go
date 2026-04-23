@@ -469,3 +469,24 @@ func TestRenderTOCBody_FilterModeNoMatches(t *testing.T) {
 	body := m.renderTOCBody(30)
 	assert.Contains(t, ansi.Strip(body), "No matches")
 }
+
+// Breadcrumbs render root-first (matching the gutter convention in
+// headingBreadcrumbs). For the fixture's "Subsection A1" entry with
+// ancestors ["Top", "Section A"], the crumb reads "Top › Section A".
+func TestRenderTOCBody_FilterModeBreadcrumbOrder(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	pressKey(t, m, "/")
+	// Query uniquely matches "Subsection A1" (not Section A, not Section B).
+	pressKey(t, m, "u")
+	pressKey(t, m, "b")
+	body := m.renderTOCBody(80)
+	stripped := ansi.Strip(body)
+	require.Contains(t, stripped, "Subsection A1")
+	// Root-first ordering: "Top" must appear before "Section A" in the crumb.
+	topIdx := strings.Index(stripped, "Top")
+	secIdx := strings.Index(stripped, "Section A")
+	require.Greater(t, topIdx, 0)
+	require.Greater(t, secIdx, topIdx,
+		"expected crumb to render root-first (Top before Section A), got:\n%s", stripped)
+}
