@@ -149,3 +149,43 @@ func TestTOC_NoIndexIsNoOp(t *testing.T) {
 	pressKey(t, m, "t")
 	assert.False(t, m.TOCActive())
 }
+
+func TestTOC_OpenPreselectsEnclosingHeading(t *testing.T) {
+	// Use single-word paragraphs separated by blank lines so each paragraph
+	// renders as exactly two output lines (content + blank separator). This
+	// produces enough rendered lines that the document is scrollable past the
+	// "Target" heading even with a small (but tocMinHeight-satisfying) viewport.
+	md := "# Top\n\n"
+	for i := 0; i < 7; i++ {
+		md += "x\n\n"
+	}
+	md += "## Target\n\n"
+	for i := 0; i < 3; i++ {
+		md += "x\n\n"
+	}
+
+	// height=6 satisfies tocMinHeight (6); with gutter, pageSize=5.
+	m := NewModel(
+		WithTheme(styles.Pulumi),
+		WithGutter(true),
+		WithWidth(80),
+		WithHeight(6),
+	)
+	m.SetText("test.md", md)
+	mp := &m
+
+	// Scroll well past the "Target" heading; clampOffsets will cap it to the
+	// last valid page, which should still be within the "Target" section.
+	mp.lineOffset = 999
+	mp.clampOffsets()
+
+	// Sanity: ensure we actually scrolled past the "Top" heading.
+	require.Greater(t, mp.lineOffset, 0, "lineOffset should be non-zero after clamping")
+
+	pressKey(t, mp, "t")
+	require.True(t, mp.TOCActive())
+	// The cursor should point at the "Target" entry.
+	require.Greater(t, len(mp.toc.matches), mp.toc.cursor)
+	current := mp.toc.allEntries[mp.toc.matches[mp.toc.cursor]]
+	assert.Equal(t, "Target", current.text)
+}

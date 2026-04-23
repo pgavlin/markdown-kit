@@ -107,14 +107,59 @@ func (m *Model) openTOC() {
 	for i := range entries {
 		matches[i] = i
 	}
+	cursor := m.findEnclosingTOCEntry(entries)
 	m.toc = tocState{
 		active:     true,
 		mode:       tocModeTree,
 		allEntries: entries,
 		matches:    matches,
-		cursor:     0,
+		cursor:     cursor,
 		scroll:     0,
 	}
+}
+
+// findEnclosingTOCEntry returns the index of the entry whose section covers
+// the current scroll position. Falls back to 0 if no heading precedes
+// m.lineOffset.
+func (m *Model) findEnclosingTOCEntry(entries []tocEntry) int {
+	if len(entries) == 0 || m.spanTree == nil || len(m.lines) == 0 {
+		return 0
+	}
+	lineOffset := m.lineOffset
+	if lineOffset >= len(m.lines) {
+		lineOffset = len(m.lines) - 1
+	}
+	if lineOffset < 0 {
+		return 0
+	}
+	topOffset := m.lines[lineOffset].start
+
+	// Walk the span tree in document order; track the most recent heading
+	// whose start is at or before topOffset.
+	var lastHeadingText string
+	found := false
+	for s := m.spanTree; s != nil; s = s.Next {
+		if s.Start > topOffset {
+			break
+		}
+		if h, ok := s.Node.(*ast.Heading); ok {
+			lastHeadingText = string(h.Text(m.markdown))
+			found = true
+		}
+	}
+	if !found {
+		return 0
+	}
+
+	// Map heading text back to entry index. Multiple headings may share
+	// text; prefer the last occurrence at or before topOffset, so search
+	// from the end.
+	for i := len(entries) - 1; i >= 0; i-- {
+		if entries[i].text == lastHeadingText {
+			return i
+		}
+	}
+	return 0
 }
 
 // handleTOCKey routes keys while the overlay is active. Filled in by later
