@@ -1,6 +1,8 @@
 package view
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -514,4 +516,56 @@ func TestTOC_FilterEnterJumps(t *testing.T) {
 	pressKey(t, m, "enter")
 	assert.False(t, m.TOCActive())
 	require.NotNil(t, m.selection)
+}
+
+func TestTOC_RenderSnapshot(t *testing.T) {
+	const md = `# Overview
+
+Intro text.
+
+## Getting Started
+
+Text.
+
+### Installation
+
+Text.
+
+### Configuration
+
+Text.
+
+## Usage
+
+Text.
+
+## Reference
+
+Text.
+`
+	m := NewModel(
+		WithTheme(styles.Pulumi),
+		WithGutter(true),
+		WithWidth(60),
+		WithHeight(18),
+	)
+	m.SetText("snapshot.md", md)
+	mp := &m
+	pressKey(t, mp, "t")
+
+	got := ansi.Strip(mp.View())
+
+	fixturePath := filepath.Join("testdata", "toc_snapshot.txt")
+	if _, err := os.Stat(fixturePath); os.IsNotExist(err) {
+		if os.Getenv("UPDATE_SNAPSHOTS") == "1" {
+			require.NoError(t, os.MkdirAll("testdata", 0o755))
+			require.NoError(t, os.WriteFile(fixturePath, []byte(got), 0o644))
+			t.Skip("wrote new snapshot; rerun without UPDATE_SNAPSHOTS")
+		}
+		t.Fatalf("missing fixture %s; run with UPDATE_SNAPSHOTS=1 to create", fixturePath)
+	}
+
+	want, err := os.ReadFile(fixturePath)
+	require.NoError(t, err)
+	assert.Equal(t, string(want), got)
 }
