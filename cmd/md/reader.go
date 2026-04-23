@@ -155,7 +155,7 @@ func (km readerKeyMap) FullHelp() [][]key.Binding {
 		// Movement
 		{km.Up, km.Down, km.PageUp, km.PageDown, km.GotoTop, km.GotoEnd, km.Left, km.Right},
 		// Navigation
-		{km.Home, km.End, km.NextItem, km.PrevItem, km.NextHeading, km.PrevHeading},
+		{km.Home, km.End, km.NextItem, km.PrevItem, km.NextHeading, km.PrevHeading, km.ToggleTOC},
 		// Actions
 		{km.FollowLink, km.GoBack, km.History, km.SearchDocuments, km.FindSimilar, km.Reload, km.CopySelection, km.OpenFile, km.OpenURL, km.OpenBrowser, km.DecreaseWidth, km.IncreaseWidth},
 		// Search & View
@@ -853,8 +853,13 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		at := r.active()
 
-		// Defer to view during search input or grid focus.
-		if at.view.Searching() || at.view.GridFocused() {
+		// Defer to view during search input, grid focus, or TOC overlay.
+		// The view owns all input while any of these overlays are up — in
+		// particular, filter-mode typing must not be hijacked by the
+		// reader's uppercase-letter bindings (H, S, F, M, T, W, I) or
+		// ctrl+c, and tree-mode navigation must not collide with the
+		// reader's tab-management keys.
+		if at.view.Searching() || at.view.GridFocused() || at.view.TOCActive() {
 			var cmd tea.Cmd
 			at.view, cmd = at.view.Update(msg)
 			return r, cmd

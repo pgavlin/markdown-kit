@@ -1612,3 +1612,69 @@ func TestUpdate_ToggleInteractiveTables_SeparateRenderers(t *testing.T) {
 		t.Error("expected GridFocused()=true for active tab")
 	}
 }
+
+// TestUpdate_TOCDefersUppercaseBindings verifies that while the TOC overlay
+// is active the reader forwards all keys to the view rather than dispatching
+// its own bindings.  In particular:
+//   - pressing "H" must NOT open the history picker
+//   - pressing "S" must NOT open the search picker
+//   - pressing "W" must NOT close all tabs
+//   - the overlay must remain active after each of those presses
+func TestUpdate_TOCDefersUppercaseBindings(t *testing.T) {
+	md := "# Introduction\n\n## Background\n\n## Methods\n\nContent here.\n"
+	r := testReader("doc", md, "/doc.md")
+
+	// Give the view enough room for the TOC overlay (requires ≥ 40×6).
+	r.width = 80
+	r.height = 24
+	for i := range r.tabs {
+		r.tabs[i].view.SetSize(80, 23)
+	}
+	_ = r.View() // trigger initial render so the index is fully ready
+
+	// Open the TOC by pressing "t" (the view's ToggleTOC key).
+	m, _ := r.Update(keyMsg("t"))
+	r = m.(markdownReader)
+	if !r.active().view.TOCActive() {
+		t.Fatal("expected TOCActive()=true after pressing 't'")
+	}
+
+	// Pressing "H" (reader binding: open history picker) must be absorbed by
+	// the TOC overlay and must not open the history picker.
+	m, _ = r.Update(keyMsg("H"))
+	r = m.(markdownReader)
+	if r.showHistory {
+		t.Error("pressing 'H' during TOC opened history picker — gate not working")
+	}
+	if !r.active().view.TOCActive() {
+		t.Error("TOC overlay closed unexpectedly after 'H'")
+	}
+
+	// Pressing "S" (reader binding: open search picker) must be absorbed.
+	m, _ = r.Update(keyMsg("S"))
+	r = m.(markdownReader)
+	if r.showSearch {
+		t.Error("pressing 'S' during TOC opened search picker — gate not working")
+	}
+	if !r.active().view.TOCActive() {
+		t.Error("TOC overlay closed unexpectedly after 'S'")
+	}
+
+	// Pressing "W" (reader binding: close all tabs) must be absorbed.
+	tabsBefore := len(r.tabs)
+	m, _ = r.Update(keyMsg("W"))
+	r = m.(markdownReader)
+	if len(r.tabs) != tabsBefore || r.showPicker {
+		t.Error("pressing 'W' during TOC closed tabs — gate not working")
+	}
+	if !r.active().view.TOCActive() {
+		t.Error("TOC overlay closed unexpectedly after 'W'")
+	}
+
+	// Pressing Esc should close the TOC (handled by the view).
+	m, _ = r.Update(keyMsg("esc"))
+	r = m.(markdownReader)
+	if r.active().view.TOCActive() {
+		t.Error("expected TOCActive()=false after pressing 'esc'")
+	}
+}

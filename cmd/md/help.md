@@ -56,6 +56,18 @@ anchors):
 | {{.NextHeading}} | Jump to next heading |
 | {{.PrevHeading}} | Jump to previous heading |
 
+## Table of Contents
+
+| Key | Action |
+|-----|--------|
+| {{.ToggleTOC}} | Toggle the table-of-contents overlay |
+
+Press {{.ToggleTOC}} to open a centered overlay listing all headings in
+the current document. Navigate with the usual movement keys, press
+`Enter` to jump to a heading, or press `/` to filter the list by typing.
+Press `Esc` to close the overlay (or to exit filter mode back to the
+tree).
+
 ## Link Following
 
 `md` renders links as highlighted, navigable elements. Use {{.NextItem}} and
@@ -364,10 +376,10 @@ Available binding names: `up`, `down`, `page_up`, `page_down`, `goto_top`,
 `next_code_block`, `prev_code_block`, `next_heading`, `prev_heading`,
 `decrease_width`, `increase_width`, `follow_link`, `go_back`,
 `copy_selection`, `search`, `next_match`, `prev_match`, `clear_search`,
-`toggle_source`, `open_url`, `open_browser`, `open_file_new_tab`, `next_tab`,
-`prev_tab`, `close_tab`, `close_all_tabs`, `new_tab`, `reload`, `history`,
-`search_documents`, `find_similar`, `user_guide`, `bug_report`, `export_gist`,
-`help`, `quit`.
+`toggle_toc`, `toggle_source`, `open_url`, `open_browser`, `open_file_new_tab`,
+`next_tab`, `prev_tab`, `close_tab`, `close_all_tabs`, `new_tab`, `reload`,
+`history`, `search_documents`, `find_similar`, `user_guide`, `bug_report`,
+`export_gist`, `help`, `quit`.
 
 ## Subcommands
 

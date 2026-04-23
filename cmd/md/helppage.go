@@ -55,6 +55,7 @@ func renderHelpPage(km readerKeyMap) string {
 		"NextMatch":     fmtKey(km.NextMatch),
 		"PrevMatch":     fmtKey(km.PrevMatch),
 		"ClearSearch":   fmtKey(km.ClearSearch),
+		"ToggleTOC":     fmtKey(km.ToggleTOC),
 		// Reader keys
 		"ToggleSource":    fmtKey(km.ToggleSource),
 		"OpenFile":        fmtKey(km.OpenFile),
@@ -136,6 +137,7 @@ func renderHelpOverlay(km readerKeyMap) string {
 	lines = append(lines, binding(km.FollowLink, "Follow link"))
 	lines = append(lines, binding(km.GoBack, "Go back"))
 	lines = append(lines, binding(km.History, "Page history"))
+	lines = append(lines, binding(km.ToggleTOC, "Table of contents"))
 
 	lines = append(lines, sectionStyle.Render("Search"))
 	lines = append(lines, binding(km.Search, "Search in page"))
