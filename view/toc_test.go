@@ -490,3 +490,28 @@ func TestRenderTOCBody_FilterModeBreadcrumbOrder(t *testing.T) {
 	require.Greater(t, secIdx, topIdx,
 		"expected crumb to render root-first (Top before Section A), got:\n%s", stripped)
 }
+
+func TestTOC_FilterEscReturnsToTree(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	pressKey(t, m, "/")
+	pressKey(t, m, "s")
+	pressKey(t, m, "esc")
+	assert.Equal(t, tocModeTree, m.toc.mode)
+	assert.Equal(t, "", m.toc.query)
+	assert.Len(t, m.toc.matches, len(m.toc.allEntries))
+}
+
+func TestTOC_FilterEnterJumps(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	pressKey(t, m, "/")
+	pressKey(t, m, "s")
+	pressKey(t, m, "e")
+	pressKey(t, m, "c")
+	pressKey(t, m, "b")
+	require.Len(t, m.toc.matches, 1)
+	pressKey(t, m, "enter")
+	assert.False(t, m.TOCActive())
+	require.NotNil(t, m.selection)
+}
