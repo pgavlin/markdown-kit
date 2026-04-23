@@ -162,10 +162,63 @@ func (m *Model) findEnclosingTOCEntry(entries []tocEntry) int {
 	return 0
 }
 
-// handleTOCKey routes keys while the overlay is active. Filled in by later
-// tasks; for now it handles nothing and returns nil (falling through swallows
-// the key while active).
+// handleTOCKey routes keys while the overlay is active.
 func (m *Model) handleTOCKey(msg tea.KeyPressMsg) tea.Cmd {
-	_ = msg
+	if m.toc.mode == tocModeFilter {
+		return m.handleTOCFilterKey(msg)
+	}
+	return m.handleTOCTreeKey(msg)
+}
+
+// handleTOCTreeKey handles keys in tree mode.
+func (m *Model) handleTOCTreeKey(msg tea.KeyPressMsg) tea.Cmd {
+	switch msg.String() {
+	case "esc", "t", "ctrl+c":
+		m.toc = tocState{}
+		return nil
+	case "j", "down":
+		m.moveTOCCursor(1)
+		return nil
+	case "k", "up":
+		m.moveTOCCursor(-1)
+		return nil
+	case "pgdown", "ctrl+f":
+		m.moveTOCCursor(10)
+		return nil
+	case "pgup", "ctrl+b":
+		m.moveTOCCursor(-10)
+		return nil
+	case "g", "home":
+		m.toc.cursor = 0
+		m.toc.scroll = 0
+		return nil
+	case "G", "end":
+		m.toc.cursor = len(m.toc.matches) - 1
+		if m.toc.cursor < 0 {
+			m.toc.cursor = 0
+		}
+		return nil
+	}
 	return nil
+}
+
+// handleTOCFilterKey is implemented in a later task; default to tree keys so
+// the filter mode can be added incrementally without breaking tree behavior.
+func (m *Model) handleTOCFilterKey(msg tea.KeyPressMsg) tea.Cmd {
+	return m.handleTOCTreeKey(msg)
+}
+
+// moveTOCCursor shifts the cursor by n (positive = down) with clamping.
+func (m *Model) moveTOCCursor(n int) {
+	if len(m.toc.matches) == 0 {
+		m.toc.cursor = 0
+		return
+	}
+	m.toc.cursor += n
+	if m.toc.cursor < 0 {
+		m.toc.cursor = 0
+	}
+	if m.toc.cursor >= len(m.toc.matches) {
+		m.toc.cursor = len(m.toc.matches) - 1
+	}
 }

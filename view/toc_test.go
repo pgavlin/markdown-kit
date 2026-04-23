@@ -150,6 +150,53 @@ func TestTOC_NoIndexIsNoOp(t *testing.T) {
 	assert.False(t, m.TOCActive())
 }
 
+func TestTOC_TreeNavigation(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	require.True(t, m.TOCActive())
+	start := m.toc.cursor
+
+	pressKey(t, m, "j")
+	assert.Equal(t, start+1, m.toc.cursor)
+
+	pressKey(t, m, "k")
+	assert.Equal(t, start, m.toc.cursor)
+
+	// G jumps to last.
+	pressKey(t, m, "G")
+	assert.Equal(t, len(m.toc.matches)-1, m.toc.cursor)
+
+	// g jumps to first.
+	pressKey(t, m, "g")
+	assert.Equal(t, 0, m.toc.cursor)
+
+	// j at last stays at last (no wrap).
+	pressKey(t, m, "G")
+	pressKey(t, m, "j")
+	assert.Equal(t, len(m.toc.matches)-1, m.toc.cursor)
+
+	// k at first stays at first.
+	pressKey(t, m, "g")
+	pressKey(t, m, "k")
+	assert.Equal(t, 0, m.toc.cursor)
+}
+
+func TestTOC_EscClosesTreeMode(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	require.True(t, m.TOCActive())
+	pressKey(t, m, "esc")
+	assert.False(t, m.TOCActive())
+}
+
+func TestTOC_ToggleKeyClosesTreeMode(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	require.True(t, m.TOCActive())
+	pressKey(t, m, "t")
+	assert.False(t, m.TOCActive())
+}
+
 func TestTOC_OpenPreselectsEnclosingHeading(t *testing.T) {
 	// Use single-word paragraphs separated by blank lines so each paragraph
 	// renders as exactly two output lines (content + blank separator). This
