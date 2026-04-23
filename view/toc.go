@@ -325,20 +325,26 @@ func (m *Model) jumpToSelectedTOCEntry() {
 
 // renderTOCBody produces the body string (no border) for the overlay,
 // respecting innerWidth. In tree mode it draws box-drawing tree edges;
-// in filter mode (not yet implemented here) it falls back to simple
-// indentation.
+// in filter mode it renders a flat ranked list with match highlights.
 func (m *Model) renderTOCBody(innerWidth int) string {
 	if innerWidth < 4 {
 		innerWidth = 4
 	}
-	var b strings.Builder
-	accent, muted := m.tocStyles()
-
 	if len(m.toc.matches) == 0 {
+		_, muted := m.tocStyles()
 		return muted.Render("  No matches")
 	}
+	if m.toc.mode == tocModeFilter {
+		return m.renderTOCFilterBody(innerWidth)
+	}
+	return m.renderTOCTreeBody(innerWidth)
+}
 
-	// For tree mode we render all matches in order.
+// renderTOCTreeBody renders the tree-style body for tree mode.
+func (m *Model) renderTOCTreeBody(innerWidth int) string {
+	var b strings.Builder
+	accent, _ := m.tocStyles()
+
 	for row, midx := range m.toc.matches {
 		entry := m.toc.allEntries[midx]
 		cursorMark := "  "
@@ -377,6 +383,82 @@ func (m *Model) renderTOCBody(innerWidth int) string {
 		b.WriteString(line)
 	}
 	return b.String()
+}
+
+// renderTOCFilterBody renders a flat list of filtered matches with matched
+// characters highlighted and a muted ancestor breadcrumb suffix.
+func (m *Model) renderTOCFilterBody(innerWidth int) string {
+	var b strings.Builder
+	accent, muted := m.tocStyles()
+
+	for row, midx := range m.toc.matches {
+		entry := m.toc.allEntries[midx]
+		cursorMark := "  "
+		if row == m.toc.cursor {
+			cursorMark = "> "
+		}
+
+		label := highlightMatch(entry.text, entry.matchCols)
+		labelW := ansi.StringWidth(entry.text)
+
+		var crumb string
+		if len(entry.ancestors) > 0 {
+			crumb = "  " + strings.Join(entry.ancestors, " › ")
+		}
+		crumbW := ansi.StringWidth(crumb)
+
+		avail := innerWidth - ansi.StringWidth(cursorMark)
+		// Prefer showing the label in full; drop the breadcrumb if needed.
+		if labelW+crumbW > avail {
+			crumb = ""
+			crumbW = 0
+			if labelW > avail {
+				label = ansi.Truncate(entry.text, avail, "…")
+				labelW = ansi.StringWidth(label)
+			}
+		}
+		pad := avail - labelW - crumbW
+		if pad < 0 {
+			pad = 0
+		}
+
+		line := cursorMark + label + strings.Repeat(" ", pad) + muted.Render(crumb)
+		if row == m.toc.cursor {
+			line = accent.Render(line)
+		}
+		if row > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(line)
+	}
+	return b.String()
+}
+
+// highlightMatch returns s with matched-character positions rendered in
+// reverse-video SGR. Positions are in visible-column units, matching the
+// output of subsequenceMatchPositions.
+func highlightMatch(s string, positions []int) string {
+	if len(positions) == 0 {
+		return s
+	}
+	set := make(map[int]bool, len(positions))
+	for _, p := range positions {
+		set[p] = true
+	}
+	var out strings.Builder
+	col := 0
+	for _, r := range s {
+		w := ansi.StringWidth(string(r))
+		if set[col] {
+			out.WriteString("\033[7m")
+			out.WriteRune(r)
+			out.WriteString("\033[27m")
+		} else {
+			out.WriteRune(r)
+		}
+		col += w
+	}
+	return out.String()
 }
 
 // tocTreePrefix returns the box-drawing prefix for the entry at allEntries[i].

@@ -439,3 +439,33 @@ func TestTOC_FilterNoMatches(t *testing.T) {
 	pressKey(t, m, "z")
 	assert.Empty(t, m.toc.matches)
 }
+
+func TestRenderTOCBody_FilterMode(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	pressKey(t, m, "/")
+	pressKey(t, m, "s")
+	pressKey(t, m, "e")
+	pressKey(t, m, "c")
+	pressKey(t, m, "b")
+	body := m.renderTOCBody(50)
+	stripped := ansi.Strip(body)
+
+	// Flat list: only Section B matches.
+	require.Equal(t, 1, strings.Count(stripped, "\n")+1,
+		"expected single-line filter result, got:\n%s", stripped)
+	assert.Contains(t, stripped, "Section B")
+	// Breadcrumb appended (matched entry's parent is "Top").
+	assert.Contains(t, stripped, "Top")
+}
+
+func TestRenderTOCBody_FilterModeNoMatches(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	pressKey(t, m, "/")
+	pressKey(t, m, "z")
+	pressKey(t, m, "z")
+	pressKey(t, m, "z")
+	body := m.renderTOCBody(30)
+	assert.Contains(t, ansi.Strip(body), "No matches")
+}
