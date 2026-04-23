@@ -363,3 +363,100 @@ func (m *Model) tocStyles() (lipgloss.Style, lipgloss.Style) {
 	}
 	return accent, muted
 }
+
+// renderTOCOverlay composes the TOC dialog on top of the base content.
+func (m *Model) renderTOCOverlay(base string) string {
+	innerWidth := m.tocInnerWidth()
+	body := m.renderTOCBody(innerWidth)
+
+	// In filter mode, prepend a filter-input line above the entry list.
+	if m.toc.mode == tocModeFilter {
+		_, muted := m.tocStyles()
+		prompt := muted.Render("  filter: ") + m.toc.query + "_"
+		pad := innerWidth - ansi.StringWidth(ansi.Strip(prompt))
+		if pad > 0 {
+			prompt = prompt + strings.Repeat(" ", pad)
+		}
+		body = prompt + "\n" + body
+	}
+
+	// Clip body to tocInnerHeight lines.
+	maxBody := m.tocInnerHeight()
+	lines := strings.Split(body, "\n")
+	// Apply scroll window (cursor-centric) for tree mode entry list.
+	if m.toc.mode == tocModeTree {
+		lines = m.applyTOCScroll(lines, maxBody)
+	} else {
+		// Filter mode: reserve row 0 for the prompt, scroll the rest.
+		if len(lines) > 1 {
+			prompt := lines[0]
+			rest := m.applyTOCScroll(lines[1:], maxBody-1)
+			lines = append([]string{prompt}, rest...)
+		}
+	}
+	body = strings.Join(lines, "\n")
+
+	title := "TOC"
+	dialog := m.renderDialog(title, body, innerWidth)
+	return placeOverlay(m.width, m.height, dialog, base)
+}
+
+// tocInnerWidth computes the dialog's inner content width (excluding border
+// + padding), clamped to [tocMinWidth-4, viewportW*3/4 - 4].
+func (m *Model) tocInnerWidth() int {
+	// Start by sizing to the widest rendered row (approximated by widest
+	// label + max tree prefix for current depth).
+	widest := 20
+	for _, e := range m.toc.allEntries {
+		w := ansi.StringWidth(e.text) + 4*e.level + 2 // heuristic
+		if w > widest {
+			widest = w
+		}
+	}
+	maxOuter := m.width * 3 / 4
+	if maxOuter < tocMinWidth {
+		maxOuter = tocMinWidth
+	}
+	inner := widest
+	if inner+4 > maxOuter {
+		inner = maxOuter - 4
+	}
+	if inner < tocMinWidth-4 {
+		inner = tocMinWidth - 4
+	}
+	return inner
+}
+
+// tocInnerHeight computes the dialog's available body height, clamped to
+// viewportH*3/4 - 2 (title + bottom border).
+func (m *Model) tocInnerHeight() int {
+	maxOuter := m.height * 3 / 4
+	if maxOuter < tocMinHeight {
+		maxOuter = tocMinHeight
+	}
+	return maxOuter - 2
+}
+
+// applyTOCScroll returns at most maxBody lines from `lines`, shifted so the
+// cursor row is visible. Updates m.toc.scroll.
+func (m *Model) applyTOCScroll(lines []string, maxBody int) []string {
+	if len(lines) <= maxBody || maxBody <= 0 {
+		m.toc.scroll = 0
+		return lines
+	}
+	// Clamp scroll so cursor is visible.
+	if m.toc.cursor < m.toc.scroll {
+		m.toc.scroll = m.toc.cursor
+	}
+	if m.toc.cursor >= m.toc.scroll+maxBody {
+		m.toc.scroll = m.toc.cursor - maxBody + 1
+	}
+	if m.toc.scroll < 0 {
+		m.toc.scroll = 0
+	}
+	end := m.toc.scroll + maxBody
+	if end > len(lines) {
+		end = len(lines)
+	}
+	return lines[m.toc.scroll:end]
+}

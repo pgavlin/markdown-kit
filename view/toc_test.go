@@ -342,3 +342,21 @@ func TestRenderTOCBody_TruncatesLongLabels(t *testing.T) {
 		assert.LessOrEqual(t, ansi.StringWidth(ln), 20)
 	}
 }
+
+func TestTOC_ViewIncludesOverlayWhenActive(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	require.True(t, m.TOCActive())
+	out := m.View()
+	// The rendered output should contain a rounded border corner.
+	assert.Contains(t, ansi.Strip(out), "╭")
+	assert.Contains(t, ansi.Strip(out), "╯")
+	// And a known heading.
+	assert.Contains(t, ansi.Strip(out), "Section A")
+}
+
+func TestTOC_ViewOmitsOverlayWhenInactive(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	out := m.View()
+	assert.NotContains(t, ansi.Strip(out), "╭")
+}

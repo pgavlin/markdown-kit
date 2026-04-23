@@ -1329,7 +1329,11 @@ func (m Model) View() string {
 		}
 	}
 
-	return buf.String()
+	base := buf.String()
+	if m.toc.active {
+		base = m.renderTOCOverlay(base)
+	}
+	return base
 }
 
 // applySelection applies reverse video to the selected portion of a line.
