@@ -326,17 +326,13 @@ func TestPlaceOverlay_Centers(t *testing.T) {
 }
 
 func TestPlaceOverlay_PadsShortBase(t *testing.T) {
-	// Base has only 2 lines; viewport is 5 tall. Overlay still places correctly.
+	// Base has only 2 lines; viewport is 5 tall. Dialog 2x2 centered in 5x5:
+	// startX=(5-2)/2=1, startY=(5-2)/2=1. Rows 0,3,4 empty; rows 1,2 have dialog.
 	base := "abc\ndef"
 	dialog := "XX\nXX"
 	out := placeOverlay(5, 5, dialog, base)
 	rect := renderRect(t, out, 5, 5)
 	assert.Equal(t, "abc  ", rect[0])
-	assert.Equal(t, "defXX", rect[1]) // dialog starts at y=1, x=(5-2)/2=1; "de"+"XX"+" "
-	// Actually the centered X should start at column 1 so row 1 is "d" + "XX" + " " + " "? Let's recompute:
-	// width=5, dh=2, dw=2. startX=(5-2)/2=1, startY=(5-2)/2=1. So dialog at rows 1,2 cols 1,2.
-	// Row 1 base = "def" padded to width 5: "def  ". With overlay: "d" + "XX" + "  " = "dXX  "
-	// The above assertion is wrong; fix it:
 	assert.Equal(t, "dXX  ", rect[1])
 	assert.Equal(t, " XX  ", rect[2])
 	assert.Equal(t, "     ", rect[3])
@@ -373,29 +369,7 @@ func TestPlaceOverlay_EmptyInputs(t *testing.T) {
 }
 ```
 
-Fix note: the `TestPlaceOverlay_PadsShortBase` above contains a comment-driven rewrite — the final assertions (`dXX  `, ` XX  `) are the correct ones. Remove the earlier erroneous `defXX` assertion when you apply the test file.
-
-- [ ] **Step 2: Write the final test file with correct assertions**
-
-Replace the body of `TestPlaceOverlay_PadsShortBase` with the corrected version only:
-
-```go
-func TestPlaceOverlay_PadsShortBase(t *testing.T) {
-	// Base has only 2 lines; viewport is 5 tall. Dialog 2x2 in 5x5 viewport:
-	// startX=(5-2)/2=1, startY=(5-2)/2=1. Rows 0,3,4 empty; rows 1,2 have dialog.
-	base := "abc\ndef"
-	dialog := "XX\nXX"
-	out := placeOverlay(5, 5, dialog, base)
-	rect := renderRect(t, out, 5, 5)
-	assert.Equal(t, "abc  ", rect[0])
-	assert.Equal(t, "dXX  ", rect[1])
-	assert.Equal(t, " XX  ", rect[2])
-	assert.Equal(t, "     ", rect[3])
-	assert.Equal(t, "     ", rect[4])
-}
-```
-
-- [ ] **Step 3: Run tests to verify they fail**
+- [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
 go test ./view/ -run TestPlaceOverlay_ -v
@@ -403,7 +377,7 @@ go test ./view/ -run TestPlaceOverlay_ -v
 
 Expected: compile error (`placeOverlay undefined`).
 
-- [ ] **Step 4: Implement `placeOverlay`**
+- [ ] **Step 3: Implement `placeOverlay`**
 
 Create `view/overlay.go`:
 
@@ -505,7 +479,7 @@ func placeOverlay(width, height int, dialog, base string) string {
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [ ] **Step 4: Run tests to verify they pass**
 
 ```bash
 go test ./view/ -run TestPlaceOverlay_ -v
@@ -513,7 +487,7 @@ go test ./view/ -run TestPlaceOverlay_ -v
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add view/overlay.go view/overlay_test.go
@@ -2082,7 +2056,7 @@ func (m *Model) rebuildTOCMatches() {
 		m.toc.scroll = 0
 		return
 	}
-	matches := matches := m.toc.matches[:0] // reuse capacity
+	matches := m.toc.matches[:0] // reuse capacity
 	for i := range m.toc.allEntries {
 		pos := subsequenceMatchPositions(m.toc.allEntries[i].text, m.toc.query)
 		if pos == nil {
@@ -2097,14 +2071,6 @@ func (m *Model) rebuildTOCMatches() {
 	m.toc.scroll = 0
 }
 ```
-
-Fix note: the line `matches := matches := m.toc.matches[:0]` is a typo — the correct line is:
-
-```go
-	matches := m.toc.matches[:0]
-```
-
-Apply the corrected single-assignment form.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
