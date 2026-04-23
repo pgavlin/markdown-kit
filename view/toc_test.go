@@ -1,9 +1,11 @@
 package view
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/pgavlin/markdown-kit/styles"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -292,4 +294,51 @@ func TestTOC_DismissedOnSetText(t *testing.T) {
 	require.True(t, m.TOCActive())
 	m.SetText("other.md", "# Other\n")
 	assert.False(t, m.TOCActive())
+}
+
+func TestRenderTOCBody_TreeMode(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	body := m.renderTOCBody(40)
+
+	lines := strings.Split(body, "\n")
+	stripped := make([]string, len(lines))
+	for i, ln := range lines {
+		stripped[i] = ansi.Strip(ln)
+	}
+	require.GreaterOrEqual(t, len(stripped), 4)
+
+	// Fixture order: Top, Section A, Subsection A1, Section B.
+	// Tree-edge expectations:
+	//   Top           (no prefix, it's the sole level-1 root)
+	//   ├── Section A
+	//   │   └── Subsection A1
+	//   └── Section B
+	assert.Contains(t, stripped[0], "Top")
+	assert.Contains(t, stripped[1], "├──")
+	assert.Contains(t, stripped[1], "Section A")
+	assert.Contains(t, stripped[2], "│")
+	assert.Contains(t, stripped[2], "└──")
+	assert.Contains(t, stripped[2], "Subsection A1")
+	assert.Contains(t, stripped[3], "└──")
+	assert.Contains(t, stripped[3], "Section B")
+
+	// The line at the cursor position should have the ">" marker.
+	cursorLine := stripped[m.toc.cursor]
+	assert.Contains(t, cursorLine, ">")
+}
+
+func TestRenderTOCBody_TruncatesLongLabels(t *testing.T) {
+	m := NewModel(
+		WithTheme(styles.Pulumi),
+		WithWidth(80),
+		WithHeight(25),
+	)
+	m.SetText("long.md", "# "+strings.Repeat("A", 200)+"\n")
+	mp := &m
+	pressKey(t, mp, "t")
+	body := mp.renderTOCBody(20)
+	for _, ln := range strings.Split(body, "\n") {
+		assert.LessOrEqual(t, ansi.StringWidth(ln), 20)
+	}
 }

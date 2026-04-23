@@ -1,7 +1,13 @@
 package view
 
 import (
+	"fmt"
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/alecthomas/chroma"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/pgavlin/goldmark/ast"
 	"github.com/pgavlin/markdown-kit/indexer"
 )
@@ -241,4 +247,118 @@ func (m *Model) jumpToSelectedTOCEntry() {
 		m.backstack = append(m.backstack, prev)
 	}
 	m.toc = tocState{}
+}
+
+// renderTOCBody produces the body string (no border) for the overlay,
+// respecting innerWidth. In tree mode it draws box-drawing tree edges;
+// in filter mode (not yet implemented here) it falls back to simple
+// indentation.
+func (m *Model) renderTOCBody(innerWidth int) string {
+	if innerWidth < 4 {
+		innerWidth = 4
+	}
+	var b strings.Builder
+	accent, muted := m.tocStyles()
+
+	if len(m.toc.matches) == 0 {
+		return muted.Render("  No matches")
+	}
+
+	// For tree mode we render all matches in order.
+	for row, midx := range m.toc.matches {
+		entry := m.toc.allEntries[midx]
+		cursorMark := "  "
+		if row == m.toc.cursor {
+			cursorMark = "> "
+		}
+
+		prefix := m.tocTreePrefix(midx)
+		label := entry.text
+		// Truncate label to fit innerWidth - len(cursorMark) - ansi.StringWidth(prefix).
+		avail := innerWidth - ansi.StringWidth(cursorMark) - ansi.StringWidth(prefix)
+		if avail < 4 {
+			// Deep nesting fallback: drop the box-drawing prefix.
+			prefix = strings.Repeat("  ", entry.level-1)
+			avail = innerWidth - ansi.StringWidth(cursorMark) - ansi.StringWidth(prefix)
+			if avail < 1 {
+				avail = 1
+			}
+		}
+		if ansi.StringWidth(label) > avail {
+			label = ansi.Truncate(label, avail, "…")
+		}
+
+		line := cursorMark + prefix + label
+		// Pad to innerWidth so the selection highlight spans full width.
+		w := ansi.StringWidth(line)
+		if w < innerWidth {
+			line = line + strings.Repeat(" ", innerWidth-w)
+		}
+		if row == m.toc.cursor {
+			line = accent.Render(line)
+		}
+		if row > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(line)
+	}
+	return b.String()
+}
+
+// tocTreePrefix returns the box-drawing prefix for the entry at allEntries[i].
+// Uses lastChild flags and ancestor depth to draw │/├/└ connectors.
+func (m *Model) tocTreePrefix(i int) string {
+	entry := m.toc.allEntries[i]
+	if entry.level <= 1 {
+		return ""
+	}
+
+	// For each ancestor depth (1..level-1), decide whether to draw "│   "
+	// (branch continues) or "    " (branch done). Branch continues at
+	// depth d when there is a later entry whose level <= d (meaning a
+	// sibling of the ancestor at that depth appears after this entry).
+	prefix := ""
+	for depth := 1; depth < entry.level-1; depth++ {
+		if m.tocBranchContinues(i, depth) {
+			prefix += "│   "
+		} else {
+			prefix += "    "
+		}
+	}
+
+	// Own connector:
+	if entry.lastChild {
+		prefix += "└── "
+	} else {
+		prefix += "├── "
+	}
+	return prefix
+}
+
+// tocBranchContinues reports whether the ancestor at depth `depth` has any
+// further sibling after the entry at allEntries[i]. It scans forward for
+// the first entry whose level is at most depth+1 (a sibling of the
+// depth+1 ancestor or higher). If found and its level equals depth+1, the
+// branch continues; if its level is shallower, the branch is done.
+func (m *Model) tocBranchContinues(i, depth int) bool {
+	for j := i + 1; j < len(m.toc.allEntries); j++ {
+		lvl := m.toc.allEntries[j].level
+		if lvl <= depth+1 {
+			return lvl == depth+1
+		}
+	}
+	return false
+}
+
+// tocStyles returns (accent, muted) lipgloss styles derived from the theme.
+func (m *Model) tocStyles() (lipgloss.Style, lipgloss.Style) {
+	accent := lipgloss.NewStyle().Reverse(true)
+	muted := lipgloss.NewStyle()
+	if m.theme != nil {
+		if c := m.theme.Get(chroma.Comment).Colour; c.IsSet() {
+			muted = muted.Foreground(lipgloss.Color(
+				fmt.Sprintf("#%02x%02x%02x", c.Red(), c.Green(), c.Blue())))
+		}
+	}
+	return accent, muted
 }
