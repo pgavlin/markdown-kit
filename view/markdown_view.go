@@ -406,6 +406,9 @@ type Model struct {
 	// Search state.
 	search searchState
 
+	// Table-of-contents overlay state.
+	toc tocState
+
 	// Document transformers to apply after parsing.
 	documentTransformers []DocumentTransformer
 
@@ -470,6 +473,7 @@ func (m *Model) Clear() {
 	m.gridFocused = false
 	m.focusedGrid = nil
 	m.search = searchState{}
+	m.toc = tocState{}
 }
 
 // GetName returns the document name.
