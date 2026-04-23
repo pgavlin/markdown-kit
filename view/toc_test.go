@@ -197,6 +197,55 @@ func TestTOC_ToggleKeyClosesTreeMode(t *testing.T) {
 	assert.False(t, m.TOCActive())
 }
 
+func TestTOC_EnterJumpsAndDismisses(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	// Open TOC and move cursor to Section B (index 3 in the fixture).
+	pressKey(t, m, "t")
+	for m.toc.allEntries[m.toc.matches[m.toc.cursor]].text != "Section B" {
+		if m.toc.cursor == len(m.toc.matches)-1 {
+			t.Fatal("could not find Section B entry")
+		}
+		pressKey(t, m, "j")
+	}
+	pressKey(t, m, "enter")
+
+	assert.False(t, m.TOCActive())
+	require.NotNil(t, m.selection)
+	// Selection should correspond to the Section B heading.
+	// We don't assert the exact node here — just that a selection exists.
+}
+
+func TestTOC_EnterBackstackPreservesPriorSelection(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	// Establish a prior selection by jumping to Section A first.
+	m.SelectAnchor("section-a")
+	priorSelection := m.selection
+	require.NotNil(t, priorSelection)
+
+	pressKey(t, m, "t")
+	// Move cursor to Section B.
+	for m.toc.allEntries[m.toc.matches[m.toc.cursor]].text != "Section B" {
+		if m.toc.cursor == len(m.toc.matches)-1 {
+			t.Fatal("could not find Section B entry")
+		}
+		pressKey(t, m, "j")
+	}
+	pressKey(t, m, "enter")
+
+	assert.False(t, m.TOCActive())
+	require.Len(t, m.backstack, 1)
+	assert.Same(t, priorSelection, m.backstack[0])
+}
+
+func TestTOC_EnterWithNoPriorSelectionDoesNotPushBackstack(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	require.Nil(t, m.selection)
+	pressKey(t, m, "t")
+	pressKey(t, m, "enter")
+	assert.False(t, m.TOCActive())
+	assert.Empty(t, m.backstack)
+}
+
 func TestTOC_OpenPreselectsEnclosingHeading(t *testing.T) {
 	// Use single-word paragraphs separated by blank lines so each paragraph
 	// renders as exactly two output lines (content + blank separator). This

@@ -198,6 +198,9 @@ func (m *Model) handleTOCTreeKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.toc.cursor = 0
 		}
 		return nil
+	case "enter":
+		m.jumpToSelectedTOCEntry()
+		return nil
 	}
 	return nil
 }
@@ -221,4 +224,21 @@ func (m *Model) moveTOCCursor(n int) {
 	if m.toc.cursor >= len(m.toc.matches) {
 		m.toc.cursor = len(m.toc.matches) - 1
 	}
+}
+
+// jumpToSelectedTOCEntry navigates to the heading at the current cursor,
+// pushes the prior selection onto the backstack (matching FollowLink), and
+// dismisses the overlay. If no entry is selected (empty matches), it only
+// dismisses.
+func (m *Model) jumpToSelectedTOCEntry() {
+	if len(m.toc.matches) == 0 || m.toc.cursor < 0 || m.toc.cursor >= len(m.toc.matches) {
+		m.toc = tocState{}
+		return
+	}
+	entry := m.toc.allEntries[m.toc.matches[m.toc.cursor]]
+	prev := m.selection
+	if m.SelectAnchor(entry.anchor) && prev != nil {
+		m.backstack = append(m.backstack, prev)
+	}
+	m.toc = tocState{}
 }
