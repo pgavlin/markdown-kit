@@ -6,6 +6,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	"github.com/pgavlin/markdown-kit/styles"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWithTheme(t *testing.T) {
@@ -97,4 +98,18 @@ func TestNoOptions_Defaults(t *testing.T) {
 func TestOptionOrder_LastWins(t *testing.T) {
 	m := NewModel(WithContentWidth(80), WithContentWidth(120))
 	assert.Equal(t, 120, m.contentWidth)
+}
+
+func TestDefaultKeyMap_ToggleTOC(t *testing.T) {
+	km := DefaultKeyMap()
+	require.True(t, km.ToggleTOC.Enabled())
+	assert.Contains(t, km.ToggleTOC.Keys(), "t")
+}
+
+func TestKeyMap_SetEnabled_IncludesToggleTOC(t *testing.T) {
+	km := DefaultKeyMap()
+	km.SetEnabled(false)
+	assert.False(t, km.ToggleTOC.Enabled())
+	km.SetEnabled(true)
+	assert.True(t, km.ToggleTOC.Enabled())
 }
