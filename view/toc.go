@@ -313,10 +313,11 @@ func (m *Model) tocTreePrefix(i int) string {
 		return ""
 	}
 
-	// For each ancestor depth (1..level-1), decide whether to draw "│   "
-	// (branch continues) or "    " (branch done). Branch continues at
-	// depth d when there is a later entry whose level <= d (meaning a
-	// sibling of the ancestor at that depth appears after this entry).
+	// For each ancestor chain position (1..level-1), decide whether to draw
+	// "│   " (branch continues) or "    " (branch done). The ancestor at
+	// position d sits at level d+1 in the document; its branch continues
+	// when a later entry shares that level before any shallower heading
+	// closes the chain.
 	prefix := ""
 	for depth := 1; depth < entry.level-1; depth++ {
 		if m.tocBranchContinues(i, depth) {
