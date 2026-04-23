@@ -208,14 +208,87 @@ func (m *Model) handleTOCTreeKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "enter":
 		m.jumpToSelectedTOCEntry()
 		return nil
+	case "/":
+		m.toc.mode = tocModeFilter
+		m.toc.query = ""
+		m.rebuildTOCMatches()
+		return nil
 	}
 	return nil
 }
 
-// handleTOCFilterKey is implemented in a later task; default to tree keys so
-// the filter mode can be added incrementally without breaking tree behavior.
+// handleTOCFilterKey handles keys in filter mode.
 func (m *Model) handleTOCFilterKey(msg tea.KeyPressMsg) tea.Cmd {
-	return m.handleTOCTreeKey(msg)
+	switch msg.String() {
+	case "esc":
+		// Return to tree mode and clear filter.
+		m.toc.mode = tocModeTree
+		m.toc.query = ""
+		m.rebuildTOCMatches()
+		return nil
+	case "ctrl+c":
+		m.toc = tocState{}
+		return nil
+	case "enter":
+		m.jumpToSelectedTOCEntry()
+		return nil
+	case "up", "ctrl+p":
+		m.moveTOCCursor(-1)
+		return nil
+	case "down", "ctrl+n":
+		m.moveTOCCursor(1)
+		return nil
+	case "pgup":
+		m.moveTOCCursor(-10)
+		return nil
+	case "pgdown":
+		m.moveTOCCursor(10)
+		return nil
+	case "backspace":
+		if len(m.toc.query) > 0 {
+			// Drop last rune.
+			r := []rune(m.toc.query)
+			m.toc.query = string(r[:len(r)-1])
+			m.rebuildTOCMatches()
+		}
+		return nil
+	}
+	// Accept printable input.
+	if msg.Text != "" {
+		m.toc.query += msg.Text
+		m.rebuildTOCMatches()
+	}
+	return nil
+}
+
+// rebuildTOCMatches recomputes matches for the current query. When the query
+// is empty, all entries match (in tree mode that's just the full list; in
+// filter mode, that's still "match everything"). Resets cursor and scroll.
+func (m *Model) rebuildTOCMatches() {
+	if m.toc.query == "" {
+		matches := make([]int, len(m.toc.allEntries))
+		for i := range m.toc.allEntries {
+			matches[i] = i
+			m.toc.allEntries[i].matchCols = nil
+		}
+		m.toc.matches = matches
+		m.toc.cursor = 0
+		m.toc.scroll = 0
+		return
+	}
+	matches := m.toc.matches[:0] // reuse capacity
+	for i := range m.toc.allEntries {
+		pos := subsequenceMatchPositions(m.toc.allEntries[i].text, m.toc.query)
+		if pos == nil {
+			m.toc.allEntries[i].matchCols = nil
+			continue
+		}
+		m.toc.allEntries[i].matchCols = pos
+		matches = append(matches, i)
+	}
+	m.toc.matches = matches
+	m.toc.cursor = 0
+	m.toc.scroll = 0
 }
 
 // moveTOCCursor shifts the cursor by n (positive = down) with clamping.

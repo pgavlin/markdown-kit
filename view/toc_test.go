@@ -393,3 +393,49 @@ func TestSubsequenceMatchPositions_WideChars(t *testing.T) {
 	// "a" at col 0, "日" at cols 1-2, "b" at col 3.
 	assert.Equal(t, []int{0, 3}, pos)
 }
+
+func TestTOC_SlashEntersFilterMode(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	require.Equal(t, tocModeTree, m.toc.mode)
+	pressKey(t, m, "/")
+	assert.Equal(t, tocModeFilter, m.toc.mode)
+	assert.Equal(t, "", m.toc.query)
+	assert.Len(t, m.toc.matches, len(m.toc.allEntries))
+}
+
+func TestTOC_FilterMatches(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	pressKey(t, m, "/")
+	pressKey(t, m, "s")
+	pressKey(t, m, "e")
+	pressKey(t, m, "c")
+	pressKey(t, m, "b")
+	// Subsequence "secb" matches "Section B" but not "Section A" or "Subsection A1"
+	// ("Subsection A1" has no 'b' after its 'c').
+	require.Len(t, m.toc.matches, 1)
+	assert.Equal(t, "Section B", m.toc.allEntries[m.toc.matches[0]].text)
+}
+
+func TestTOC_FilterBackspace(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	pressKey(t, m, "/")
+	pressKey(t, m, "s")
+	pressKey(t, m, "b")
+	pressKey(t, m, "backspace")
+	// Only "s" left: matches any entry with 's'.
+	assert.Greater(t, len(m.toc.matches), 1)
+	assert.Equal(t, "s", m.toc.query)
+}
+
+func TestTOC_FilterNoMatches(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	pressKey(t, m, "/")
+	pressKey(t, m, "z")
+	pressKey(t, m, "z")
+	pressKey(t, m, "z")
+	assert.Empty(t, m.toc.matches)
+}
