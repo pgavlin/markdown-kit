@@ -1,3 +1,4 @@
 # Keep '\n' line endings in testdata.
-internal/testdata/* eol=lf
-view/testdata/*     eol=lf
+internal/testdata/*  eol=lf
+view/testdata/*      eol=lf
+cmd/mdcat/testdata/* eol=lf
