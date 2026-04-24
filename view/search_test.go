@@ -350,3 +350,47 @@ func TestSearch_HandleSearchKey_NonPrintableIgnored(t *testing.T) {
 	m.handleSearchKey(tea.KeyPressMsg{Code: tea.KeyUp})
 	assert.Equal(t, "hello", m.search.query)
 }
+
+// Test the search-confirmed branches in handleKey: after confirming a
+// search, pressing n/N/esc should advance/rewind/clear via the top-level
+// key dispatch (not just the direct helper calls).
+func TestSearch_HandleKey_NextMatchWhileConfirmed(t *testing.T) {
+	m := newTestModelWithSearch("aaa\n\naaa\n\naaa")
+	m.search.active = true
+	m.search.mode = searchModeExact
+	m.search.query = "aaa"
+	m.executeSearch()
+	m.search.active = false
+	m.search.confirmed = true
+	first := m.search.currentMatch
+
+	// Drive through the public Update path — must route NextMatch here.
+	updated, _ := m.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	assert.Equal(t, first+1, updated.search.currentMatch,
+		"n after confirmed search should advance match")
+}
+
+func TestSearch_HandleKey_PrevMatchWhileConfirmed(t *testing.T) {
+	m := newTestModelWithSearch("aaa\n\naaa\n\naaa")
+	m.search.query = "aaa"
+	m.executeSearch()
+	m.search.confirmed = true
+	m.search.currentMatch = 1
+
+	updated, _ := m.Update(tea.KeyPressMsg{Code: 'N', Text: "N"})
+	assert.Equal(t, 0, updated.search.currentMatch,
+		"N after confirmed search should rewind match")
+}
+
+func TestSearch_HandleKey_ClearSearchWhileConfirmed(t *testing.T) {
+	m := newTestModelWithSearch("aaa\n\naaa")
+	m.search.query = "aaa"
+	m.executeSearch()
+	m.search.confirmed = true
+	require.Greater(t, len(m.search.matches), 0)
+
+	// Esc with confirmed search should clear the search state.
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	assert.Empty(t, updated.search.matches, "esc should clear matches")
+	assert.False(t, updated.search.confirmed, "esc should clear confirmed flag")
+}
