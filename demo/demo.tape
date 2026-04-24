@@ -1,7 +1,8 @@
 # VHS tape for the cmd/md hero GIF.
 # Re-render with:  vhs demo/demo.tape
-# Uses the in-tree md binary via `go run ../cmd/md` so the gif always
-# reflects the current working tree.
+# Builds the md binary from the current working tree into a scratch dir so
+# the gif always reflects HEAD, with no compilation output on the recorded
+# terminal.
 
 Output demo/md.gif
 
@@ -20,94 +21,100 @@ Env XDG_CACHE_HOME  "/tmp/md-demo/cache"
 Env XDG_DATA_HOME   "/tmp/md-demo/data"
 
 Hide
-Type "rm -rf /tmp/md-demo && mkdir -p /tmp/md-demo/config /tmp/md-demo/cache /tmp/md-demo/data"
+Type "export PS1='$ '"
+Enter
+Type "rm -rf /tmp/md-demo && mkdir -p /tmp/md-demo/config /tmp/md-demo/cache /tmp/md-demo/data /tmp/md-demo/bin"
+Enter
+Type "go build -o /tmp/md-demo/bin/md ./cmd/md >/dev/null 2>&1"
+Enter
+Type "export PATH=/tmp/md-demo/bin:$PATH"
 Enter
 Type "cd demo"
 Enter
-Type "clear"
+Type "clear && printf '\x1b[3J'"
 Enter
 Show
 
 # --- Open the primary document ---
-Type "go run ../cmd/md hello.md"
-Enter
-Sleep 4s
-
-# --- Act 1: basic navigation ---
-Type@120ms "jjjj"
-Sleep 800ms
-Type "}"
-Sleep 600ms
-Type "}"
-Sleep 600ms
-Type "{"
-Sleep 800ms
-
-# --- Act 2: table of contents ---
-Type "t"
-Sleep 1s
-Down
-Sleep 300ms
-Down
-Sleep 300ms
-Down
-Sleep 300ms
+Type "md hello.md"
 Enter
 Sleep 1500ms
 
-# --- Act 3: item nav + in-doc search ---
-Type "]"
-Sleep 400ms
-Type "]"
-Sleep 600ms
+# --- Act 1: basic navigation ---
+Type@120ms "jjjj"
+Sleep 700ms
+Type "}"
+Sleep 500ms
+Type "}"
+Sleep 500ms
+Type "{"
+Sleep 700ms
+
+# --- Act 2: in-doc search ---
 Type "/"
 Sleep 400ms
 Type "code"
 Enter
 Sleep 1s
 Type "n"
-Sleep 600ms
-Escape
 Sleep 500ms
-
-# --- Act 4: copy a code block ---
-# Land item selection on the Go code block, then copy with `y`.
-Type "]"
+Escape
+Sleep 200ms
+Escape
 Sleep 400ms
-Type "]"
-Sleep 400ms
-Type "]"
-Sleep 600ms
-Type "y"
-Sleep 1500ms
 
-# --- Act 5: view source toggle ---
-Ctrl+U
-Sleep 2s
-Ctrl+U
-Sleep 1s
-
-# --- Act 6: multi-doc workflow ---
-# Open code.md in a new tab via the file picker.
-Ctrl+T
-Sleep 1s
-Type "code"
+# --- Act 3: TOC -> jump to Example -> item nav onto code block -> copy ---
+Type "t"
 Sleep 800ms
+PageUp
+Sleep 250ms
+Down
+Sleep 200ms
+Down
+Sleep 200ms
+Down
+Sleep 200ms
 Enter
-Sleep 2s
+Sleep 900ms
+Type "]"
+Sleep 700ms
+Type "y"
+Sleep 1200ms
+
+# --- Act 4: view source toggle ---
+Ctrl+U
+Sleep 1800ms
+Ctrl+U
+Sleep 800ms
+
+# --- Act 5: open code.md in a new tab via the file picker ---
+Ctrl+T
+Sleep 900ms
+Type "code"
+Sleep 700ms
+Enter
+Sleep 1500ms
 
 # Flip back to hello.md.
 Shift+Tab
-Sleep 1200ms
+Sleep 1s
 
-# Navigate to the relative link to code.md, then open it in a new tab.
-Type "["
-Sleep 300ms
-Type "["
-Sleep 400ms
+# --- Act 6: TOC -> jump to Reading section -> item nav onto link -> open link in new tab ---
+Type "t"
+Sleep 700ms
+PageUp
+Sleep 250ms
+Down
+Sleep 200ms
+Down
+Sleep 200ms
+Enter
+Sleep 800ms
+Type "]"
+Sleep 700ms
 Type "T"
 Sleep 2s
 
 # --- Quit ---
 Type "q"
-Sleep 1s
+Sleep 800ms
