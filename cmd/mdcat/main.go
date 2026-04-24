@@ -6,6 +6,7 @@ import (
 	"image/color"
 	_ "image/gif"
 	_ "image/jpeg"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -23,6 +24,55 @@ import (
 	_ "github.com/pgavlin/svg2"
 	"golang.org/x/term"
 )
+
+// renderOptions captures the configuration `render` needs to turn a source
+// document into terminal output. Everything that main() gathers from flags,
+// environment, and terminal queries gets funneled through this struct so
+// tests can drive rendering deterministically.
+type renderOptions struct {
+	width      uint
+	images     bool
+	hyperlinks bool
+	theme      *chroma.Style
+
+	sourceDir      string
+	supportsImages bool
+
+	hasGeometry                       bool
+	cols, rows, termWidth, termHeight int
+}
+
+// render parses source as Markdown and writes the ANSI-rendered form to w.
+func render(w io.Writer, source []byte, opts renderOptions) error {
+	parser := goldmark.DefaultParser()
+	parser.AddOptions(goldmark_parser.WithParagraphTransformers(
+		util.Prioritized(extension.NewTableParagraphTransformer(), 200),
+	))
+	document := parser.Parse(text.NewReader(source))
+
+	imageEncoder := renderer.KittyGraphicsEncoder()
+	if opts.images && !opts.supportsImages {
+		imageEncoder = renderer.ANSIGraphicsEncoder(color.Transparent, ansimage.DitheringWithChars)
+	}
+
+	options := []renderer.RendererOption{
+		renderer.WithTheme(opts.theme),
+		renderer.WithWordWrap(int(opts.width)),
+		renderer.WithSoftBreak(opts.width != 0),
+		renderer.WithPad(true),
+		renderer.WithHyperlinks(opts.hyperlinks),
+		renderer.WithImages(opts.images, opts.termWidth, opts.sourceDir),
+		renderer.WithImageEncoder(imageEncoder),
+		renderer.WithDiagramRenderer(diagram.MermaidRenderer()),
+	}
+	if opts.hasGeometry {
+		options = append(options, renderer.WithGeometry(opts.cols, opts.rows, opts.termWidth, opts.termHeight))
+	}
+
+	r := renderer.New(options...)
+	rr := goldmark_renderer.NewRenderer(goldmark_renderer.WithNodeRenderers(util.Prioritized(r, 100)))
+	return rr.Render(w, source, document)
+}
 
 func main() {
 	supportsImages := canDisplayImages()
@@ -57,34 +107,21 @@ func main() {
 		}
 	}
 
-	parser := goldmark.DefaultParser()
-	parser.AddOptions(goldmark_parser.WithParagraphTransformers(
-		util.Prioritized(extension.NewTableParagraphTransformer(), 200),
-	))
-	document := parser.Parse(text.NewReader(source))
-
-	imageEncoder := renderer.KittyGraphicsEncoder()
-	if *images && !supportsImages {
-		imageEncoder = renderer.ANSIGraphicsEncoder(color.Transparent, ansimage.DitheringWithChars)
+	opts := renderOptions{
+		width:          *width,
+		images:         *images,
+		hyperlinks:     *hyperlinks,
+		theme:          theme,
+		sourceDir:      filepath.Dir(path),
+		supportsImages: supportsImages,
+		hasGeometry:    hasGeometry,
+		cols:           cols,
+		rows:           rows,
+		termWidth:      termWidth,
+		termHeight:     termHeight,
 	}
 
-	options := []renderer.RendererOption{
-		renderer.WithTheme(theme),
-		renderer.WithWordWrap(int(*width)),
-		renderer.WithSoftBreak(*width != 0),
-		renderer.WithPad(true),
-		renderer.WithHyperlinks(*hyperlinks),
-		renderer.WithImages(*images, termWidth, filepath.Dir(path)),
-		renderer.WithImageEncoder(imageEncoder),
-		renderer.WithDiagramRenderer(diagram.MermaidRenderer()),
-	}
-	if hasGeometry {
-		options = append(options, renderer.WithGeometry(cols, rows, termWidth, termHeight))
-	}
-
-	r := renderer.New(options...)
-	renderer := goldmark_renderer.NewRenderer(goldmark_renderer.WithNodeRenderers(util.Prioritized(r, 100)))
-	if err := renderer.Render(os.Stdout, source, document); err != nil {
+	if err := render(os.Stdout, source, opts); err != nil {
 		fmt.Fprintf(os.Stderr, "error rendering %v: %v\n", path, err)
 		os.Exit(-1)
 	}
