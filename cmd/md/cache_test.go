@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"os"
 	"testing"
 	"time"
 )
@@ -395,4 +396,101 @@ func TestCache_StoreFile_SetsContentHash(t *testing.T) {
 	if loaded.ContentHash != expected {
 		t.Errorf("ContentHash: got %q, want %q", loaded.ContentHash, expected)
 	}
+}
+
+// openCache and evictHTTP hit the real filesystem rather than the fs
+// interface, so these tests use t.TempDir() and XDG-style env redirection.
+
+func TestOpenCache_CreatesDir(t *testing.T) {
+	base := t.TempDir()
+	// Redirect the user cache lookup via supported env vars.
+	// On Linux, XDG_CACHE_HOME wins; on macOS, HOME is used
+	// (cache becomes $HOME/Library/Caches). Setting both keeps the test
+	// portable across platforms.
+	t.Setenv("XDG_CACHE_HOME", base)
+	t.Setenv("HOME", base)
+
+	c := openCache()
+	if c == nil {
+		t.Fatal("openCache returned nil when it should succeed")
+	}
+	if c.dir == "" {
+		t.Fatal("openCache returned cache with empty dir")
+	}
+	// Directory must actually exist now.
+	info, err := os.Stat(c.dir)
+	if err != nil {
+		t.Fatalf("expected cache dir to exist after openCache: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("expected cache dir, got file at %s", c.dir)
+	}
+}
+
+func TestOpenCache_IdempotentOnExistingDir(t *testing.T) {
+	base := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", base)
+	t.Setenv("HOME", base)
+
+	// First call creates the dir.
+	first := openCache()
+	if first == nil {
+		t.Fatal("first openCache failed")
+	}
+	// Second call should succeed without error despite the dir existing.
+	second := openCache()
+	if second == nil {
+		t.Fatal("second openCache should succeed when dir already exists")
+	}
+	if first.dir != second.dir {
+		t.Errorf("expected stable dir, got %q then %q", first.dir, second.dir)
+	}
+}
+
+func TestEvictHTTP_RemovesEntry(t *testing.T) {
+	base := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", base)
+	t.Setenv("HOME", base)
+
+	c := openCache()
+	if c == nil {
+		t.Fatal("openCache failed")
+	}
+	logger := discardLogger()
+
+	url := "https://example.com/page"
+	entry := cacheEntry{Name: "page", Markdown: "# Page"}
+	c.storeHTTP(url, entry, logger)
+
+	// Sanity: entry file exists on disk.
+	path := c.entryPath(url)
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected entry file to exist after storeHTTP: %v", err)
+	}
+
+	c.evictHTTP(url, logger)
+
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("expected entry to be gone after evictHTTP, got err=%v", err)
+	}
+}
+
+func TestEvictHTTP_MissingEntryIsNoOp(t *testing.T) {
+	base := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", base)
+	t.Setenv("HOME", base)
+
+	c := openCache()
+	if c == nil {
+		t.Fatal("openCache failed")
+	}
+	// Evicting a URL that was never stored must not error or leave
+	// artifacts — just return quietly.
+	c.evictHTTP("https://never-stored.example.com", discardLogger())
+}
+
+func TestEvictHTTP_NilCacheIsNoOp(t *testing.T) {
+	var c *conversionCache
+	// Calling on a nil receiver must not panic.
+	c.evictHTTP("https://example.com", discardLogger())
 }
