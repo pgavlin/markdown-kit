@@ -1,6 +1,7 @@
 package view
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -631,4 +632,195 @@ Text.
 	want, err := os.ReadFile(fixturePath)
 	require.NoError(t, err)
 	assert.Equal(t, string(want), got)
+}
+
+// highlightMatch is only invoked for non-cursor rows in filter mode. This
+// test forces that by building a fixture with multiple matching entries so
+// rows other than the cursor position exist.
+func TestHighlightMatch_WrapsMatchedColumns(t *testing.T) {
+	got := highlightMatch("Section B", []int{0, 8})
+	// 'S' at col 0 and 'B' at col 8 get wrapped in reverse-video SGR.
+	assert.Contains(t, got, "\x1b[7mS\x1b[27m")
+	assert.Contains(t, got, "\x1b[7mB\x1b[27m")
+	// Interior chars stay plain.
+	assert.NotContains(t, got, "\x1b[7me")
+}
+
+func TestHighlightMatch_EmptyPositionsReturnsUnchanged(t *testing.T) {
+	assert.Equal(t, "Section B", highlightMatch("Section B", nil))
+	assert.Equal(t, "Section B", highlightMatch("Section B", []int{}))
+}
+
+// Exercise filter-mode rendering where the cursor is not on a matched row,
+// so the non-cursor branch of renderTOCFilterBody (which calls
+// highlightMatch) actually runs.
+func TestRenderTOCBody_FilterModeNonCursorHighlights(t *testing.T) {
+	// Document with many "Section" headings so a single-char query matches
+	// more than one.
+	md := "# Top\n\n## Section One\n\n## Section Two\n\n## Section Three\n"
+	mv := NewModel(
+		WithTheme(styles.Pulumi),
+		WithGutter(true),
+		WithWidth(80),
+		WithHeight(25),
+	)
+	mv.SetText("multi.md", md)
+	m := &mv
+	pressKey(t, m, "t")
+	pressKey(t, m, "/")
+	pressKey(t, m, "s") // matches all three "Section" entries
+	require.Greater(t, len(m.toc.matches), 1)
+	// Move cursor off the first match so row 0 is a non-cursor match.
+	pressKey(t, m, "down")
+	body := m.renderTOCBody(60)
+	lines := strings.Split(body, "\n")
+	require.GreaterOrEqual(t, len(lines), 2)
+	// Non-cursor row (lines[0]) must contain the per-char reverse SGR
+	// sequence produced by highlightMatch.
+	assert.Contains(t, lines[0], "\x1b[7m")
+	assert.Contains(t, lines[0], "\x1b[27m")
+}
+
+// Exercise the breadcrumb-drop and label-truncation paths in
+// renderTOCFilterBody by forcing a very narrow innerWidth.
+func TestRenderTOCBody_FilterModeBreadcrumbDropped(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	pressKey(t, m, "/")
+	// "Subsection A1" — has ancestors ["Top","Section A"], crumb is long.
+	pressKey(t, m, "u")
+	pressKey(t, m, "b")
+	// Narrow inner width: label (13 cols) fits, breadcrumb doesn't.
+	body := m.renderTOCBody(20)
+	stripped := ansi.Strip(body)
+	assert.Contains(t, stripped, "Subsection A1")
+	// Breadcrumb must be absent — there's no room.
+	assert.NotContains(t, stripped, "Section A")
+}
+
+func TestRenderTOCBody_FilterModeLabelTruncated(t *testing.T) {
+	// Long heading that can't fit even without a breadcrumb.
+	md := "# " + strings.Repeat("X", 100) + "\n"
+	mv := NewModel(
+		WithTheme(styles.Pulumi),
+		WithGutter(true),
+		WithWidth(80),
+		WithHeight(25),
+	)
+	mv.SetText("long.md", md)
+	m := &mv
+	pressKey(t, m, "t")
+	pressKey(t, m, "/")
+	pressKey(t, m, "x")
+	body := m.renderTOCBody(20)
+	for _, ln := range strings.Split(body, "\n") {
+		assert.LessOrEqual(t, ansi.StringWidth(ln), 20)
+	}
+	// Truncation ellipsis present.
+	assert.Contains(t, ansi.Strip(body), "…")
+}
+
+// Exercise applyTOCScroll: cursor past the window advances scroll; cursor
+// before scroll rewinds it; fitting content resets to 0. Called directly
+// because View has a value receiver and scroll mutations there don't
+// persist externally.
+func TestApplyTOCScroll_WindowClamping(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	require.True(t, m.TOCActive())
+
+	lines := []string{"a", "b", "c", "d", "e", "f", "g", "h"}
+
+	// Case 1: all fit — scroll resets to 0.
+	m.toc.scroll = 3
+	out := m.applyTOCScroll(lines, 10)
+	assert.Equal(t, 0, m.toc.scroll)
+	assert.Len(t, out, len(lines))
+
+	// Case 2: cursor beyond window — scroll advances to keep cursor visible.
+	m.toc.scroll = 0
+	m.toc.cursor = 6
+	out = m.applyTOCScroll(lines, 3) // window size 3, cursor at row 6
+	assert.Equal(t, 4, m.toc.scroll, "scroll should advance to cursor-maxBody+1")
+	assert.Len(t, out, 3)
+	assert.Equal(t, []string{"e", "f", "g"}, out)
+
+	// Case 3: cursor before scroll — scroll rewinds to cursor.
+	m.toc.scroll = 5
+	m.toc.cursor = 2
+	out = m.applyTOCScroll(lines, 3)
+	assert.Equal(t, 2, m.toc.scroll)
+	assert.Equal(t, []string{"c", "d", "e"}, out)
+
+	// Case 4: maxBody <= 0 — scroll resets, returns input.
+	m.toc.scroll = 5
+	out = m.applyTOCScroll(lines, 0)
+	assert.Equal(t, 0, m.toc.scroll)
+	assert.Equal(t, lines, out)
+}
+
+// Exercise renderTOCOverlay with a cursor past the visible window: the
+// dialog should clip its rendered body and the top entry in the scroll
+// window should no longer be the first allEntries entry.
+func TestRenderTOCOverlay_ScrollsToKeepCursorVisible(t *testing.T) {
+	md := "# Root\n\n"
+	for i := 0; i < 40; i++ {
+		md += fmt.Sprintf("## Heading %02d\n\nText.\n\n", i)
+	}
+	mv := NewModel(
+		WithTheme(styles.Pulumi),
+		WithGutter(true),
+		WithWidth(80),
+		WithHeight(12),
+	)
+	mv.SetText("many.md", md)
+	m := &mv
+	pressKey(t, m, "t")
+	require.True(t, m.TOCActive())
+
+	// Move cursor to the last entry.
+	pressKey(t, m, "G")
+
+	out := ansi.Strip(m.View())
+	// The last heading must be visible with the cursor marker.
+	assert.Contains(t, out, "Heading 39")
+	// A mid-document heading must be scrolled off of both the doc view
+	// and the TOC dialog.
+	assert.NotContains(t, out, "Heading 20")
+}
+
+// Filter-mode pgup/pgdown/ctrl+c paths.
+func TestTOC_FilterPgDownPgUp(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	pressKey(t, m, "/")
+	pressKey(t, m, "s") // matches multiple entries
+	require.Greater(t, len(m.toc.matches), 1)
+	pressKey(t, m, "pgdown")
+	assert.Equal(t, len(m.toc.matches)-1, m.toc.cursor)
+	pressKey(t, m, "pgup")
+	assert.Equal(t, 0, m.toc.cursor)
+}
+
+// Exercise renderTOCOverlay's filter-mode branch, including the prompt row
+// with the active query and cursor marker.
+func TestRenderTOCOverlay_FilterModePromptRow(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	pressKey(t, m, "/")
+	pressKey(t, m, "s")
+	pressKey(t, m, "e")
+	pressKey(t, m, "c")
+	out := ansi.Strip(m.View())
+	// Filter prompt with the typed query appears above the entries.
+	assert.Contains(t, out, "filter: sec")
+}
+
+func TestTOC_FilterCtrlCDismisses(t *testing.T) {
+	m := newTestModelWithTOC(t)
+	pressKey(t, m, "t")
+	pressKey(t, m, "/")
+	pressKey(t, m, "s")
+	pressKey(t, m, "ctrl+c")
+	assert.False(t, m.TOCActive())
 }
