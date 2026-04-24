@@ -99,7 +99,8 @@ func DecodeCommand(c *Command, b []byte) int {
 		b, sz = b[1:], sz+1
 
 		// find the extent of the value
-		v := b[:0]
+		valStart := b
+		vLen := 0
 		for len(b) > 0 {
 			if b[0] == ',' {
 				b, sz = b[1:], sz+1
@@ -109,8 +110,10 @@ func DecodeCommand(c *Command, b []byte) int {
 				// this byte is accounted for in the next go-round
 				break
 			}
-			v, b, sz = v[:1], b[1:], sz+1
+			vLen++
+			b, sz = b[1:], sz+1
 		}
+		v := valStart[:vLen]
 
 		// decode the value
 		var decoder func([]byte) bool
@@ -203,16 +206,15 @@ func singleCharacterDecoder(dest *byte) func([]byte) bool {
 
 func positiveIntegerDecoder(dest *uint) func([]byte) bool {
 	return func(b []byte) bool {
-		val, any := uint(0), false
-		for len(b) > 0 {
-			c := b[0]
+		if len(b) == 0 {
+			return false
+		}
+		val := uint(0)
+		for _, c := range b {
 			if c < '0' || c > '9' {
 				return false
 			}
-			val, any = val*10+uint(c-'0'), true
-		}
-		if !any {
-			return false
+			val = val*10 + uint(c-'0')
 		}
 		*dest = val
 		return true
