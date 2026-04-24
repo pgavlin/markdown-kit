@@ -8,6 +8,8 @@
 A Go toolkit for rendering Markdown to multiple output formats, plus a set
 of CLI tools built on top.
 
+![md — an interactive terminal Markdown reader](demo/md.gif)
+
 ## Packages
 
 | Package | Description |
