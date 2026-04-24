@@ -20,6 +20,13 @@ type Renderer struct {
 	monospaceFamily    string
 
 	listStack []listState
+
+	// blockquoteDepth > 0 when rendering inside a blockquote. A paragraph
+	// inside a blockquote uses the "Blockquote" style instead of
+	// "Paragraph". ODF doesn't nest <text:p> elements, so the blockquote
+	// element itself emits nothing — it only affects descendant paragraph
+	// styling.
+	blockquoteDepth int
 }
 
 func NewRenderer(proportionalFamily, monospaceFamily string) *Renderer {
@@ -79,8 +86,8 @@ func (r *Renderer) Render(w io.Writer, source []byte, n ast.Node) error {
 const prolog = `<?xml version="1.0" encoding="UTF-8"?>
 <office:document-content  xmlns:css3t="http://www.w3.org/TR/css3-text/" xmlns:grddl="http://www.w3.org/2003/g/data-view#" xmlns:xhtml="http://www.w3.org/1999/xhtml" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xforms="http://www.w3.org/2002/xforms" xmlns:dom="http://www.w3.org/2001/xml-events" xmlns:script="urn:oasis:names:tc:opendocument:xmlns:script:1.0" xmlns:form="urn:oasis:names:tc:opendocument:xmlns:form:1.0" xmlns:math="http://www.w3.org/1998/Math/MathML" xmlns:number="urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0" xmlns:field="urn:openoffice:names:experimental:ooo-ms-interop:xmlns:field:1.0" xmlns:meta="urn:oasis:names:tc:opendocument:xmlns:meta:1.0" xmlns:loext="urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0" xmlns:officeooo="http://openoffice.org/2009/office" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:chart="urn:oasis:names:tc:opendocument:xmlns:chart:1.0" xmlns:tableooo="http://openoffice.org/2009/table" xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" xmlns:rpt="http://openoffice.org/2005/report" xmlns:dr3d="urn:oasis:names:tc:opendocument:xmlns:dr3d:1.0" xmlns:of="urn:oasis:names:tc:opendocument:xmlns:of:1.2" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:calcext="urn:org:documentfoundation:names:experimental:calc:xmlns:calcext:1.0" xmlns:oooc="http://openoffice.org/2004/calc" xmlns:drawooo="http://openoffice.org/2010/draw" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:ooo="http://openoffice.org/2004/office" xmlns:ooow="http://openoffice.org/2004/writer" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" xmlns:formx="urn:openoffice:names:experimental:ooxml-odf-interop:xmlns:form:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" office:version="1.3">
 	<office:font-face-decls>
-        <style:font-face style:name="Proportional Serif" svg:font-family="&apos;Liberation Serif&apos;, &apos;Times New Roman&apos;, serif" style:font-family-generic="roman" style:font-pitch="variable"/>
-        <style:font-face style:name="Proportional Sans" svg:font-family="&apos;Liberation Sans&apos;, Helvetica, Arial, sans-serif" style:font-family-generic="swiss" style:font-pitch="variable"/>
+        <style:font-face style:name="ProportionalSerif" svg:font-family="&apos;Liberation Serif&apos;, &apos;Times New Roman&apos;, serif" style:font-family-generic="roman" style:font-pitch="variable"/>
+        <style:font-face style:name="ProportionalSans" svg:font-family="&apos;Liberation Sans&apos;, Helvetica, Arial, sans-serif" style:font-family-generic="swiss" style:font-pitch="variable"/>
 		<style:font-face style:name="Monospace" svg:font-family="&apos;Liberation Mono&apos;, Consolas, monospace" style:font-family-generic="roman" style:font-pitch="fixed"/>
 	</office:font-face-decls>
 
@@ -92,7 +99,7 @@ const prolog = `<?xml version="1.0" encoding="UTF-8"?>
 		</style:style>
 
 		<!-- Code block -->
-		<style:style style:family="paragraph" style:name="Code Block" style:parent-style-name="Paragraph">
+		<style:style style:family="paragraph" style:name="CodeBlock" style:parent-style-name="Paragraph">
 			<style:paragraph-properties fo:background-color="#f6f8fA"/>
 			<style:text-properties style:font-name="Monospace" fo:color="#000000" fo:font-size="9pt"/>
 		</style:style>
@@ -100,11 +107,11 @@ const prolog = `<?xml version="1.0" encoding="UTF-8"?>
 		<!-- Paragraph -->
 		<style:style style:family="paragraph" style:name="Paragraph">
 			<style:paragraph-properties fo:margin-top="4.5pt" fo:margin-bottom="4.5pt"/>
-			<style:text-properties style:font-name="Proportional Serif"/>
+			<style:text-properties style:font-name="ProportionalSerif"/>
 		</style:style>
 
 		<!-- Thematic break style -->
-		<style:style style:family="paragraph" style:name="Thematic Break">
+		<style:style style:family="paragraph" style:name="ThematicBreak">
             <style:paragraph-properties fo:margin-top="0in" fo:margin-bottom="0.1965in" style:contextual-spacing="false" style:border-line-width-bottom="0.0008in 0.0016in 0.0008in" fo:padding="0in" fo:border-left="none" fo:border-right="none" fo:border-top="none" fo:border-bottom="0.14pt double #808080" text:number-lines="false" text:line-number="0" style:join-border="false"/>
             <style:text-properties fo:font-size="6pt"/>
 		</style:style>
@@ -112,8 +119,8 @@ const prolog = `<?xml version="1.0" encoding="UTF-8"?>
 		<!-- List styles -->
 
 		<!-- Unordered lists -->
-		<text:list-style style:name="Unordered List">
-			<text:list-level-style-bullet>
+		<text:list-style style:name="UnorderedList">
+			<text:list-level-style-bullet text:level="1" text:bullet-char="•">
 				<style:list-level-properties text:list-level-position-and-space-mode="label-alignment">
 					<style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="0.5in" fo:text-indent="-0.25in" fo:margin-left="0.5in"/>
 				</style:list-level-properties>
@@ -121,7 +128,7 @@ const prolog = `<?xml version="1.0" encoding="UTF-8"?>
 		</text:list-style>
 
 		<!-- Ordered lists -->
-		<text:list-style style:name="Ordered List">
+		<text:list-style style:name="OrderedList">
 			<text:list-level-style-number text:level="1" style:num-format="1" style:num-suffix=".">
 				<style:list-level-properties text:list-level-position-and-space-mode="label-alignment">
 					<style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="0.5in" fo:text-indent="-0.25in" fo:margin-left="0.5in"/>
@@ -133,16 +140,16 @@ const prolog = `<?xml version="1.0" encoding="UTF-8"?>
 
 		<!-- Emphasis -->
 		<style:style style:family="text" style:name="Emphasis">
-			<style:text-properties style:font-weight="bold"/>
+			<style:text-properties fo:font-weight="bold"/>
 		</style:style>
 
 		<!-- Strong emphasis -->
-		<style:style style:family="text" style:name="Strong Emphasis">
-			<style:text-properties style:font-style="italic"/>
+		<style:style style:family="text" style:name="StrongEmphasis">
+			<style:text-properties fo:font-style="italic"/>
 		</style:style>
 
 		<!-- Code span -->
-		<style:style style:family="text" style:name="Code Span">
+		<style:style style:family="text" style:name="CodeSpan">
 			<style:text-properties style:font-name="Monospace" fo:background-color="#f6f8fa" fo:color="#000000"/>
 		</style:style>
 	</office:automatic-styles>
@@ -173,12 +180,15 @@ func (r *Renderer) renderHeading(w io.Writer, source []byte, node *ast.Heading, 
 	return ast.WalkContinue, nil
 }
 
-// renderBlockquote renders an *ast.Blockquote node to the given io.Writer.
+// renderBlockquote does not emit any element of its own — ODF's text:p
+// cannot contain another text:p, so a blockquote changes the style of the
+// paragraphs it contains rather than wrapping them. renderParagraph
+// selects the "Blockquote" style whenever blockquoteDepth > 0.
 func (r *Renderer) renderBlockquote(w io.Writer, source []byte, node *ast.Blockquote, enter bool) (ast.WalkStatus, error) {
 	if enter {
-		fmt.Fprint(w, "\t\t\t<text:p text:style-name=\"Blockquote\">")
+		r.blockquoteDepth++
 	} else {
-		fmt.Fprintln(w, "</text:p>")
+		r.blockquoteDepth--
 	}
 	return ast.WalkContinue, nil
 }
@@ -269,7 +279,7 @@ func isInCharacterRange(r rune) (inrange bool) {
 }
 
 func (r *Renderer) renderCode(w io.Writer, source []byte, lines *mdtext.Segments) error {
-	fmt.Fprint(w, "\t\t\t<text:p text:style-name=\"Code Block\">")
+	fmt.Fprint(w, "\t\t\t<text:p text:style-name=\"CodeBlock\">")
 	for i := 0; i < lines.Len(); i++ {
 		line := lines.At(i)
 		value := line.Value(source)
@@ -316,12 +326,12 @@ func (r *Renderer) renderList(w io.Writer, source []byte, node *ast.List, enter 
 	if enter {
 		r.listStack = append(r.listStack, listState{node: node, fresh: true})
 
-		style := "Unordered"
+		style := "UnorderedList"
 		if node.IsOrdered() {
-			style = "Ordered"
+			style = "OrderedList"
 		}
 
-		fmt.Fprintf(w, "\t\t\t<text:list text:style-name=\"%s List\" text:continue-numbering=\"false\">\n", style)
+		fmt.Fprintf(w, "\t\t\t<text:list text:style-name=\"%s\" text:continue-numbering=\"false\">\n", style)
 	} else {
 		fmt.Fprintln(w, "\t\t\t</text:list>")
 		r.listStack = r.listStack[:len(r.listStack)-1]
@@ -347,10 +357,19 @@ func (r *Renderer) renderListItem(w io.Writer, source []byte, node *ast.ListItem
 	return ast.WalkContinue, nil
 }
 
+// paragraphStyle returns the style name a paragraph should use given the
+// renderer's current context (inside a blockquote, etc.).
+func (r *Renderer) paragraphStyle() string {
+	if r.blockquoteDepth > 0 {
+		return "Blockquote"
+	}
+	return "Paragraph"
+}
+
 // renderParagraph renders an *ast.Paragraph node to the given io.Writer.
 func (r *Renderer) renderParagraph(w io.Writer, source []byte, node *ast.Paragraph, enter bool) (ast.WalkStatus, error) {
 	if enter {
-		fmt.Fprint(w, "\t\t\t<text:p text:style-name=\"Paragraph\">")
+		fmt.Fprintf(w, "\t\t\t<text:p text:style-name=\"%s\">", r.paragraphStyle())
 	} else {
 		fmt.Fprintln(w, "</text:p>")
 	}
@@ -360,7 +379,7 @@ func (r *Renderer) renderParagraph(w io.Writer, source []byte, node *ast.Paragra
 // renderTextBlock renders an *ast.TextBlock node to the given io.Writer.
 func (r *Renderer) renderTextBlock(w io.Writer, source []byte, node *ast.TextBlock, enter bool) (ast.WalkStatus, error) {
 	if enter {
-		fmt.Fprint(w, "\t\t\t<text:p text:style-name=\"Paragraph\">")
+		fmt.Fprintf(w, "\t\t\t<text:p text:style-name=\"%s\">", r.paragraphStyle())
 	} else {
 		fmt.Fprintln(w, "</text:p>")
 	}
@@ -370,7 +389,7 @@ func (r *Renderer) renderTextBlock(w io.Writer, source []byte, node *ast.TextBlo
 // renderThematicBreak renders an *ast.ThematicBreak node to the given io.Writer.
 func (r *Renderer) renderThematicBreak(w io.Writer, source []byte, node *ast.ThematicBreak, enter bool) (ast.WalkStatus, error) {
 	if enter {
-		fmt.Fprintln(w, "\t\t\t<text:p text:style-name=\"Thematic Break\"/>")
+		fmt.Fprintln(w, "\t\t\t<text:p text:style-name=\"ThematicBreak\"/>")
 	}
 	return ast.WalkContinue, nil
 }
@@ -378,7 +397,7 @@ func (r *Renderer) renderThematicBreak(w io.Writer, source []byte, node *ast.The
 // renderAutoLink renders an *ast.AutoLink node to the given io.Writer.
 func (r *Renderer) renderAutoLink(w io.Writer, source []byte, node *ast.AutoLink, enter bool) (ast.WalkStatus, error) {
 	if enter {
-		fmt.Fprintf(w, "<text:a xlink:href=\"%s\">", string(node.URL(source)))
+		fmt.Fprintf(w, "<text:a xlink:type=\"simple\" xlink:href=\"%s\">", string(node.URL(source)))
 	} else {
 		fmt.Fprint(w, "</text:a>")
 	}
@@ -388,7 +407,7 @@ func (r *Renderer) renderAutoLink(w io.Writer, source []byte, node *ast.AutoLink
 // renderCodeSpan renders an *ast.CodeSpan node to the given io.Writer.
 func (r *Renderer) renderCodeSpan(w io.Writer, source []byte, node *ast.CodeSpan, enter bool) (ast.WalkStatus, error) {
 	if enter {
-		fmt.Fprint(w, "<text:span text:style-name=\"Code Span\">")
+		fmt.Fprint(w, "<text:span text:style-name=\"CodeSpan\">")
 	} else {
 		fmt.Fprint(w, "</text:span>")
 	}
@@ -400,7 +419,7 @@ func (r *Renderer) renderEmphasis(w io.Writer, source []byte, node *ast.Emphasis
 	if enter {
 		style := "Emphasis"
 		if node.Level > 1 {
-			style = "Strong Emphasis"
+			style = "StrongEmphasis"
 		}
 		fmt.Fprintf(w, "<text:span text:style-name=\"%s\">", style)
 	} else {
@@ -417,7 +436,7 @@ func (r *Renderer) renderImage(w io.Writer, source []byte, node *ast.Image, ente
 // renderLink renders an *ast.Link node to the given io.Writer.
 func (r *Renderer) renderLink(w io.Writer, source []byte, node *ast.Link, enter bool) (ast.WalkStatus, error) {
 	if enter {
-		fmt.Fprintf(w, "<text:a xlink:href=\"%s\">", string(node.Destination))
+		fmt.Fprintf(w, "<text:a xlink:type=\"simple\" xlink:href=\"%s\">", string(node.Destination))
 	} else {
 		fmt.Fprint(w, "</text:a>")
 	}

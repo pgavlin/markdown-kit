@@ -34,7 +34,7 @@ func TestCodeBlock(t *testing.T) {
 	source := "    code line 1\n    code line 2\n"
 	output := renderMarkdown(t, source)
 
-	assert.Contains(t, output, `<text:p text:style-name="Code Block">`)
+	assert.Contains(t, output, `<text:p text:style-name="CodeBlock">`)
 	assert.Contains(t, output, "code<text:s/>line<text:s/>1")
 	assert.Contains(t, output, "code<text:s/>line<text:s/>2")
 	assert.Contains(t, output, "</text:p>")
@@ -44,7 +44,7 @@ func TestFencedCodeBlock(t *testing.T) {
 	source := "```go\nfmt.Println(\"hello\")\n```\n"
 	output := renderMarkdown(t, source)
 
-	assert.Contains(t, output, `<text:p text:style-name="Code Block">`)
+	assert.Contains(t, output, `<text:p text:style-name="CodeBlock">`)
 	assert.Contains(t, output, "fmt.Println(")
 	assert.Contains(t, output, "&#34;hello&#34;")
 	assert.Contains(t, output, "</text:p>")
@@ -54,7 +54,7 @@ func TestFencedCodeBlockNoLanguage(t *testing.T) {
 	source := "```\nsome code\n```\n"
 	output := renderMarkdown(t, source)
 
-	assert.Contains(t, output, `<text:p text:style-name="Code Block">`)
+	assert.Contains(t, output, `<text:p text:style-name="CodeBlock">`)
 	assert.Contains(t, output, "some<text:s/>code")
 }
 
@@ -71,7 +71,7 @@ func TestThematicBreak(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			output := renderMarkdown(t, tt.source)
-			assert.Contains(t, output, `<text:p text:style-name="Thematic Break"/>`)
+			assert.Contains(t, output, `<text:p text:style-name="ThematicBreak"/>`)
 		})
 	}
 }
@@ -80,7 +80,7 @@ func TestAutoLink(t *testing.T) {
 	source := "<https://example.com>\n"
 	output := renderMarkdown(t, source)
 
-	assert.Contains(t, output, `<text:a xlink:href="https://example.com">`)
+	assert.Contains(t, output, `<text:a xlink:type="simple" xlink:href="https://example.com">`)
 	assert.Contains(t, output, "https://example.com")
 	assert.Contains(t, output, "</text:a>")
 }
@@ -149,7 +149,7 @@ func TestStrongEmphasis(t *testing.T) {
 	source := "**bold text**\n"
 	output := renderMarkdown(t, source)
 
-	assert.Contains(t, output, `<text:span text:style-name="Strong Emphasis">`)
+	assert.Contains(t, output, `<text:span text:style-name="StrongEmphasis">`)
 	assert.Contains(t, output, "bold text")
 	assert.Contains(t, output, "</text:span>")
 }
@@ -159,7 +159,7 @@ func TestNestedEmphasis(t *testing.T) {
 	output := renderMarkdown(t, source)
 
 	assert.Contains(t, output, `<text:span text:style-name="Emphasis">`)
-	assert.Contains(t, output, `<text:span text:style-name="Strong Emphasis">`)
+	assert.Contains(t, output, `<text:span text:style-name="StrongEmphasis">`)
 	assert.Contains(t, output, "bold and italic")
 }
 
@@ -167,7 +167,7 @@ func TestLink(t *testing.T) {
 	source := "[click here](https://example.com)\n"
 	output := renderMarkdown(t, source)
 
-	assert.Contains(t, output, `<text:a xlink:href="https://example.com">`)
+	assert.Contains(t, output, `<text:a xlink:type="simple" xlink:href="https://example.com">`)
 	assert.Contains(t, output, "click here")
 	assert.Contains(t, output, "</text:a>")
 }
@@ -178,7 +178,7 @@ func TestLinkWithSpecialChars(t *testing.T) {
 	source := "[link](https://example.com/path?q=1&r=2)\n"
 	output := renderMarkdown(t, source)
 
-	assert.Contains(t, output, `<text:a xlink:href="https://example.com/path?q=1&r=2">`)
+	assert.Contains(t, output, `<text:a xlink:type="simple" xlink:href="https://example.com/path?q=1&r=2">`)
 	assert.Contains(t, output, "link")
 	assert.Contains(t, output, "</text:a>")
 }
@@ -213,7 +213,7 @@ func TestUnorderedList(t *testing.T) {
 	source := "- item 1\n- item 2\n- item 3\n"
 	output := renderMarkdown(t, source)
 
-	assert.Contains(t, output, `<text:list text:style-name="Unordered List" text:continue-numbering="false">`)
+	assert.Contains(t, output, `<text:list text:style-name="UnorderedList" text:continue-numbering="false">`)
 	assert.Contains(t, output, "<text:list-item>")
 	assert.Contains(t, output, "</text:list-item>")
 	assert.Contains(t, output, "</text:list>")
@@ -226,7 +226,7 @@ func TestOrderedList(t *testing.T) {
 	source := "1. first\n2. second\n3. third\n"
 	output := renderMarkdown(t, source)
 
-	assert.Contains(t, output, `<text:list text:style-name="Ordered List" text:continue-numbering="false">`)
+	assert.Contains(t, output, `<text:list text:style-name="OrderedList" text:continue-numbering="false">`)
 	assert.Contains(t, output, `text:start-value="1"`)
 	assert.Contains(t, output, "<text:list-item")
 	assert.Contains(t, output, "</text:list-item>")
@@ -240,7 +240,7 @@ func TestOrderedListCustomStart(t *testing.T) {
 	source := "3. third\n4. fourth\n"
 	output := renderMarkdown(t, source)
 
-	assert.Contains(t, output, `<text:list text:style-name="Ordered List" text:continue-numbering="false">`)
+	assert.Contains(t, output, `<text:list text:style-name="OrderedList" text:continue-numbering="false">`)
 	assert.Contains(t, output, `text:start-value="3"`)
 }
 
@@ -248,7 +248,7 @@ func TestCodeSpan(t *testing.T) {
 	source := "Use the `fmt.Println` function.\n"
 	output := renderMarkdown(t, source)
 
-	assert.Contains(t, output, `<text:span text:style-name="Code Span">`)
+	assert.Contains(t, output, `<text:span text:style-name="CodeSpan">`)
 	assert.Contains(t, output, "fmt.Println")
 	assert.Contains(t, output, "</text:span>")
 }
@@ -257,7 +257,7 @@ func TestCodeSpanWithSpecialChars(t *testing.T) {
 	source := "Use `a < b && c > d` in code.\n"
 	output := renderMarkdown(t, source)
 
-	assert.Contains(t, output, `<text:span text:style-name="Code Span">`)
+	assert.Contains(t, output, `<text:span text:style-name="CodeSpan">`)
 	assert.Contains(t, output, "a &lt; b &amp;&amp; c &gt; d")
 }
 
@@ -492,34 +492,34 @@ Visit [our site](https://example.com) for more.
 
 	// Emphasis and strong
 	assert.Contains(t, output, `<text:span text:style-name="Emphasis">introductory</text:span>`)
-	assert.Contains(t, output, `<text:span text:style-name="Strong Emphasis">bold</text:span>`)
+	assert.Contains(t, output, `<text:span text:style-name="StrongEmphasis">bold</text:span>`)
 
 	// Code span
-	assert.Contains(t, output, `<text:span text:style-name="Code Span">code</text:span>`)
+	assert.Contains(t, output, `<text:span text:style-name="CodeSpan">code</text:span>`)
 
 	// Unordered list
-	assert.Contains(t, output, `<text:list text:style-name="Unordered List" text:continue-numbering="false">`)
+	assert.Contains(t, output, `<text:list text:style-name="UnorderedList" text:continue-numbering="false">`)
 	assert.Contains(t, output, "Item A")
 	assert.Contains(t, output, "Item B")
 
 	// Ordered list
-	assert.Contains(t, output, `<text:list text:style-name="Ordered List" text:continue-numbering="false">`)
+	assert.Contains(t, output, `<text:list text:style-name="OrderedList" text:continue-numbering="false">`)
 	assert.Contains(t, output, "First")
 	assert.Contains(t, output, "Second")
 
 	// Thematic break
-	assert.Contains(t, output, `<text:p text:style-name="Thematic Break"/>`)
+	assert.Contains(t, output, `<text:p text:style-name="ThematicBreak"/>`)
 
 	// Blockquote
 	assert.Contains(t, output, `<text:p text:style-name="Blockquote">`)
 	assert.Contains(t, output, "A famous quote.")
 
 	// Code block
-	assert.Contains(t, output, `<text:p text:style-name="Code Block">`)
+	assert.Contains(t, output, `<text:p text:style-name="CodeBlock">`)
 	assert.Contains(t, output, "some<text:s/>code")
 
 	// Link
-	assert.Contains(t, output, `<text:a xlink:href="https://example.com">`)
+	assert.Contains(t, output, `<text:a xlink:type="simple" xlink:href="https://example.com">`)
 	assert.Contains(t, output, "our site")
 	assert.Contains(t, output, "</text:a>")
 }
@@ -545,12 +545,12 @@ func TestListStackReset(t *testing.T) {
 	var buf1 bytes.Buffer
 	err := r.Render(&buf1, src1, parser.Parse(text.NewReader(src1)))
 	require.NoError(t, err)
-	assert.Contains(t, buf1.String(), `<text:list text:style-name="Unordered List" text:continue-numbering="false">`)
+	assert.Contains(t, buf1.String(), `<text:list text:style-name="UnorderedList" text:continue-numbering="false">`)
 
 	var buf2 bytes.Buffer
 	err = r.Render(&buf2, src2, parser.Parse(text.NewReader(src2)))
 	require.NoError(t, err)
-	assert.Contains(t, buf2.String(), `<text:list text:style-name="Ordered List" text:continue-numbering="false">`)
+	assert.Contains(t, buf2.String(), `<text:list text:style-name="OrderedList" text:continue-numbering="false">`)
 }
 
 // Regression for the Google Docs interop bug: two consecutive numbered
@@ -563,7 +563,7 @@ func TestConsecutiveOrderedListsRestartNumbering(t *testing.T) {
 	output := renderMarkdown(t, source)
 
 	// Both lists must carry the explicit restart marker.
-	starts := strings.Count(output, `<text:list text:style-name="Ordered List" text:continue-numbering="false">`)
+	starts := strings.Count(output, `<text:list text:style-name="OrderedList" text:continue-numbering="false">`)
 	assert.Equal(t, 2, starts,
 		"expected two ordered lists with explicit continue-numbering=false, got:\n%s", output)
 
