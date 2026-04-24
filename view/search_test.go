@@ -298,3 +298,55 @@ func splitLines(s string) []string {
 	}
 	return lines
 }
+
+func TestSearch_HandleSearchKey_Backspace(t *testing.T) {
+	m := newTestModelWithSearch("Hello world\n\nHello again")
+	m.search.active = true
+	m.search.mode = searchModeExact
+	m.search.query = "hello"
+	m.executeSearch()
+
+	// Backspace removes one rune.
+	m.handleSearchKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	assert.Equal(t, "hell", m.search.query)
+
+	// Backspace on empty query is a no-op.
+	m.search.query = ""
+	m.handleSearchKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	assert.Equal(t, "", m.search.query)
+}
+
+func TestSearch_HandleSearchKey_Backspace_MultibyteRune(t *testing.T) {
+	m := newTestModelWithSearch("こんにちは")
+	m.search.active = true
+	m.search.query = "こん"
+
+	m.handleSearchKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	// Must remove exactly one rune (3 bytes in UTF-8), not one byte.
+	assert.Equal(t, "こ", m.search.query,
+		"backspace should remove a full rune even when multibyte")
+}
+
+func TestSearch_HandleSearchKey_AppendsPrintable(t *testing.T) {
+	m := newTestModelWithSearch("Hello world")
+	m.search.active = true
+	m.search.mode = searchModeExact
+
+	// Typing characters appends and re-executes.
+	m.handleSearchKey(tea.KeyPressMsg{Text: "h"})
+	m.handleSearchKey(tea.KeyPressMsg{Text: "e"})
+	m.handleSearchKey(tea.KeyPressMsg{Text: "l"})
+	assert.Equal(t, "hel", m.search.query)
+	assert.Greater(t, len(m.search.matches), 0,
+		"each keystroke should re-execute the search")
+}
+
+func TestSearch_HandleSearchKey_NonPrintableIgnored(t *testing.T) {
+	m := newTestModelWithSearch("Hello world")
+	m.search.active = true
+	m.search.query = "hello"
+
+	// A key with empty Text (e.g. an arrow key) must not append anything.
+	m.handleSearchKey(tea.KeyPressMsg{Code: tea.KeyUp})
+	assert.Equal(t, "hello", m.search.query)
+}
