@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -70,9 +71,31 @@ func openLogger() (*slog.Logger, *os.File, error) {
 	return logger, f, nil
 }
 
-// handlePanic recovers from a panic, logs it to the logger, and prints a
-// user-friendly crash report to stderr. If logFile is non-nil its path is
-// included in the report so the user can find the full details.
+// writePanicReport logs the panic with stack trace and writes a human-
+// readable crash message to stderr. It is separated from handlePanic so
+// tests can exercise the formatting and logger wiring without killing
+// the test process.
+func writePanicReport(logger *slog.Logger, logFile *os.File, stderr io.Writer, r any, stack []byte) {
+	logger.Error("panic", "value", fmt.Sprint(r), "stack", string(stack))
+
+	if logFile != nil {
+		logFile.Sync()
+	}
+
+	fmt.Fprintln(stderr, "")
+	fmt.Fprintln(stderr, "md crashed unexpectedly.")
+	fmt.Fprintln(stderr, "")
+	fmt.Fprintf(stderr, "  panic: %v\n", r)
+	fmt.Fprintln(stderr, "")
+	if logFile != nil {
+		fmt.Fprintf(stderr, "Details have been written to: %s\n", logFile.Name())
+		fmt.Fprintln(stderr, "")
+	}
+	fmt.Fprintln(stderr, "Please report this issue at: https://github.com/pgavlin/markdown-kit/issues")
+}
+
+// handlePanic recovers from a panic, logs it, prints a crash report to
+// stderr, and exits the process. Intended for use with `defer`.
 func handlePanic(logger *slog.Logger, logFile *os.File) {
 	r := recover()
 	if r == nil {
@@ -82,28 +105,8 @@ func handlePanic(logger *slog.Logger, logFile *os.File) {
 	// Capture the stack trace (skip the recover/handlePanic frames).
 	buf := make([]byte, 64<<10)
 	n := runtime.Stack(buf, false)
-	stack := string(buf[:n])
 
-	// Log the panic with full stack trace.
-	logger.Error("panic", "value", fmt.Sprint(r), "stack", stack)
-
-	// Ensure the log is flushed before we exit.
-	if logFile != nil {
-		logFile.Sync()
-	}
-
-	// Print a user-friendly report to stderr.
-	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "md crashed unexpectedly.")
-	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintf(os.Stderr, "  panic: %v\n", r)
-	fmt.Fprintln(os.Stderr, "")
-	if logFile != nil {
-		fmt.Fprintf(os.Stderr, "Details have been written to: %s\n", logFile.Name())
-		fmt.Fprintln(os.Stderr, "")
-	}
-	fmt.Fprintln(os.Stderr, "Please report this issue at: https://github.com/pgavlin/markdown-kit/issues")
-
+	writePanicReport(logger, logFile, os.Stderr, r, buf[:n])
 	os.Exit(2)
 }
 
