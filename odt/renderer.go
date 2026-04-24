@@ -305,6 +305,13 @@ func (r *Renderer) renderFencedCodeBlock(w io.Writer, source []byte, node *ast.F
 }
 
 // renderList renders an *ast.List node to the given io.Writer.
+//
+// Every list emits text:continue-numbering="false" explicitly. Per ODF 1.3
+// the default is false (restart), but Google Docs (and some other
+// consumers) treat consecutive <text:list> elements sharing a style as a
+// continued list unless the attribute is stated. Making it explicit keeps
+// each numbered list numbered from its own starting value across
+// implementations.
 func (r *Renderer) renderList(w io.Writer, source []byte, node *ast.List, enter bool) (ast.WalkStatus, error) {
 	if enter {
 		r.listStack = append(r.listStack, listState{node: node, fresh: true})
@@ -314,7 +321,7 @@ func (r *Renderer) renderList(w io.Writer, source []byte, node *ast.List, enter 
 			style = "Ordered"
 		}
 
-		fmt.Fprintf(w, "\t\t\t<text:list text:style-name=\"%s List\">\n", style)
+		fmt.Fprintf(w, "\t\t\t<text:list text:style-name=\"%s List\" text:continue-numbering=\"false\">\n", style)
 	} else {
 		fmt.Fprintln(w, "\t\t\t</text:list>")
 		r.listStack = r.listStack[:len(r.listStack)-1]

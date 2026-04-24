@@ -213,7 +213,7 @@ func TestUnorderedList(t *testing.T) {
 	source := "- item 1\n- item 2\n- item 3\n"
 	output := renderMarkdown(t, source)
 
-	assert.Contains(t, output, `<text:list text:style-name="Unordered List">`)
+	assert.Contains(t, output, `<text:list text:style-name="Unordered List" text:continue-numbering="false">`)
 	assert.Contains(t, output, "<text:list-item>")
 	assert.Contains(t, output, "</text:list-item>")
 	assert.Contains(t, output, "</text:list>")
@@ -226,7 +226,7 @@ func TestOrderedList(t *testing.T) {
 	source := "1. first\n2. second\n3. third\n"
 	output := renderMarkdown(t, source)
 
-	assert.Contains(t, output, `<text:list text:style-name="Ordered List">`)
+	assert.Contains(t, output, `<text:list text:style-name="Ordered List" text:continue-numbering="false">`)
 	assert.Contains(t, output, `text:start-value="1"`)
 	assert.Contains(t, output, "<text:list-item")
 	assert.Contains(t, output, "</text:list-item>")
@@ -240,7 +240,7 @@ func TestOrderedListCustomStart(t *testing.T) {
 	source := "3. third\n4. fourth\n"
 	output := renderMarkdown(t, source)
 
-	assert.Contains(t, output, `<text:list text:style-name="Ordered List">`)
+	assert.Contains(t, output, `<text:list text:style-name="Ordered List" text:continue-numbering="false">`)
 	assert.Contains(t, output, `text:start-value="3"`)
 }
 
@@ -498,12 +498,12 @@ Visit [our site](https://example.com) for more.
 	assert.Contains(t, output, `<text:span text:style-name="Code Span">code</text:span>`)
 
 	// Unordered list
-	assert.Contains(t, output, `<text:list text:style-name="Unordered List">`)
+	assert.Contains(t, output, `<text:list text:style-name="Unordered List" text:continue-numbering="false">`)
 	assert.Contains(t, output, "Item A")
 	assert.Contains(t, output, "Item B")
 
 	// Ordered list
-	assert.Contains(t, output, `<text:list text:style-name="Ordered List">`)
+	assert.Contains(t, output, `<text:list text:style-name="Ordered List" text:continue-numbering="false">`)
 	assert.Contains(t, output, "First")
 	assert.Contains(t, output, "Second")
 
@@ -545,12 +545,33 @@ func TestListStackReset(t *testing.T) {
 	var buf1 bytes.Buffer
 	err := r.Render(&buf1, src1, parser.Parse(text.NewReader(src1)))
 	require.NoError(t, err)
-	assert.Contains(t, buf1.String(), `<text:list text:style-name="Unordered List">`)
+	assert.Contains(t, buf1.String(), `<text:list text:style-name="Unordered List" text:continue-numbering="false">`)
 
 	var buf2 bytes.Buffer
 	err = r.Render(&buf2, src2, parser.Parse(text.NewReader(src2)))
 	require.NoError(t, err)
-	assert.Contains(t, buf2.String(), `<text:list text:style-name="Ordered List">`)
+	assert.Contains(t, buf2.String(), `<text:list text:style-name="Ordered List" text:continue-numbering="false">`)
+}
+
+// Regression for the Google Docs interop bug: two consecutive numbered
+// lists would share a numbering sequence because their style names
+// matched and text:continue-numbering was absent (default is "false" but
+// Google Docs treats absence as continuation). Each list must declare
+// text:continue-numbering="false" explicitly.
+func TestConsecutiveOrderedListsRestartNumbering(t *testing.T) {
+	source := "1. one\n2. two\n\ntext between\n\n1. a\n2. b\n"
+	output := renderMarkdown(t, source)
+
+	// Both lists must carry the explicit restart marker.
+	starts := strings.Count(output, `<text:list text:style-name="Ordered List" text:continue-numbering="false">`)
+	assert.Equal(t, 2, starts,
+		"expected two ordered lists with explicit continue-numbering=false, got:\n%s", output)
+
+	// Each first list-item gets text:start-value="1" so the renderer
+	// honors the Markdown parser's Start value (1 by default).
+	starts1 := strings.Count(output, `<text:list-item text:start-value="1">`)
+	assert.Equal(t, 2, starts1,
+		"each list should explicitly start at 1")
 }
 
 func TestNestedList(t *testing.T) {
