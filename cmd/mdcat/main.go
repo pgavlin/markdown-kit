@@ -19,6 +19,7 @@ import (
 	"github.com/pgavlin/goldmark/text"
 	"github.com/pgavlin/goldmark/util"
 	"github.com/pgavlin/markdown-kit/diagram"
+	"github.com/pgavlin/markdown-kit/frontmatter"
 	"github.com/pgavlin/markdown-kit/renderer"
 	"github.com/pgavlin/markdown-kit/styles"
 	_ "github.com/pgavlin/svg2"
@@ -45,9 +46,14 @@ type renderOptions struct {
 // render parses source as Markdown and writes the ANSI-rendered form to w.
 func render(w io.Writer, source []byte, opts renderOptions) error {
 	parser := goldmark.DefaultParser()
-	parser.AddOptions(goldmark_parser.WithParagraphTransformers(
-		util.Prioritized(extension.NewTableParagraphTransformer(), 200),
-	))
+	parser.AddOptions(
+		goldmark_parser.WithParagraphTransformers(
+			util.Prioritized(extension.NewTableParagraphTransformer(), 200),
+		),
+		goldmark_parser.WithBlockParsers(
+			util.Prioritized(frontmatter.NewParser(), 0),
+		),
+	)
 	document := parser.Parse(text.NewReader(source))
 
 	imageEncoder := renderer.KittyGraphicsEncoder()
