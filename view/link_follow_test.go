@@ -84,7 +84,7 @@ func TestFollowLink_InternalAnchor(t *testing.T) {
 
 	// Prior selection was pushed onto the backstack.
 	require.Len(t, m.backstack, 1)
-	assert.Same(t, priorSelection, m.backstack[0])
+	assert.Same(t, priorSelection.Node, m.backstack[0].selectionNode)
 }
 
 func TestFollowLink_QualifiedInternalAnchor(t *testing.T) {

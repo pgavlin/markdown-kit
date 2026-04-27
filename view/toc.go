@@ -125,6 +125,40 @@ func (m *Model) openTOC() {
 	}
 }
 
+// enclosingHeading walks the span tree in document order and returns
+// the most recent *ast.Heading whose Start byte offset is at or before
+// the start of the line at lineIdx, plus that heading's 0-based ordinal
+// in document order. Returns (nil, -1) when no heading precedes the
+// line. Used by both the TOC overlay (to pre-select the enclosing
+// section) and Position() (to record an anchor key for reload mapping).
+func (m *Model) enclosingHeading(lineIdx int) (*ast.Heading, int) {
+	if m.spanTree == nil || len(m.lines) == 0 {
+		return nil, -1
+	}
+	if lineIdx >= len(m.lines) {
+		lineIdx = len(m.lines) - 1
+	}
+	if lineIdx < 0 {
+		return nil, -1
+	}
+	topOffset := m.lines[lineIdx].start
+
+	var lastHeading *ast.Heading
+	ordinal := -1
+	idx := -1
+	for s := m.spanTree; s != nil; s = s.Next {
+		if s.Start > topOffset {
+			break
+		}
+		if h, ok := s.Node.(*ast.Heading); ok {
+			lastHeading = h
+			idx++
+			ordinal = idx
+		}
+	}
+	return lastHeading, ordinal
+}
+
 // findEnclosingTOCEntry returns the index of the entry whose section covers
 // the current scroll position. Falls back to 0 if no heading precedes
 // m.lineOffset.
@@ -134,35 +168,17 @@ func (m *Model) openTOC() {
 // matching by text avoids mispicking when multiple headings share the
 // same text.
 func (m *Model) findEnclosingTOCEntry(entries []tocEntry) int {
-	if len(entries) == 0 || m.spanTree == nil || len(m.lines) == 0 {
+	if len(entries) == 0 {
 		return 0
 	}
-	lineOffset := m.lineOffset
-	if lineOffset >= len(m.lines) {
-		lineOffset = len(m.lines) - 1
-	}
-	if lineOffset < 0 {
+	_, ord := m.enclosingHeading(m.lineOffset)
+	if ord < 0 {
 		return 0
 	}
-	topOffset := m.lines[lineOffset].start
-
-	headingsBeforeOrAt := 0
-	for s := m.spanTree; s != nil; s = s.Next {
-		if s.Start > topOffset {
-			break
-		}
-		if _, ok := s.Node.(*ast.Heading); ok {
-			headingsBeforeOrAt++
-		}
+	if ord >= len(entries) {
+		return len(entries) - 1
 	}
-	if headingsBeforeOrAt == 0 {
-		return 0
-	}
-	idx := headingsBeforeOrAt - 1
-	if idx >= len(entries) {
-		idx = len(entries) - 1
-	}
-	return idx
+	return ord
 }
 
 // handleTOCKey routes keys while the overlay is active.
@@ -303,18 +319,18 @@ func (m *Model) moveTOCCursor(n int) {
 }
 
 // jumpToSelectedTOCEntry navigates to the heading at the current cursor,
-// pushes the prior selection onto the backstack (matching FollowLink), and
-// dismisses the overlay. If no entry is selected (empty matches), it only
-// dismisses.
+// pushes a snapshot of the model's location-state onto the backstack
+// (matching FollowLink), and dismisses the overlay. If no entry is
+// selected (empty matches), it only dismisses.
 func (m *Model) jumpToSelectedTOCEntry() {
 	if len(m.toc.matches) == 0 || m.toc.cursor < 0 || m.toc.cursor >= len(m.toc.matches) {
 		m.toc = tocState{}
 		return
 	}
 	entry := m.toc.allEntries[m.toc.matches[m.toc.cursor]]
-	prev := m.selection
-	if m.SelectAnchor(entry.anchor) && prev != nil {
-		m.backstack = append(m.backstack, prev)
+	pre := m.captureBackstackEntry()
+	if m.SelectAnchor(entry.anchor) && pre.selectionNode != nil {
+		m.backstack = append(m.backstack, pre)
 	}
 	m.toc = tocState{}
 }

@@ -745,11 +745,19 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			at.view.SetText(msg.name, msg.markdown)
 			at.view.SetSourcePath(msg.source)
 			at.currentSource = msg.source
+			// On reload, restore the user's reading location captured
+			// before SetText replaced the document. Skipped for fresh
+			// loads, where there's no prior position to preserve.
+			if msg.reload {
+				at.view.RestorePosition(msg.position)
+			}
 		}
 		r.loading = false
 		r.loadingURL = ""
 
-		// Navigate to the fragment anchor if present.
+		// Navigate to the fragment anchor if present. An explicit
+		// fragment is intentional user intent ("go to this anchor")
+		// and overrides any prior-position restoration.
 		if msg.fragment != "" {
 			r.active().view.SelectAnchor(msg.fragment)
 		}
@@ -1037,17 +1045,22 @@ func (r *markdownReader) reloadCurrentPage() tea.Cmd {
 	r.loading = true
 	r.loadingURL = source
 
+	// Capture the user's reading location BEFORE loading starts so we
+	// can land near it after SetText. Position is decoupled from AST
+	// node identity and survives the re-parse.
+	pos := r.active().view.Position()
+
 	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
 		r.cache.evictHTTP(source, r.logger)
-		return tea.Batch(reloadURLPage(source, r.converter, r.registry, r.cache, r.client, r.logger), r.spinner.Tick)
+		return tea.Batch(reloadURLPage(source, pos, r.converter, r.registry, r.cache, r.client, r.logger), r.spinner.Tick)
 	}
 
 	if isMarkdownFile(source) {
-		return tea.Batch(reloadFilePage(source, r.fsys, r.logger), r.spinner.Tick)
+		return tea.Batch(reloadFilePage(source, pos, r.fsys, r.logger), r.spinner.Tick)
 	}
 
 	if isConvertibleFile(source, r.registry) {
-		return tea.Batch(reloadConvertFilePage(source, r.registry, r.cache, r.fsys, r.logger), r.spinner.Tick)
+		return tea.Batch(reloadConvertFilePage(source, pos, r.registry, r.cache, r.fsys, r.logger), r.spinner.Tick)
 	}
 
 	r.loading = false

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	mdk "github.com/pgavlin/markdown-kit/view"
 )
 
 // pageLoadedMsg is sent when a page has been successfully loaded.
@@ -18,9 +19,10 @@ type pageLoadedMsg struct {
 	name     string
 	markdown string
 	source   string
-	newTab   bool   // when true, open in a new tab instead of current tab
-	reload   bool   // when true, replace current content without pushing to back stack
-	fragment string // optional anchor fragment to navigate to after loading
+	newTab   bool         // when true, open in a new tab instead of current tab
+	reload   bool         // when true, replace current content without pushing to back stack
+	fragment string       // optional anchor fragment to navigate to after loading
+	position mdk.Position // when reload==true, the location to restore after SetText
 }
 
 // pageLoadErrorMsg is sent when a page fails to load.
@@ -361,8 +363,10 @@ func fetchURLPage(rawURL, fragment string, newTab bool, conv converter, registry
 	}
 }
 
-// reloadFilePage re-reads a local markdown file and returns a reload pageLoadedMsg.
-func reloadFilePage(path string, fsys fileSystem, logger *slog.Logger) tea.Cmd {
+// reloadFilePage re-reads a local markdown file and returns a reload
+// pageLoadedMsg carrying the supplied Position so the view can restore
+// the user's reading location after SetText.
+func reloadFilePage(path string, position mdk.Position, fsys fileSystem, logger *slog.Logger) tea.Cmd {
 	return func() tea.Msg {
 		data, err := fsys.ReadFile(path)
 		if err != nil {
@@ -374,12 +378,13 @@ func reloadFilePage(path string, fsys fileSystem, logger *slog.Logger) tea.Cmd {
 			markdown: string(data),
 			source:   path,
 			reload:   true,
+			position: position,
 		}
 	}
 }
 
 // reloadConvertFilePage re-reads and re-converts a local file, returning a reload pageLoadedMsg.
-func reloadConvertFilePage(path string, registry *converterRegistry, cache *conversionCache, fsys fileSystem, logger *slog.Logger) tea.Cmd {
+func reloadConvertFilePage(path string, position mdk.Position, registry *converterRegistry, cache *conversionCache, fsys fileSystem, logger *slog.Logger) tea.Cmd {
 	return func() tea.Msg {
 		data, err := fsys.ReadFile(path)
 		if err != nil {
@@ -401,6 +406,7 @@ func reloadConvertFilePage(path string, registry *converterRegistry, cache *conv
 				markdown: cached.Markdown,
 				source:   path,
 				reload:   true,
+				position: position,
 			}
 		}
 
@@ -423,12 +429,13 @@ func reloadConvertFilePage(path string, registry *converterRegistry, cache *conv
 			markdown: cr.markdown,
 			source:   path,
 			reload:   true,
+			position: position,
 		}
 	}
 }
 
 // reloadURLPage fetches a URL and returns a reload pageLoadedMsg.
-func reloadURLPage(rawURL string, conv converter, registry *converterRegistry, cache *conversionCache, client httpClient, logger *slog.Logger) tea.Cmd {
+func reloadURLPage(rawURL string, position mdk.Position, conv converter, registry *converterRegistry, cache *conversionCache, client httpClient, logger *slog.Logger) tea.Cmd {
 	return func() tea.Msg {
 		result, err := fetchURL(rawURL, conv, registry, cache, client, logger)
 		if err != nil {
@@ -439,6 +446,7 @@ func reloadURLPage(rawURL string, conv converter, registry *converterRegistry, c
 			markdown: result.markdown,
 			source:   result.source,
 			reload:   true,
+			position: position,
 		}
 	}
 }

@@ -356,8 +356,12 @@ type Model struct {
 	// The selection, if any.
 	selection *renderer.NodeSpan
 
-	// Navigation backstack for internal link following.
-	backstack []*renderer.NodeSpan
+	// Navigation backstack for internal link following. Each entry is a
+	// snapshot of the model's location-state captured at the moment
+	// FollowLink (or jumpToSelectedTOCEntry) was invoked. AST nodes are
+	// stored directly so the entry survives invalidateLines/render
+	// cycles without needing a parallel saved-state slice.
+	backstack []backstackEntry
 
 	// The selected span byte offsets (trimmed of whitespace).
 	selectionStart, selectionEnd int
@@ -369,11 +373,10 @@ type Model struct {
 	lines []line
 
 	// Saved position state for restoring after re-render.
-	savedScrollNode    ast.Node   // AST node at lineOffset before re-render
-	savedCursorNode    ast.Node   // AST node at cursorLine before re-render
-	savedSelectionNode ast.Node   // AST node of selection before re-render
-	savedHighlight     bool       // highlightSelection before re-render
-	savedBackstack     []ast.Node // AST nodes from backstack before re-render
+	savedScrollNode    ast.Node // AST node at lineOffset before re-render
+	savedCursorNode    ast.Node // AST node at cursorLine before re-render
+	savedSelectionNode ast.Node // AST node of selection before re-render
+	savedHighlight     bool     // highlightSelection before re-render
 
 	// The last width for which the content was rendered.
 	lastWidth int
@@ -681,13 +684,9 @@ func (m *Model) invalidateLines() {
 		m.savedHighlight = m.highlightSelection
 	}
 
-	// Save backstack.
-	if len(m.backstack) > 0 {
-		m.savedBackstack = make([]ast.Node, len(m.backstack))
-		for i, s := range m.backstack {
-			m.savedBackstack[i] = s.Node
-		}
-	}
+	// Backstack entries already store AST nodes directly (see
+	// backstackEntry); they survive the invalidate→render cycle without
+	// any additional save step.
 
 	m.lines = nil
 	m.search.stale = true
@@ -726,17 +725,9 @@ func (m *Model) restorePositions() {
 		m.savedSelectionNode = nil
 	}
 
-	// Restore backstack.
-	if m.savedBackstack != nil {
-		newBackstack := make([]*renderer.NodeSpan, 0, len(m.savedBackstack))
-		for _, node := range m.savedBackstack {
-			if span := m.findSpanForNode(node); span != nil {
-				newBackstack = append(newBackstack, span)
-			}
-		}
-		m.backstack = newBackstack
-		m.savedBackstack = nil
-	}
+	// Backstack: nothing to do. Entries store AST nodes directly and are
+	// resolved to spans/lines lazily inside applyBackstackEntry, so they
+	// remain valid across the invalidate→render cycle.
 }
 
 // render renders the markdown into lines for display.
@@ -1875,28 +1866,32 @@ func (m *Model) FocusedLinkDestination() string {
 
 // FollowLink follows the currently selected internal anchor link.
 // Returns true if navigation occurred (the link was an internal anchor).
+//
+// Before navigating, a snapshot of the model's location-state is
+// captured so GoBack can restore not only the prior selection but also
+// the prior cursor position, cursor mode, and scroll offset.
 func (m *Model) FollowLink() bool {
 	link := m.FocusedLinkDestination()
 	anchor, ok := m.documentAnchor(link)
 	if !ok {
 		return false
 	}
-	selection := m.selection
-	if m.SelectAnchor(anchor) && selection != nil {
-		m.backstack = append(m.backstack, selection)
+	entry := m.captureBackstackEntry()
+	if m.SelectAnchor(anchor) && entry.selectionNode != nil {
+		m.backstack = append(m.backstack, entry)
 	}
 	return true
 }
 
-// GoBack returns to the previous selection from the backstack.
-// Returns true if there was a previous selection to return to.
+// GoBack pops the top backstack entry and restores the location-state
+// it captured. Returns true if an entry was available to pop.
 func (m *Model) GoBack() bool {
 	if len(m.backstack) == 0 {
 		return false
 	}
 	last := m.backstack[len(m.backstack)-1]
 	m.backstack = m.backstack[:len(m.backstack)-1]
-	m.SelectSpan(last, true)
+	m.applyBackstackEntry(last)
 	return true
 }
 

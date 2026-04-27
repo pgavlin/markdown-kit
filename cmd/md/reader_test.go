@@ -1678,3 +1678,63 @@ func TestUpdate_TOCDefersUppercaseBindings(t *testing.T) {
 		t.Error("expected TOCActive()=false after pressing 'esc'")
 	}
 }
+
+// Reload should preserve the user's reading position. Captured Position
+// is threaded through pageLoadedMsg{reload:true} and applied via
+// view.RestorePosition after SetText.
+func TestUpdate_ReloadPreservesPosition(t *testing.T) {
+	// Long enough to be scrollable in a 24-row viewport so SelectAnchor
+	// produces a non-zero lineOffset (which is what Position() uses to
+	// find the enclosing heading).
+	var b strings.Builder
+	b.WriteString("# Top\n\n")
+	for i := 0; i < 30; i++ {
+		b.WriteString("intro filler line\n\n")
+	}
+	b.WriteString("## Setup\n\n")
+	for i := 0; i < 30; i++ {
+		b.WriteString("setup filler\n\n")
+	}
+	b.WriteString("## Usage\n\nUsage body.\n")
+	original := b.String()
+
+	r := testReader("doc", original, "/doc.md")
+	r.width = 80
+	r.height = 24
+	r.resizeAllViews()
+
+	at := r.active()
+	// Force the view to render lines so subsequent operations have a
+	// span tree to walk.
+	_ = at.view.View()
+
+	// Scroll to a line we know is well past the Top intro and inside
+	// the Setup section. The fixture has 30 filler lines (rendered as
+	// ~60 lines including blanks), then "## Setup", then more filler.
+	// Line 80 is comfortably inside the Setup section.
+	at.view.SetLineOffset(80)
+	_ = at.view.View()
+
+	pos := at.view.Position()
+	if pos.HeadingAnchor != "setup" {
+		t.Fatalf("expected captured anchor 'setup', got %+v", pos)
+	}
+
+	// Send a reload pageLoadedMsg with the captured position. Identical
+	// content; restore should put us back under "Setup".
+	msg := pageLoadedMsg{
+		name:     "doc",
+		markdown: original,
+		source:   "/doc.md",
+		reload:   true,
+		position: pos,
+	}
+	m, _ := r.Update(msg)
+	reader := m.(markdownReader)
+
+	post := reader.active().view.Position()
+	if post.HeadingAnchor != pos.HeadingAnchor {
+		t.Errorf("reload should preserve heading anchor: pre=%q post=%q",
+			pos.HeadingAnchor, post.HeadingAnchor)
+	}
+}

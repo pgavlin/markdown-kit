@@ -239,7 +239,7 @@ func TestTOC_EnterBackstackPreservesPriorSelection(t *testing.T) {
 
 	assert.False(t, m.TOCActive())
 	require.Len(t, m.backstack, 1)
-	assert.Same(t, priorSelection, m.backstack[0])
+	assert.Same(t, priorSelection.Node, m.backstack[0].selectionNode)
 }
 
 func TestTOC_EnterWithNoPriorSelectionDoesNotPushBackstack(t *testing.T) {
