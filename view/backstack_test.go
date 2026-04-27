@@ -195,3 +195,95 @@ func TestGoBack_SurvivesReRender(t *testing.T) {
 	assert.True(t, found,
 		"restored line should be anchored at or under preScrollNode after re-render")
 }
+
+// TOC-jump pushes the same enriched entry as FollowLink: selection +
+// scroll + cursor.
+func TestTOCJump_BackstackHasFullSnapshot(t *testing.T) {
+	m := newBackstackModel(t)
+	require.True(t, m.SelectAnchor("section-a"))
+	m.lineOffset = 5
+	m.cursorMode = true
+	m.cursorPositioned = true
+	m.cursorLine = 3
+	m.cursorCol = 7
+	m.clampOffsets()
+
+	// Drive a TOC jump by hand: capture, navigate, push.
+	pre := m.captureBackstackEntry()
+	require.NotNil(t, pre.selectionNode, "section-a selection must be captured")
+	require.NotNil(t, pre.scrollNode, "scroll node must be captured")
+	require.True(t, pre.cursorPositioned)
+	require.NotNil(t, pre.cursorNode)
+	require.Equal(t, 7, pre.cursorCol)
+
+	require.True(t, m.SelectAnchor("section-b"))
+	m.backstack = append(m.backstack, pre)
+
+	// Move state away.
+	m.lineOffset = 0
+	m.cursorMode = false
+	m.cursorPositioned = false
+	m.cursorLine = 0
+	m.cursorCol = 0
+
+	// GoBack restores it all.
+	require.True(t, m.GoBack())
+	assert.True(t, m.cursorMode, "TOC-jump backstack must restore cursor mode")
+	assert.True(t, m.cursorPositioned)
+	assert.Equal(t, 7, m.cursorCol)
+}
+
+// Multi-level: push, push, pop, pop. Each pop restores the entry pushed
+// at that level, not a flattened or shuffled one.
+func TestGoBack_MultiLevelOrdering(t *testing.T) {
+	m := newBackstackModel(t)
+	require.True(t, m.SelectAnchor("section-a"))
+	m.lineOffset = 4
+	m.clampOffsets()
+	level1Cols := 11
+	m.columnOffset = level1Cols
+	first := m.captureBackstackEntry()
+	require.True(t, m.SelectAnchor("section-b"))
+	m.backstack = append(m.backstack, first)
+
+	// Now in a different state for level 2.
+	m.lineOffset = 8
+	level2Cols := 22
+	m.columnOffset = level2Cols
+	second := m.captureBackstackEntry()
+	// Push a third anchor (any will do; pretend a sub-link).
+	require.True(t, m.SelectAnchor("section-a"))
+	m.backstack = append(m.backstack, second)
+
+	require.Len(t, m.backstack, 2)
+
+	// First pop should match level 2 state (most recent push).
+	require.True(t, m.GoBack())
+	assert.Equal(t, level2Cols, m.columnOffset, "first pop restores level 2")
+
+	// Second pop should match level 1 state.
+	require.True(t, m.GoBack())
+	assert.Equal(t, level1Cols, m.columnOffset, "second pop restores level 1")
+
+	// Now empty.
+	assert.False(t, m.GoBack())
+}
+
+// applyBackstackEntry must not panic when a stored AST node fails to
+// resolve in the current span tree. We synthesize an orphan heading
+// node — never inserted into the spanTree — so findSpanForNode returns
+// nil for it and the apply path falls through gracefully.
+func TestApplyBackstackEntry_UnresolvableNode(t *testing.T) {
+	m := newBackstackModel(t)
+	orphan := ast.NewHeading(false, 2)
+	e := backstackEntry{
+		selectionNode:    orphan,
+		scrollNode:       orphan,
+		cursorNode:       orphan,
+		cursorPositioned: true,
+		cursorMode:       true,
+	}
+	assert.NotPanics(t, func() { m.applyBackstackEntry(e) })
+	// Selection should be cleared since lookup failed.
+	assert.Nil(t, m.selection)
+}

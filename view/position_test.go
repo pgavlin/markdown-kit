@@ -224,3 +224,96 @@ func TestPosition_CursorPreservedAcrossReload(t *testing.T) {
 	assert.Contains(t, m.lines[m.cursorLine].content, "second",
 		"cursor line should re-resolve to the same content")
 }
+
+// Anchor matches but the snippet is gone — the user's specific line was
+// deleted but the section still exists. RestorePosition should leave
+// the cursor at the heading's first line of the matched section.
+func TestPosition_AnchorFoundSnippetMissing(t *testing.T) {
+	original := "# Top\n\n## Setup\n\nuniquely-named-line\n\n## Usage\n\nbody\n"
+	edited := "# Top\n\n## Setup\n\ndifferent content here\n\n## Usage\n\nbody\n"
+
+	m := newPositionModel(t, original)
+	m.cursorMode = true
+	m.cursorPositioned = true
+	for i, ln := range m.lines {
+		if strings.Contains(ln.content, "uniquely-named-line") {
+			m.cursorLine = i
+			break
+		}
+	}
+	pre := m.Position()
+	require.Equal(t, "setup", pre.HeadingAnchor)
+	require.Equal(t, "uniquely-named-line", pre.LineSnippet)
+
+	m.SetText("doc.md", edited)
+	m.RestorePosition(pre)
+
+	// Anchor "setup" exists in the edited doc → cursor lands inside
+	// the Setup section even though the snippet line is gone.
+	require.True(t, m.cursorPositioned)
+	heading, _ := m.enclosingHeading(m.cursorLine)
+	require.NotNil(t, heading)
+	assert.Equal(t, "Setup", string(heading.Text(m.markdown)),
+		"cursor should land inside Setup section despite missing snippet")
+}
+
+// Anchor missing but snippet present elsewhere in the document — the
+// section was deleted but the line moved into another section.
+func TestPosition_AnchorMissingSnippetMatchesElsewhere(t *testing.T) {
+	original := "# Top\n\n## Old Section\n\nThe-portable-line is here.\n\n## Other\n\n"
+	// Old Section is gone, but the snippet line was moved under Other.
+	edited := "# Top\n\n## Other\n\nThe-portable-line is here.\n\nMore body.\n"
+
+	m := newPositionModel(t, original)
+	m.cursorMode = true
+	m.cursorPositioned = true
+	for i, ln := range m.lines {
+		if strings.Contains(ln.content, "The-portable-line") {
+			m.cursorLine = i
+			break
+		}
+	}
+	pre := m.Position()
+	require.Equal(t, "old-section", pre.HeadingAnchor)
+	require.Equal(t, "The-portable-line is here.", pre.LineSnippet)
+
+	m.SetText("doc.md", edited)
+	m.RestorePosition(pre)
+
+	// Old Section was deleted; whole-doc snippet sweep finds the line
+	// under "Other".
+	require.True(t, m.cursorPositioned)
+	assert.Contains(t, m.lines[m.cursorLine].content, "The-portable-line",
+		"whole-doc snippet sweep should pick up the moved line")
+}
+
+// HeadingIndex out of range after edits (e.g., one of two duplicate
+// sections is removed). Restore should clamp to a valid index instead
+// of panicking or falling through to top of doc.
+func TestPosition_HeadingIndexOutOfRange(t *testing.T) {
+	original := "# Top\n\n## Notes\n\nfirst notes.\n\n## Notes\n\nsecond notes.\n"
+	edited := "# Top\n\n## Notes\n\nfirst notes.\n" // second Notes section removed
+
+	m := newPositionModel(t, original)
+	m.cursorMode = true
+	m.cursorPositioned = true
+	for i, ln := range m.lines {
+		if strings.Contains(ln.content, "second notes") {
+			m.cursorLine = i
+			break
+		}
+	}
+	pre := m.Position()
+	require.Equal(t, 1, pre.HeadingIndex,
+		"capture should record HeadingIndex=1 for the second Notes section")
+
+	m.SetText("doc.md", edited)
+	require.NotPanics(t, func() { m.RestorePosition(pre) })
+
+	// HeadingIndex was 1 but only 1 Notes section now (index 0). It
+	// should clamp to 0 — cursor lands inside the remaining Notes.
+	require.True(t, m.cursorPositioned)
+	heading, _ := m.enclosingHeading(m.cursorLine)
+	require.NotNil(t, heading)
+	assert.Equal(t, "Notes", string(heading.Text(m.markdown)))
+}

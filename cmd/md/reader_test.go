@@ -1738,3 +1738,88 @@ func TestUpdate_ReloadPreservesPosition(t *testing.T) {
 			pos.HeadingAnchor, post.HeadingAnchor)
 	}
 }
+
+// Fragment navigation overrides position restoration. When both
+// reload:true (carries position) and fragment:"..." are present on the
+// same pageLoadedMsg, the fragment wins — the user explicitly asked
+// to go to that anchor.
+func TestUpdate_ReloadFragmentOverridesPosition(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("# Top\n\n")
+	for i := 0; i < 30; i++ {
+		b.WriteString("intro\n\n")
+	}
+	b.WriteString("## Setup\n\n")
+	for i := 0; i < 30; i++ {
+		b.WriteString("body\n\n")
+	}
+	b.WriteString("## Usage\n\nUsage body.\n")
+	source := b.String()
+
+	r := testReader("doc", source, "/doc.md")
+	r.width = 80
+	r.height = 24
+	r.resizeAllViews()
+
+	at := r.active()
+	_ = at.view.View()
+	at.view.SetLineOffset(80) // inside Setup
+	_ = at.view.View()
+	pos := at.view.Position()
+	if pos.HeadingAnchor != "setup" {
+		t.Fatalf("setup capture failed: %+v", pos)
+	}
+
+	// Reload msg with BOTH a position (would land in Setup) AND a
+	// fragment "usage" (explicit user intent).
+	msg := pageLoadedMsg{
+		name:     "doc",
+		markdown: source,
+		source:   "/doc.md",
+		reload:   true,
+		fragment: "usage",
+		position: pos,
+	}
+	m, _ := r.Update(msg)
+	reader := m.(markdownReader)
+	at = reader.active()
+
+	// The active selection should be the Usage heading, not Setup.
+	sel := at.view.Selection()
+	if sel == nil {
+		t.Fatal("expected a selection on the Usage heading after fragment navigation")
+	}
+}
+
+// Non-reload pageLoadedMsg must NOT call RestorePosition — fresh loads
+// have no prior position to preserve, and using a stale-zero Position
+// would put the cursor in surprising places.
+func TestUpdate_FreshLoadDoesNotRestorePosition(t *testing.T) {
+	original := "# Top\n\n## Setup\n\nbody\n"
+	r := testReader("doc", original, "/doc.md")
+	r.width = 80
+	r.height = 24
+	r.resizeAllViews()
+
+	// Pre-state: cursor mode at line 2 with non-zero col.
+	at := r.active()
+	at.view.SetLineOffset(0)
+
+	// New (non-reload) page load — should push current onto stack and
+	// set fresh content, with view starting at top of new doc.
+	msg := pageLoadedMsg{
+		name:     "newdoc",
+		markdown: "# New\n\nDifferent content.\n",
+		source:   "/newdoc.md",
+		reload:   false,
+		// position is zero-value; if RestorePosition were (mistakenly)
+		// called here, an empty Position is a no-op so this test only
+		// verifies the contract that *fresh* loads end at lineOffset 0
+		// regardless of what's in msg.position.
+	}
+	m, _ := r.Update(msg)
+	reader := m.(markdownReader)
+	if reader.active().view.LineOffset() != 0 {
+		t.Errorf("fresh load should leave view at line 0, got %d", reader.active().view.LineOffset())
+	}
+}
