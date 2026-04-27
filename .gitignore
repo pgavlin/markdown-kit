@@ -16,3 +16,8 @@
 
 # Git worktrees.
 .worktrees/
+
+# Build artifacts
+cmd/md/md
+cmd/mdcat/mdcat
+cmd/md2odt/md2odt
