@@ -68,6 +68,16 @@ the current document. Navigate with the usual movement keys, press
 Press `Esc` to close the overlay (or to exit filter mode back to the
 tree).
 
+## Document Metadata
+
+| Key | Action |
+|-----|--------|
+| {{.ToggleMetadata}} | Toggle the document metadata overlay |
+
+Press {{.ToggleMetadata}} to open a centered overlay showing the file
+path, document name, and any YAML frontmatter declared at the top of
+the document. Press {{.ToggleMetadata}} or `Esc` to close.
+
 ## Link Following
 
 `md` renders links as highlighted, navigable elements. Use {{.NextItem}} and

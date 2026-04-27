@@ -343,6 +343,7 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style, viewO
 	}, viewOpts...)
 	view := mdk.NewModel(opts...)
 	view.SetText(name, markdown)
+	view.SetSourcePath(source)
 	view.KeyMap = keys.KeyMap
 
 	wd, _ := fsys.Getwd()
@@ -442,6 +443,7 @@ func (r *markdownReader) openNewTab(name, markdown, source string) {
 	hadOneTab := len(r.tabs) == 1
 	t := r.newTab()
 	t.view.SetText(name, markdown)
+	t.view.SetSourcePath(source)
 	t.currentSource = source
 	r.tabs = append(r.tabs, t)
 	r.activeTab = len(r.tabs) - 1
@@ -665,6 +667,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				prev := at.pageStack[idx]
 				at.pageStack = at.pageStack[:idx]
 				at.view.SetText(prev.name, prev.markdown)
+				at.view.SetSourcePath(prev.source)
 				at.currentSource = prev.source
 				at.view.SetLineOffset(prev.lineOffset)
 				at.view.SetColumnOffset(prev.columnOffset)
@@ -740,6 +743,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.pushCurrentPage()
 			}
 			at.view.SetText(msg.name, msg.markdown)
+			at.view.SetSourcePath(msg.source)
 			at.currentSource = msg.source
 		}
 		r.loading = false
@@ -859,7 +863,7 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// reader's uppercase-letter bindings (H, S, F, M, T, W, I) or
 		// ctrl+c, and tree-mode navigation must not collide with the
 		// reader's tab-management keys.
-		if at.view.Searching() || at.view.GridFocused() || at.view.TOCActive() {
+		if at.view.Searching() || at.view.GridFocused() || at.view.TOCActive() || at.view.MetadataActive() {
 			var cmd tea.Cmd
 			at.view, cmd = at.view.Update(msg)
 			return r, cmd

@@ -47,6 +47,8 @@ type KeyMap struct {
 	ClearSearch key.Binding
 
 	ToggleTOC key.Binding
+
+	ToggleMetadata key.Binding
 }
 
 // DefaultKeyMap returns a KeyMap with the default key bindings matching the
@@ -186,6 +188,10 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("t"),
 			key.WithHelp("t", "toggle table of contents"),
 		),
+		ToggleMetadata: key.NewBinding(
+			key.WithKeys("m"),
+			key.WithHelp("m", "toggle metadata"),
+		),
 	}
 }
 
@@ -204,7 +210,7 @@ func (km KeyMap) FullHelp() [][]key.Binding {
 		{km.NextItem, km.PrevItem, km.NextHeading, km.PrevHeading},
 		{km.DecreaseWidth, km.IncreaseWidth},
 		{km.FollowLink, km.GoBack, km.CopySelection, km.ClearSelection, km.CursorMode, km.VisualMode},
-		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.ToggleTOC},
+		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.ToggleTOC, km.ToggleMetadata},
 	}
 }
 
@@ -225,6 +231,7 @@ func (km *KeyMap) SetEnabled(enabled bool) {
 		&km.LineStart, &km.LineEnd,
 		&km.Search, &km.NextMatch, &km.PrevMatch, &km.ClearSearch,
 		&km.ToggleTOC,
+		&km.ToggleMetadata,
 	}
 	for _, b := range bindings {
 		b.SetEnabled(enabled)

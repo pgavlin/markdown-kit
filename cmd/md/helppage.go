@@ -32,30 +32,31 @@ func fmtKey(b key.Binding) string {
 func renderHelpPage(km readerKeyMap) string {
 	data := map[string]string{
 		// View keys
-		"Up":            fmtKey(km.Up),
-		"Down":          fmtKey(km.Down),
-		"PageUp":        fmtKey(km.PageUp),
-		"PageDown":      fmtKey(km.PageDown),
-		"GotoTop":       fmtKey(km.GotoTop),
-		"GotoEnd":       fmtKey(km.GotoEnd),
-		"Home":          fmtKey(km.Home),
-		"End":           fmtKey(km.End),
-		"Left":          fmtKey(km.Left),
-		"Right":         fmtKey(km.Right),
-		"NextItem":      fmtKey(km.NextItem),
-		"PrevItem":      fmtKey(km.PrevItem),
-		"NextHeading":   fmtKey(km.NextHeading),
-		"PrevHeading":   fmtKey(km.PrevHeading),
-		"DecreaseWidth": fmtKey(km.DecreaseWidth),
-		"IncreaseWidth": fmtKey(km.IncreaseWidth),
-		"FollowLink":    fmtKey(km.FollowLink),
-		"GoBack":        fmtKey(km.GoBack),
-		"CopySelection": fmtKey(km.CopySelection),
-		"Search":        fmtKey(km.Search),
-		"NextMatch":     fmtKey(km.NextMatch),
-		"PrevMatch":     fmtKey(km.PrevMatch),
-		"ClearSearch":   fmtKey(km.ClearSearch),
-		"ToggleTOC":     fmtKey(km.ToggleTOC),
+		"Up":             fmtKey(km.Up),
+		"Down":           fmtKey(km.Down),
+		"PageUp":         fmtKey(km.PageUp),
+		"PageDown":       fmtKey(km.PageDown),
+		"GotoTop":        fmtKey(km.GotoTop),
+		"GotoEnd":        fmtKey(km.GotoEnd),
+		"Home":           fmtKey(km.Home),
+		"End":            fmtKey(km.End),
+		"Left":           fmtKey(km.Left),
+		"Right":          fmtKey(km.Right),
+		"NextItem":       fmtKey(km.NextItem),
+		"PrevItem":       fmtKey(km.PrevItem),
+		"NextHeading":    fmtKey(km.NextHeading),
+		"PrevHeading":    fmtKey(km.PrevHeading),
+		"DecreaseWidth":  fmtKey(km.DecreaseWidth),
+		"IncreaseWidth":  fmtKey(km.IncreaseWidth),
+		"FollowLink":     fmtKey(km.FollowLink),
+		"GoBack":         fmtKey(km.GoBack),
+		"CopySelection":  fmtKey(km.CopySelection),
+		"Search":         fmtKey(km.Search),
+		"NextMatch":      fmtKey(km.NextMatch),
+		"PrevMatch":      fmtKey(km.PrevMatch),
+		"ClearSearch":    fmtKey(km.ClearSearch),
+		"ToggleTOC":      fmtKey(km.ToggleTOC),
+		"ToggleMetadata": fmtKey(km.ToggleMetadata),
 		// Reader keys
 		"ToggleSource":    fmtKey(km.ToggleSource),
 		"OpenFile":        fmtKey(km.OpenFile),
@@ -138,6 +139,7 @@ func renderHelpOverlay(km readerKeyMap) string {
 	lines = append(lines, binding(km.GoBack, "Go back"))
 	lines = append(lines, binding(km.History, "Page history"))
 	lines = append(lines, binding(km.ToggleTOC, "Table of contents"))
+	lines = append(lines, binding(km.ToggleMetadata, "Document metadata"))
 
 	lines = append(lines, sectionStyle.Render("Search"))
 	lines = append(lines, binding(km.Search, "Search in page"))

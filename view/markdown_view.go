@@ -19,6 +19,7 @@ import (
 	goldmark_renderer "github.com/pgavlin/goldmark/renderer"
 	"github.com/pgavlin/goldmark/text"
 	"github.com/pgavlin/goldmark/util"
+	"github.com/pgavlin/markdown-kit/frontmatter"
 	"github.com/pgavlin/markdown-kit/indexer"
 	"github.com/pgavlin/markdown-kit/renderer"
 )
@@ -326,6 +327,16 @@ type Model struct {
 	// The name of the document.
 	name string
 
+	// Optional filesystem path of the document, surfaced in the metadata
+	// overlay so users can see where the open document lives. Embedders
+	// set this with SetSourcePath; "" means unknown / not from disk.
+	sourcePath string
+
+	// Decoded YAML frontmatter, populated by SetText when the document
+	// starts with a frontmatter block. nil when there is no frontmatter
+	// (or the YAML failed to parse).
+	frontmatter map[string]any
+
 	// The raw Markdown.
 	markdown []byte
 
@@ -409,6 +420,9 @@ type Model struct {
 	// Table-of-contents overlay state.
 	toc tocState
 
+	// Metadata overlay state (file path + frontmatter view).
+	metadata metadataState
+
 	// Document transformers to apply after parsing.
 	documentTransformers []DocumentTransformer
 
@@ -474,11 +488,34 @@ func (m *Model) Clear() {
 	m.focusedGrid = nil
 	m.search = searchState{}
 	m.toc = tocState{}
+	m.metadata = metadataState{}
+	m.frontmatter = nil
 }
 
 // GetName returns the document name.
 func (m *Model) GetName() string {
 	return m.name
+}
+
+// SetSourcePath records the filesystem path of the open document. The
+// path is surfaced in the metadata overlay alongside any YAML
+// frontmatter. Pass "" to clear (e.g., when the document was loaded
+// from a URL or pipe).
+func (m *Model) SetSourcePath(path string) {
+	m.sourcePath = path
+}
+
+// SourcePath returns the filesystem path previously set via SetSourcePath,
+// or "" if none.
+func (m *Model) SourcePath() string {
+	return m.sourcePath
+}
+
+// Frontmatter returns the document's parsed YAML frontmatter, or nil if
+// the document has none (or the YAML failed to decode). The returned
+// map is the live one stored on the Model; callers must not mutate it.
+func (m *Model) Frontmatter() map[string]any {
+	return m.frontmatter
 }
 
 // GetMarkdown returns the raw markdown bytes.
@@ -492,10 +529,26 @@ func (m *Model) SetText(name, markdown string) {
 	m.Clear()
 	m.markdown = []byte(markdown)
 	parser := goldmark.DefaultParser()
-	parser.AddOptions(goldmark_parser.WithParagraphTransformers(
-		util.Prioritized(extension.NewTableParagraphTransformer(), 200),
-	))
+	parser.AddOptions(
+		goldmark_parser.WithParagraphTransformers(
+			util.Prioritized(extension.NewTableParagraphTransformer(), 200),
+		),
+		goldmark_parser.WithBlockParsers(
+			util.Prioritized(frontmatter.NewParser(), 0),
+		),
+	)
 	m.document = parser.Parse(text.NewReader(m.markdown))
+
+	// Decode frontmatter (if any) into m.frontmatter. Decode failure
+	// shouldn't kill SetText — it just means the user's YAML is malformed
+	// and we surface no metadata for it.
+	m.frontmatter = nil
+	if fm := frontmatter.Find(m.document); fm != nil {
+		var meta map[string]any
+		if err := frontmatter.Decode(fm, m.markdown, &meta); err == nil {
+			m.frontmatter = meta
+		}
+	}
 	for _, t := range m.documentTransformers {
 		t(m.document, m.markdown)
 	}
@@ -1050,6 +1103,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.handleTOCKey(msg)
 	}
 
+	if m.metadata.active {
+		return m.handleMetadataKey(msg)
+	}
+
 	// Handle visual mode keys.
 	if m.visualMode {
 		cmd, handled := m.handleVisualKey(msg)
@@ -1109,6 +1166,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	case key.Matches(msg, m.KeyMap.ToggleTOC):
 		m.openTOC()
+		return nil
+
+	case key.Matches(msg, m.KeyMap.ToggleMetadata):
+		m.openMetadata()
 		return nil
 
 	case key.Matches(msg, m.KeyMap.GotoTop):
@@ -1332,6 +1393,9 @@ func (m Model) View() string {
 	base := buf.String()
 	if m.toc.active {
 		base = m.renderTOCOverlay(base)
+	}
+	if m.metadata.active {
+		base = m.renderMetadataOverlay(base)
 	}
 	return base
 }

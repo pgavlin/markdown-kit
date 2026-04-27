@@ -141,3 +141,61 @@ func TestSchemaValidates_GoldenFixture(t *testing.T) {
 	out, err := validateAgainstSchema(t, contentSchemaPath, content)
 	require.NoError(t, err, "golden fixture content.xml should validate:\n%s", out)
 }
+
+// Frontmatter with title/author/date should produce a valid meta.xml
+// part that validates against the schema and a manifest that lists it.
+func TestSchemaValidates_MetaFromFrontmatter(t *testing.T) {
+	requireXMLLint(t)
+	source := `---
+title: My Doc
+author: Pat
+date: 2026-04-26T10:00:00Z
+description: A test document.
+tags: [a, b, c]
+---
+
+# Body
+
+Hello.
+`
+	odt := renderODT(t, source)
+
+	// meta.xml part exists.
+	meta := extractODFPart(t, odt, "meta.xml")
+	out, err := validateAgainstSchema(t, contentSchemaPath, meta)
+	require.NoError(t, err, "meta.xml should validate:\n%s", out)
+
+	// Frontmatter values landed in the expected ODF metadata fields.
+	metaStr := string(meta)
+	require.Contains(t, metaStr, "<dc:title>My Doc</dc:title>")
+	require.Contains(t, metaStr, "<dc:creator>Pat</dc:creator>")
+	require.Contains(t, metaStr, "<meta:initial-creator>Pat</meta:initial-creator>")
+	require.Contains(t, metaStr, "<meta:creation-date>2026-04-26T10:00:00Z</meta:creation-date>")
+	require.Contains(t, metaStr, "<dc:description>A test document.</dc:description>")
+	require.Contains(t, metaStr, "<meta:keyword>a</meta:keyword>")
+	require.Contains(t, metaStr, "<meta:keyword>b</meta:keyword>")
+	require.Contains(t, metaStr, "<meta:keyword>c</meta:keyword>")
+
+	// Manifest references meta.xml.
+	manifest := extractODFPart(t, odt, "META-INF/manifest.xml")
+	require.Contains(t, string(manifest), `manifest:full-path="meta.xml"`)
+	manOut, err := validateAgainstSchema(t, manifestSchemaPath, manifest)
+	require.NoError(t, err, "manifest with meta.xml should validate:\n%s", manOut)
+}
+
+// A document with no frontmatter must NOT produce a meta.xml part —
+// otherwise the manifest reference would be dangling.
+func TestSchemaValidates_NoMetaWithoutFrontmatter(t *testing.T) {
+	requireXMLLint(t)
+	odt := renderODT(t, "# Title\n\nBody.\n")
+
+	zr, err := zip.NewReader(bytes.NewReader(odt), int64(len(odt)))
+	require.NoError(t, err)
+	for _, f := range zr.File {
+		require.NotEqual(t, "meta.xml", f.Name,
+			"meta.xml must not be emitted when there is no frontmatter")
+	}
+
+	manifest := extractODFPart(t, odt, "META-INF/manifest.xml")
+	require.NotContains(t, string(manifest), "meta.xml")
+}
