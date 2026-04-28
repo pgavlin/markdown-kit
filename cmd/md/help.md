@@ -220,10 +220,12 @@ to the rendered view.
 | Key | Action |
 |-----|--------|
 | {{.CopySelection}} | Copy the selected code block to clipboard |
+| {{.CopySource}} | Copy the entire Markdown source to clipboard |
 
 When a code block is selected (navigate to one using {{.NextItem}} /
 {{.PrevItem}}), press {{.CopySelection}} to copy its contents to your
-system clipboard.
+system clipboard. Press {{.CopySource}} at any time to copy the entire
+Markdown source of the current document.
 
 ## Export
 

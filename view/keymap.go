@@ -31,6 +31,7 @@ type KeyMap struct {
 	GoBack     key.Binding
 
 	CopySelection  key.Binding
+	CopySource     key.Binding
 	ClearSelection key.Binding
 
 	CursorMode  key.Binding
@@ -136,6 +137,10 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("y"),
 			key.WithHelp("y", "copy current selection"),
 		),
+		CopySource: key.NewBinding(
+			key.WithKeys("Y"),
+			key.WithHelp("Y", "copy entire markdown source"),
+		),
 		ClearSelection: key.NewBinding(
 			key.WithKeys("esc"),
 			key.WithHelp("esc", "clear selection"),
@@ -209,7 +214,7 @@ func (km KeyMap) FullHelp() [][]key.Binding {
 		{km.Left, km.Right, km.Home, km.End},
 		{km.NextItem, km.PrevItem, km.NextHeading, km.PrevHeading},
 		{km.DecreaseWidth, km.IncreaseWidth},
-		{km.FollowLink, km.GoBack, km.CopySelection, km.ClearSelection, km.CursorMode, km.VisualMode},
+		{km.FollowLink, km.GoBack, km.CopySelection, km.CopySource, km.ClearSelection, km.CursorMode, km.VisualMode},
 		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.ToggleTOC, km.ToggleMetadata},
 	}
 }

@@ -1217,6 +1217,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if content := m.focusedContent(); content != "" {
 			return tea.SetClipboard(content)
 		}
+	case key.Matches(msg, m.KeyMap.CopySource):
+		if len(m.markdown) > 0 {
+			return tea.SetClipboard(string(m.markdown))
+		}
 	}
 	return nil
 }

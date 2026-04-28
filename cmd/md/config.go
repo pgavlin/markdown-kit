@@ -321,6 +321,7 @@ func (c config) applyKeys(km *readerKeyMap) {
 		"follow_link":    &km.FollowLink,
 		"go_back":        &km.GoBack,
 		"copy_selection": &km.CopySelection,
+		"copy_source":    &km.CopySource,
 		"search":         &km.Search,
 		"next_match":     &km.NextMatch,
 		"prev_match":     &km.PrevMatch,

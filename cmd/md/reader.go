@@ -157,9 +157,9 @@ func (km readerKeyMap) FullHelp() [][]key.Binding {
 		// Navigation
 		{km.Home, km.End, km.NextItem, km.PrevItem, km.NextHeading, km.PrevHeading, km.ToggleTOC},
 		// Actions
-		{km.FollowLink, km.GoBack, km.History, km.SearchDocuments, km.FindSimilar, km.Reload, km.CopySelection, km.OpenFile, km.OpenURL, km.OpenBrowser, km.DecreaseWidth, km.IncreaseWidth},
+		{km.FollowLink, km.GoBack, km.History, km.Reload, km.CopySelection, km.CopySource, km.OpenFile, km.OpenURL, km.OpenBrowser, km.DecreaseWidth, km.IncreaseWidth},
 		// Search & View
-		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.ToggleSource, km.ToggleInteractiveTables},
+		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.SearchDocuments, km.FindSimilar, km.ToggleSource, km.ToggleInteractiveTables},
 		// Tabs & General
 		{km.NextTab, km.PrevTab, km.CloseTab, km.CloseAllTabs, km.NewTab, km.OpenFileNewTab, km.UserGuide, km.BugReport, km.ExportGist, km.Help, km.Quit},
 	}

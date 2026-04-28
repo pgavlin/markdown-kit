@@ -51,6 +51,7 @@ func renderHelpPage(km readerKeyMap) string {
 		"FollowLink":     fmtKey(km.FollowLink),
 		"GoBack":         fmtKey(km.GoBack),
 		"CopySelection":  fmtKey(km.CopySelection),
+		"CopySource":     fmtKey(km.CopySource),
 		"Search":         fmtKey(km.Search),
 		"NextMatch":      fmtKey(km.NextMatch),
 		"PrevMatch":      fmtKey(km.PrevMatch),
@@ -160,6 +161,7 @@ func renderHelpOverlay(km readerKeyMap) string {
 
 	lines = append(lines, sectionStyle.Render("Actions"))
 	lines = append(lines, binding(km.CopySelection, "Copy selection"))
+	lines = append(lines, binding(km.CopySource, "Copy source"))
 	lines = append(lines, binding(km.OpenBrowser, "Open in browser"))
 	lines = append(lines, binding(km.ToggleSource, "View source"))
 	lines = append(lines, binding(km.DecreaseWidth, "Decrease width"))
