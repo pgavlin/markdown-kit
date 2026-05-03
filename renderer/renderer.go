@@ -436,6 +436,8 @@ func (r *Renderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 	reg.Register(xast.KindTableHeader, r.RenderTableHeader)
 	reg.Register(xast.KindTableRow, r.RenderTableRow)
 	reg.Register(xast.KindTableCell, r.RenderTableCell)
+	reg.Register(xast.KindFootnote, r.RenderFootnote)
+	reg.Register(xast.KindFootnoteList, r.RenderFootnoteList)
 
 	// inlines
 	reg.Register(ast.KindAutoLink, r.RenderAutoLink)
@@ -447,6 +449,8 @@ func (r *Renderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 	reg.Register(ast.KindText, r.RenderText)
 	reg.Register(ast.KindString, r.RenderString)
 	reg.Register(ast.KindWhitespace, r.RenderWhitespace)
+	reg.Register(xast.KindFootnoteLink, r.RenderFootnoteLink)
+	reg.Register(xast.KindFootnoteBackLink, r.RenderFootnoteBackLink)
 }
 
 // SpanTree returns the root of the rendered document's span tree. This tree maps AST nodes to their representative
@@ -2663,5 +2667,114 @@ func (r *Renderer) RenderTableCell(w util.BufWriter, source []byte, node ast.Nod
 		}
 	}
 
+	return ast.WalkContinue, nil
+}
+
+// RenderFootnoteList renders an *xast.FootnoteList node to the given BufWriter.
+// The list opens with a horizontal rule that visually separates the footnote
+// definitions from the body of the document.
+func (r *Renderer) RenderFootnoteList(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+	if !enter {
+		if err := r.CloseBlock(w); err != nil {
+			return ast.WalkStop, err
+		}
+		return ast.WalkContinue, nil
+	}
+
+	if err := r.OpenBlock(w, source, node); err != nil {
+		return ast.WalkStop, err
+	}
+
+	if r.theme == nil {
+		if _, err := r.WriteString(w, "***\n"); err != nil {
+			return ast.WalkStop, err
+		}
+	} else {
+		width := r.wordWrap
+		if width <= 0 {
+			width = 80
+		}
+		if err := r.writeSGR(w, "2"); err != nil {
+			return ast.WalkStop, err
+		}
+		if _, err := r.WriteString(w, strings.Repeat("─", width)); err != nil {
+			return ast.WalkStop, err
+		}
+		if err := r.writeSGR(w, "22"); err != nil {
+			return ast.WalkStop, err
+		}
+		if _, err := r.WriteString(w, "\n"); err != nil {
+			return ast.WalkStop, err
+		}
+	}
+
+	return ast.WalkContinue, nil
+}
+
+// RenderFootnote renders an *xast.Footnote node to the given BufWriter as an
+// indented entry prefixed with `[N]:`. The trailing space is supplied by the
+// child paragraph's source leading whitespace, so continuation lines indent by
+// len(marker)+1.
+//
+// The marker is written with word wrap disabled so that it leaves the
+// buffered-write path before the indent is pushed; otherwise the indent
+// would be applied to the marker's own line.
+func (r *Renderer) RenderFootnote(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+	fn := node.(*xast.Footnote)
+	marker := fmt.Sprintf("[%d]:", fn.Index)
+	if enter {
+		if err := r.OpenBlock(w, source, node); err != nil {
+			return ast.WalkStop, err
+		}
+
+		r.PushWordWrap(false)
+		if err := r.PushStyle(w, chroma.GenericUnderline); err != nil {
+			return ast.WalkStop, err
+		}
+		if _, err := r.WriteString(w, marker); err != nil {
+			return ast.WalkStop, err
+		}
+		if err := r.PopStyle(w); err != nil {
+			return ast.WalkStop, err
+		}
+		r.PopWordWrap()
+		r.PushIndent(len(marker) + 1)
+	} else {
+		r.PopPrefix()
+		if err := r.CloseBlock(w); err != nil {
+			return ast.WalkStop, err
+		}
+	}
+	return ast.WalkContinue, nil
+}
+
+// RenderFootnoteLink renders an *xast.FootnoteLink node as `[N]`, styled like a link.
+func (r *Renderer) RenderFootnoteLink(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+	if !enter {
+		return ast.WalkContinue, nil
+	}
+
+	link := node.(*xast.FootnoteLink)
+
+	r.OpenSpan(node)
+	defer r.CloseSpan()
+
+	if err := r.PushStyle(w, chroma.GenericUnderline); err != nil {
+		return ast.WalkStop, err
+	}
+	if _, err := r.WriteString(w, fmt.Sprintf("[%d]", link.Index)); err != nil {
+		return ast.WalkStop, err
+	}
+	if err := r.PopStyle(w); err != nil {
+		return ast.WalkStop, err
+	}
+
+	return ast.WalkContinue, nil
+}
+
+// RenderFootnoteBackLink renders an *xast.FootnoteBackLink. Back-links exist in
+// the AST so HTML can hyperlink back from the footnote body to its reference;
+// the terminal renderer drops them.
+func (r *Renderer) RenderFootnoteBackLink(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	return ast.WalkContinue, nil
 }

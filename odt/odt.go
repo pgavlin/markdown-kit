@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/pgavlin/goldmark"
+	"github.com/pgavlin/goldmark/extension"
 	"github.com/pgavlin/goldmark/parser"
 	mdtext "github.com/pgavlin/goldmark/text"
 	"github.com/pgavlin/goldmark/util"
@@ -176,9 +177,18 @@ func FromMarkdown(w io.Writer, markdown []byte, renderOptions ...RenderOption) e
 	// by virtue of having no node renderer registered for it) instead
 	// of being treated as paragraph content.
 	p := goldmark.DefaultParser()
-	p.AddOptions(parser.WithBlockParsers(
-		util.Prioritized(frontmatter.NewParser(), 0),
-	))
+	p.AddOptions(
+		parser.WithBlockParsers(
+			util.Prioritized(frontmatter.NewParser(), 0),
+			util.Prioritized(extension.NewFootnoteBlockParser(), 999),
+		),
+		parser.WithInlineParsers(
+			util.Prioritized(extension.NewFootnoteParser(), 101),
+		),
+		parser.WithASTTransformers(
+			util.Prioritized(extension.NewFootnoteASTTransformer(), 999),
+		),
+	)
 	doc := p.Parse(mdtext.NewReader(markdown))
 
 	// If frontmatter is present, emit meta.xml so authoring metadata

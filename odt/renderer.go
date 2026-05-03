@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/pgavlin/goldmark/ast"
+	xast "github.com/pgavlin/goldmark/extension/ast"
 	mdtext "github.com/pgavlin/goldmark/text"
 )
 
@@ -77,6 +78,18 @@ func (r *Renderer) Render(w io.Writer, source []byte, n ast.Node) error {
 			return r.renderText(w, source, n, enter)
 		case *ast.String:
 			return r.renderString(w, source, n, enter)
+
+		// extension blocks
+		case *xast.FootnoteList:
+			return r.renderFootnoteList(w, source, n, enter)
+		case *xast.Footnote:
+			return r.renderFootnote(w, source, n, enter)
+
+		// extension inlines
+		case *xast.FootnoteLink:
+			return r.renderFootnoteLink(w, source, n, enter)
+		case *xast.FootnoteBackLink:
+			return ast.WalkContinue, nil
 		}
 
 		return ast.WalkContinue, nil
@@ -151,6 +164,11 @@ const prolog = `<?xml version="1.0" encoding="UTF-8"?>
 		<!-- Code span -->
 		<style:style style:family="text" style:name="CodeSpan">
 			<style:text-properties style:font-name="Monospace" fo:background-color="#f6f8fa" fo:color="#000000"/>
+		</style:style>
+
+		<!-- Footnote reference (e.g. [1] inline marker) -->
+		<style:style style:family="text" style:name="FootnoteRef">
+			<style:text-properties style:text-position="super 58%" fo:font-size="83%"/>
 		</style:style>
 	</office:automatic-styles>
 
@@ -464,6 +482,39 @@ func (r *Renderer) renderString(w io.Writer, source []byte, node *ast.String, en
 		if err := escapeText(w, node.Value, false); err != nil {
 			return ast.WalkStop, err
 		}
+	}
+	return ast.WalkContinue, nil
+}
+
+// renderFootnoteList renders an *xast.FootnoteList node. The list opens with a
+// thematic break separating the footnote definitions from the document body
+// and contains one ordered-list item per footnote.
+func (r *Renderer) renderFootnoteList(w io.Writer, source []byte, node *xast.FootnoteList, enter bool) (ast.WalkStatus, error) {
+	if enter {
+		fmt.Fprintln(w, "\t\t\t<text:p text:style-name=\"ThematicBreak\"/>")
+		fmt.Fprintln(w, "\t\t\t<text:list text:style-name=\"OrderedList\" text:continue-numbering=\"false\">")
+	} else {
+		fmt.Fprintln(w, "\t\t\t</text:list>")
+	}
+	return ast.WalkContinue, nil
+}
+
+// renderFootnote renders an *xast.Footnote node as a list-item; the children
+// (paragraphs) emit their own <text:p> elements inside it.
+func (r *Renderer) renderFootnote(w io.Writer, source []byte, node *xast.Footnote, enter bool) (ast.WalkStatus, error) {
+	if enter {
+		fmt.Fprintln(w, "\t\t\t<text:list-item>")
+	} else {
+		fmt.Fprintln(w, "\t\t\t</text:list-item>")
+	}
+	return ast.WalkContinue, nil
+}
+
+// renderFootnoteLink renders an *xast.FootnoteLink as a small superscript
+// reference [N] using the FootnoteRef style.
+func (r *Renderer) renderFootnoteLink(w io.Writer, source []byte, node *xast.FootnoteLink, enter bool) (ast.WalkStatus, error) {
+	if enter {
+		fmt.Fprintf(w, "<text:span text:style-name=\"FootnoteRef\">[%d]</text:span>", node.Index)
 	}
 	return ast.WalkContinue, nil
 }

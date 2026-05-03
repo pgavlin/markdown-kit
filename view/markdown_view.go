@@ -294,7 +294,7 @@ func (m *Model) isHeadingOrAnchor(n ast.Node) (bool, bool) {
 }
 
 // isNavigable matches all navigable elements: links, code blocks, headings,
-// and HTML anchor nodes.
+// HTML anchor nodes, and footnote references.
 func (m *Model) isNavigable(n ast.Node) (bool, bool) {
 	switch n.Kind() {
 	case ast.KindAutoLink, ast.KindLink:
@@ -304,6 +304,8 @@ func (m *Model) isNavigable(n ast.Node) (bool, bool) {
 	case ast.KindHeading:
 		return true, true
 	case xast.KindTable:
+		return true, true
+	case xast.KindFootnoteLink:
 		return true, true
 	}
 	if m.anchorNodes[n] {
@@ -538,6 +540,13 @@ func (m *Model) SetText(name, markdown string) {
 		),
 		goldmark_parser.WithBlockParsers(
 			util.Prioritized(frontmatter.NewParser(), 0),
+			util.Prioritized(extension.NewFootnoteBlockParser(), 999),
+		),
+		goldmark_parser.WithInlineParsers(
+			util.Prioritized(extension.NewFootnoteParser(), 101),
+		),
+		goldmark_parser.WithASTTransformers(
+			util.Prioritized(extension.NewFootnoteASTTransformer(), 999),
 		),
 	)
 	m.document = parser.Parse(text.NewReader(m.markdown))
@@ -1875,6 +1884,12 @@ func (m *Model) FocusedLinkDestination() string {
 // captured so GoBack can restore not only the prior selection but also
 // the prior cursor position, cursor mode, and scroll offset.
 func (m *Model) FollowLink() bool {
+	if m.selection != nil {
+		if fn, ok := m.selection.Node.(*xast.FootnoteLink); ok {
+			return m.followFootnote(fn.Index)
+		}
+	}
+
 	link := m.FocusedLinkDestination()
 	anchor, ok := m.documentAnchor(link)
 	if !ok {
@@ -1882,6 +1897,28 @@ func (m *Model) FollowLink() bool {
 	}
 	entry := m.captureBackstackEntry()
 	if m.SelectAnchor(anchor) && entry.selectionNode != nil {
+		m.backstack = append(m.backstack, entry)
+	}
+	return true
+}
+
+// followFootnote selects the footnote definition with the given index,
+// pushing the prior location onto the backstack so GoBack returns to it.
+func (m *Model) followFootnote(index int) bool {
+	selector := func(node ast.Node) (bool, bool) {
+		if fn, ok := node.(*xast.Footnote); ok && fn.Index == index {
+			return false, true
+		}
+		return false, false
+	}
+	entry := m.captureBackstackEntry()
+	if !m.SelectNext(selector) {
+		m.selection = nil
+		if !m.SelectNext(selector) {
+			return false
+		}
+	}
+	if entry.selectionNode != nil {
 		m.backstack = append(m.backstack, entry)
 	}
 	return true

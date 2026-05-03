@@ -7,7 +7,10 @@ import (
 
 	"github.com/pgavlin/goldmark"
 	"github.com/pgavlin/goldmark/ast"
+	"github.com/pgavlin/goldmark/extension"
+	"github.com/pgavlin/goldmark/parser"
 	"github.com/pgavlin/goldmark/text"
+	"github.com/pgavlin/goldmark/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -602,4 +605,42 @@ func TestTextSoftLineBreak(t *testing.T) {
 	assert.Contains(t, output, `<text:p text:style-name="Paragraph">`)
 	assert.Contains(t, output, "line one")
 	assert.Contains(t, output, "line two")
+}
+
+// renderMarkdownWithFootnotes parses and renders markdown with the footnote
+// extension wired in.
+func renderMarkdownWithFootnotes(t *testing.T, source string) string {
+	t.Helper()
+
+	src := []byte(source)
+	p := goldmark.DefaultParser()
+	p.AddOptions(
+		parser.WithBlockParsers(
+			util.Prioritized(extension.NewFootnoteBlockParser(), 999),
+		),
+		parser.WithInlineParsers(
+			util.Prioritized(extension.NewFootnoteParser(), 101),
+		),
+		parser.WithASTTransformers(
+			util.Prioritized(extension.NewFootnoteASTTransformer(), 999),
+		),
+	)
+	document := p.Parse(text.NewReader(src))
+
+	var buf bytes.Buffer
+	r := NewRenderer("serif", "monospace")
+	require.NoError(t, r.Render(&buf, src, document))
+	return buf.String()
+}
+
+func TestFootnotes(t *testing.T) {
+	source := "Hello[^a] world[^b].\n\n[^a]: First note.\n[^b]: Second note.\n"
+	output := renderMarkdownWithFootnotes(t, source)
+
+	assert.Contains(t, output, `<text:span text:style-name="FootnoteRef">[1]</text:span>`)
+	assert.Contains(t, output, `<text:span text:style-name="FootnoteRef">[2]</text:span>`)
+	assert.Contains(t, output, `<text:p text:style-name="ThematicBreak"/>`)
+	assert.Contains(t, output, `<text:list text:style-name="OrderedList" text:continue-numbering="false">`)
+	assert.Contains(t, output, "First note.")
+	assert.Contains(t, output, "Second note.")
 }

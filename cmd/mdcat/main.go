@@ -52,6 +52,13 @@ func render(w io.Writer, source []byte, opts renderOptions) error {
 		),
 		goldmark_parser.WithBlockParsers(
 			util.Prioritized(frontmatter.NewParser(), 0),
+			util.Prioritized(extension.NewFootnoteBlockParser(), 999),
+		),
+		goldmark_parser.WithInlineParsers(
+			util.Prioritized(extension.NewFootnoteParser(), 101),
+		),
+		goldmark_parser.WithASTTransformers(
+			util.Prioritized(extension.NewFootnoteASTTransformer(), 999),
 		),
 	)
 	document := parser.Parse(text.NewReader(source))

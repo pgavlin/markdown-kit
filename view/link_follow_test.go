@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/pgavlin/goldmark/ast"
+	xast "github.com/pgavlin/goldmark/extension/ast"
 	"github.com/pgavlin/markdown-kit/styles"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -167,6 +168,56 @@ func TestSelectAnchor_HTMLAnchor(t *testing.T) {
 	require.NotNil(t, m.selection)
 	// Selection should be on the HTML block containing the <a id="target">.
 	assert.Equal(t, ast.KindHTMLBlock, m.selection.Node.Kind())
+}
+
+func TestFollowLink_FootnoteLink(t *testing.T) {
+	md := "# Top\n\nSee[^a] this.\n\n[^a]: The note.\n"
+	m := NewModel(WithTheme(styles.Pulumi), WithWidth(80), WithHeight(24))
+	m.SetText("doc.md", md)
+
+	// Select the footnote reference.
+	matched := m.SelectNext(func(n ast.Node) (bool, bool) {
+		if _, ok := n.(*xast.FootnoteLink); ok {
+			return true, true
+		}
+		return false, false
+	})
+	require.True(t, matched, "document should contain a footnote reference")
+	priorSelection := m.selection
+	require.NotNil(t, priorSelection)
+
+	ok := m.FollowLink()
+	require.True(t, ok, "FollowLink should follow a footnote reference")
+
+	// Selection should land on the matching Footnote node.
+	fn, isFootnote := m.selection.Node.(*xast.Footnote)
+	require.True(t, isFootnote, "selection should land on a Footnote, got %T", m.selection.Node)
+	assert.Equal(t, 1, fn.Index)
+
+	// Backstack records the prior selection so GoBack returns to it.
+	require.Len(t, m.backstack, 1)
+	assert.Same(t, priorSelection.Node, m.backstack[0].selectionNode)
+}
+
+func TestIsNavigable_FootnoteLink(t *testing.T) {
+	md := "Body[^a].\n\n[^a]: Note.\n"
+	m := NewModel(WithTheme(styles.Pulumi), WithWidth(80), WithHeight(24))
+	m.SetText("doc.md", md)
+
+	count := 0
+	m.SelectFirstVisible(m.isNavigable)
+	for {
+		if m.selection == nil {
+			break
+		}
+		if _, ok := m.selection.Node.(*xast.FootnoteLink); ok {
+			count++
+		}
+		if !m.SelectNext(m.isNavigable) {
+			break
+		}
+	}
+	assert.Equal(t, 1, count, "isNavigable should select exactly one footnote reference")
 }
 
 func TestSelectAnchor_MultipleOccurrencesCycleForward(t *testing.T) {

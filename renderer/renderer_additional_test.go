@@ -57,6 +57,34 @@ func renderMarkdownWithTables(t *testing.T, input string, options ...RendererOpt
 	return buf.String(), r
 }
 
+// renderMarkdownWithFootnotes is a helper that parses and renders markdown with the footnote extension enabled.
+func renderMarkdownWithFootnotes(t *testing.T, input string, options ...RendererOption) (string, *Renderer) {
+	t.Helper()
+
+	source := []byte(input)
+	parser := goldmark.DefaultParser()
+	parser.AddOptions(
+		goldmark_parser.WithBlockParsers(
+			util.Prioritized(extension.NewFootnoteBlockParser(), 999),
+		),
+		goldmark_parser.WithInlineParsers(
+			util.Prioritized(extension.NewFootnoteParser(), 101),
+		),
+		goldmark_parser.WithASTTransformers(
+			util.Prioritized(extension.NewFootnoteASTTransformer(), 999),
+		),
+	)
+	document := parser.Parse(text.NewReader(source))
+
+	var buf bytes.Buffer
+	r := New(options...)
+	gmr := goldmark_renderer.NewRenderer(goldmark_renderer.WithNodeRenderers(util.Prioritized(r, 100)))
+	err := gmr.Render(&buf, source, document)
+	require.NoError(t, err)
+
+	return buf.String(), r
+}
+
 // TestTableRendering verifies that GFM tables are rendered with Unicode box-drawing borders.
 func TestTableRendering(t *testing.T) {
 	input := "| A | B |\n| - | - |\n| 1 | 2 |\n"
@@ -1484,4 +1512,18 @@ func TestTableRenderer_SpanTree(t *testing.T) {
 	}
 	walkSpans(spanTree)
 	assert.True(t, found, "span tree should contain a Link span registered by the callback")
+}
+
+// TestFootnoteRendering verifies that markdown footnote references and definitions
+// produce inline [N] markers in body text and a separated definition list at the end.
+func TestFootnoteRendering(t *testing.T) {
+	input := "Hello[^a] world[^b].\n\n[^a]: First note.\n[^b]: Second note.\n"
+
+	output, _ := renderMarkdownWithFootnotes(t, input)
+	stripped := ansi.Strip(output)
+
+	assert.Contains(t, stripped, "Hello[1]", "inline reference should be rendered as [1]")
+	assert.Contains(t, stripped, "world[2]", "inline reference should be rendered as [2]")
+	assert.Contains(t, stripped, "[1]: First note.", "footnote definition should appear as [1]: ...")
+	assert.Contains(t, stripped, "[2]: Second note.", "footnote definition should appear as [2]: ...")
 }
