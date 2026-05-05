@@ -65,3 +65,24 @@ func TestTopLine_EmptyDoc(t *testing.T) {
 	assert.Equal(t, "", snippet)
 	assert.Equal(t, 0, occ)
 }
+
+func TestTopLine_BlankReferenceLineReturnsEmpty(t *testing.T) {
+	// Block-level whitespace-only line -- after ANSI strip and trim,
+	// lineSnippet produces "" and TopLine should bail with (0, 0).
+	md := "\n\n# Heading\n\nBody.\n"
+	m := newPositionModel(t, md)
+	require.Greater(t, len(m.lines), 0)
+	// Force the cursor onto a blank line if any exists; otherwise rely
+	// on lineOffset 0 producing a blank rendered line.
+	for i, ln := range m.lines {
+		if lineSnippet(ln.content) == "" {
+			m.cursorMode = true
+			m.cursorPositioned = true
+			m.cursorLine = i
+			break
+		}
+	}
+	snippet, occ := m.TopLine()
+	assert.Equal(t, "", snippet)
+	assert.Equal(t, 0, occ)
+}

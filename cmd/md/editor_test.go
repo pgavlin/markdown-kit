@@ -129,6 +129,13 @@ func TestEditorCommand_EmptyEditorAfterParse(t *testing.T) {
 	assert.Equal(t, []string{"vi", "+3", "/x.md"}, args)
 }
 
+func TestEditorCommand_MalformedEditorReturnsError(t *testing.T) {
+	// Unclosed double quote -- shell.Fields rejects.
+	_, err := editorCommand(envFromMap(map[string]string{"EDITOR": `vim "+set`}), "/x.md", 3)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parsing editor command")
+}
+
 func TestEditorCommand_BasenameDetection(t *testing.T) {
 	args, err := editorCommand(envFromMap(map[string]string{"EDITOR": "/usr/local/bin/code"}), "/x.md", 3)
 	require.NoError(t, err)
