@@ -8,7 +8,7 @@ import (
 	"github.com/pgavlin/goldmark"
 	"github.com/pgavlin/goldmark/ast"
 	"github.com/pgavlin/goldmark/extension"
-	"github.com/pgavlin/goldmark/parser"
+	goldmark_parser "github.com/pgavlin/goldmark/parser"
 	"github.com/pgavlin/goldmark/text"
 	"github.com/pgavlin/goldmark/util"
 	"github.com/stretchr/testify/assert"
@@ -615,13 +615,13 @@ func renderMarkdownWithFootnotes(t *testing.T, source string) string {
 	src := []byte(source)
 	p := goldmark.DefaultParser()
 	p.AddOptions(
-		parser.WithBlockParsers(
+		goldmark_parser.WithBlockParsers(
 			util.Prioritized(extension.NewFootnoteBlockParser(), 999),
 		),
-		parser.WithInlineParsers(
+		goldmark_parser.WithInlineParsers(
 			util.Prioritized(extension.NewFootnoteParser(), 101),
 		),
-		parser.WithASTTransformers(
+		goldmark_parser.WithASTTransformers(
 			util.Prioritized(extension.NewFootnoteASTTransformer(), 999),
 		),
 	)
@@ -643,4 +643,28 @@ func TestFootnotes(t *testing.T) {
 	assert.Contains(t, output, `<text:list text:style-name="OrderedList" text:continue-numbering="false">`)
 	assert.Contains(t, output, "First note.")
 	assert.Contains(t, output, "Second note.")
+}
+
+func renderMarkdownWithTaskList(t *testing.T, source string) string {
+	t.Helper()
+
+	src := []byte(source)
+	p := goldmark.DefaultParser()
+	p.AddOptions(goldmark_parser.WithInlineParsers(
+		util.Prioritized(extension.NewTaskCheckBoxParser(), 0),
+	))
+	document := p.Parse(text.NewReader(src))
+
+	var buf bytes.Buffer
+	r := NewRenderer("serif", "monospace")
+	require.NoError(t, r.Render(&buf, src, document))
+	return buf.String()
+}
+
+func TestTaskList(t *testing.T) {
+	source := "- [ ] unchecked\n- [x] checked\n"
+	output := renderMarkdownWithTaskList(t, source)
+
+	assert.Contains(t, output, "☐ unchecked")
+	assert.Contains(t, output, "✓ checked")
 }

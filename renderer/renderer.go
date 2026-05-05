@@ -439,6 +439,9 @@ func (r *Renderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 	reg.Register(xast.KindFootnote, r.RenderFootnote)
 	reg.Register(xast.KindFootnoteList, r.RenderFootnoteList)
 
+	// extension inlines
+	reg.Register(xast.KindTaskCheckBox, r.RenderTaskCheckBox)
+
 	// inlines
 	reg.Register(ast.KindAutoLink, r.RenderAutoLink)
 	reg.Register(ast.KindCodeSpan, r.RenderCodeSpan)
@@ -1366,27 +1369,46 @@ func (r *Renderer) RenderListItem(w util.BufWriter, source []byte, node ast.Node
 		// TODO:
 		// - case 227, a code block following a list item
 
+		// A task list item starts with a TaskCheckBox; the checkbox glyph
+		// stands in for the bullet/number marker. We emit the glyph here
+		// (in the marker slot) and rely on RenderTaskCheckBox being a
+		// no-op so the same character isn't written twice.
+		taskGlyph, isTask := taskListMarker(node)
+
 		markerWidth := 2
 		state := &r.listStack[len(r.listStack)-1]
 		if state.ordered {
-			width, err := r.WriteString(w, strconv.FormatInt(int64(state.index), 10))
-			if err != nil {
-				return ast.WalkStop, err
+			if !isTask {
+				width, err := r.WriteString(w, strconv.FormatInt(int64(state.index), 10))
+				if err != nil {
+					return ast.WalkStop, err
+				}
+				markerWidth += width
 			}
 			state.index++
-			markerWidth += width
 		}
-		if _, err := r.Write(w, []byte{state.marker, ' '}); err != nil {
-			return ast.WalkStop, err
+		if isTask {
+			if _, err := r.WriteString(w, taskGlyph); err != nil {
+				return ast.WalkStop, err
+			}
+		} else {
+			if _, err := r.Write(w, []byte{state.marker, ' '}); err != nil {
+				return ast.WalkStop, err
+			}
 		}
 
 		ws := node.LeadingWhitespace()
 		offset := markerWidth + ws.Len()
-		if o := node.(*ast.ListItem).Offset; offset < o {
-			if _, err := r.Write(w, bytes.Repeat([]byte{' '}, o-offset)); err != nil {
-				return ast.WalkStop, err
+		// Task items always consume exactly the checkbox glyph's width;
+		// the ordered list's natural Offset (room for "1. ") would force
+		// an extra padding space if we let it expand here.
+		if !isTask {
+			if o := node.(*ast.ListItem).Offset; offset < o {
+				if _, err := r.Write(w, bytes.Repeat([]byte{' '}, o-offset)); err != nil {
+					return ast.WalkStop, err
+				}
+				offset = o
 			}
-			offset = o
 		}
 		r.PushIndent(offset)
 	} else {
@@ -1396,6 +1418,35 @@ func (r *Renderer) RenderListItem(w util.BufWriter, source []byte, node ast.Node
 		}
 	}
 
+	return ast.WalkContinue, nil
+}
+
+// taskListMarker returns the checkbox glyph that should stand in for a task
+// list item's bullet/number marker. The second return is false when node is
+// not a task list item.
+func taskListMarker(node ast.Node) (string, bool) {
+	li, ok := node.(*ast.ListItem)
+	if !ok {
+		return "", false
+	}
+	first := li.FirstChild()
+	if first == nil {
+		return "", false
+	}
+	cb, ok := first.FirstChild().(*xast.TaskCheckBox)
+	if !ok {
+		return "", false
+	}
+	if cb.IsChecked {
+		return "✓ ", true
+	}
+	return "☐ ", true
+}
+
+// RenderTaskCheckBox is a no-op: the checkbox glyph is emitted by
+// RenderListItem in the bullet/number marker slot, so re-rendering it
+// here would double the glyph.
+func (r *Renderer) RenderTaskCheckBox(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	return ast.WalkContinue, nil
 }
 

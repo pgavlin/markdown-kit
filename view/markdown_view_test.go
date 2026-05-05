@@ -130,6 +130,22 @@ func TestModel_ANSIPrefixAfterScroll(t *testing.T) {
 		"scrolled output should start with ANSI prefix to restore theme colors")
 }
 
+func TestModel_TaskList(t *testing.T) {
+	// SetText must wire the GFM task-checkbox parser so task syntax in
+	// the source produces checkbox glyphs (with no leading bullet) in
+	// the rendered view.
+	m := NewModel(WithTheme(styles.Pulumi))
+	m.SetText("tasks.md", "- [ ] write tests\n- [x] ship feature\n- regular item\n")
+	m.SetSize(80, 24)
+
+	stripped := ansi.Strip(m.View())
+	assert.Contains(t, stripped, "☐ write tests")
+	assert.Contains(t, stripped, "✓ ship feature")
+	assert.Contains(t, stripped, "- regular item")
+	assert.NotContains(t, stripped, "- ☐")
+	assert.NotContains(t, stripped, "- ✓")
+}
+
 func TestView_NoLineExceedsTerminalWidth(t *testing.T) {
 	// Regression test: tab characters in code blocks caused ansi.StringWidth
 	// to undercount the visible width (tabs return 0). The right padding was

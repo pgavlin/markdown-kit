@@ -544,6 +544,7 @@ func (m *Model) SetText(name, markdown string) {
 		),
 		goldmark_parser.WithInlineParsers(
 			util.Prioritized(extension.NewFootnoteParser(), 101),
+			util.Prioritized(extension.NewTaskCheckBoxParser(), 0),
 		),
 		goldmark_parser.WithASTTransformers(
 			util.Prioritized(extension.NewFootnoteASTTransformer(), 999),

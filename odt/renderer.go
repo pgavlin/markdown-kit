@@ -90,6 +90,8 @@ func (r *Renderer) Render(w io.Writer, source []byte, n ast.Node) error {
 			return r.renderFootnoteLink(w, source, n, enter)
 		case *xast.FootnoteBackLink:
 			return ast.WalkContinue, nil
+		case *xast.TaskCheckBox:
+			return r.renderTaskCheckBox(w, source, n, enter)
 		}
 
 		return ast.WalkContinue, nil
@@ -147,6 +149,16 @@ const prolog = `<?xml version="1.0" encoding="UTF-8"?>
 					<style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="0.5in" fo:text-indent="-0.25in" fo:margin-left="0.5in"/>
 				</style:list-level-properties>
 			</text:list-level-style-number>
+		</text:list-style>
+
+		<!-- Task lists: the checkbox glyph stands in for the bullet, so the
+		     list-level style emits a space instead of a visible marker. -->
+		<text:list-style style:name="TaskList">
+			<text:list-level-style-bullet text:level="1" text:bullet-char=" ">
+				<style:list-level-properties text:list-level-position-and-space-mode="label-alignment">
+					<style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="0.5in" fo:text-indent="-0.25in" fo:margin-left="0.5in"/>
+				</style:list-level-properties>
+			</text:list-level-style-bullet>
 		</text:list-style>
 
 		<!-- Inline styles -->
@@ -345,7 +357,10 @@ func (r *Renderer) renderList(w io.Writer, source []byte, node *ast.List, enter 
 		r.listStack = append(r.listStack, listState{node: node, fresh: true})
 
 		style := "UnorderedList"
-		if node.IsOrdered() {
+		switch {
+		case isTaskListItem(node.FirstChild()):
+			style = "TaskList"
+		case node.IsOrdered():
 			style = "OrderedList"
 		}
 
@@ -515,6 +530,39 @@ func (r *Renderer) renderFootnote(w io.Writer, source []byte, node *xast.Footnot
 func (r *Renderer) renderFootnoteLink(w io.Writer, source []byte, node *xast.FootnoteLink, enter bool) (ast.WalkStatus, error) {
 	if enter {
 		fmt.Fprintf(w, "<text:span text:style-name=\"FootnoteRef\">[%d]</text:span>", node.Index)
+	}
+	return ast.WalkContinue, nil
+}
+
+// isTaskListItem reports whether node is a list item whose first block opens
+// with a TaskCheckBox (the GFM task-list shape).
+func isTaskListItem(node ast.Node) bool {
+	li, ok := node.(*ast.ListItem)
+	if !ok {
+		return false
+	}
+	first := li.FirstChild()
+	if first == nil {
+		return false
+	}
+	inner := first.FirstChild()
+	if inner == nil {
+		return false
+	}
+	_, ok = inner.(*xast.TaskCheckBox)
+	return ok
+}
+
+// renderTaskCheckBox renders an *xast.TaskCheckBox node to the given io.Writer.
+func (r *Renderer) renderTaskCheckBox(w io.Writer, source []byte, node *xast.TaskCheckBox, enter bool) (ast.WalkStatus, error) {
+	if enter {
+		check := "☐ "
+		if node.IsChecked {
+			check = "✓ "
+		}
+		if _, err := io.WriteString(w, check); err != nil {
+			return ast.WalkStop, err
+		}
 	}
 	return ast.WalkContinue, nil
 }

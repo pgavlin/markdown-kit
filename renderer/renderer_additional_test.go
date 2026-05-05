@@ -1527,3 +1527,103 @@ func TestFootnoteRendering(t *testing.T) {
 	assert.Contains(t, stripped, "[1]: First note.", "footnote definition should appear as [1]: ...")
 	assert.Contains(t, stripped, "[2]: Second note.", "footnote definition should appear as [2]: ...")
 }
+
+// renderMarkdownWithTaskList is a helper that parses and renders markdown with task list support enabled.
+func renderMarkdownWithTaskList(t *testing.T, input string, options ...RendererOption) (string, *Renderer) {
+	t.Helper()
+
+	source := []byte(input)
+	parser := goldmark.DefaultParser()
+	parser.AddOptions(goldmark_parser.WithInlineParsers(
+		util.Prioritized(extension.NewTaskCheckBoxParser(), 0),
+	))
+	document := parser.Parse(text.NewReader(source))
+
+	var buf bytes.Buffer
+	r := New(options...)
+	gmr := goldmark_renderer.NewRenderer(goldmark_renderer.WithNodeRenderers(util.Prioritized(r, 100)))
+	err := gmr.Render(&buf, source, document)
+	require.NoError(t, err)
+
+	return buf.String(), r
+}
+
+func TestTaskListRendering(t *testing.T) {
+	input := "- [ ] unchecked item\n- [x] checked item\n- [ ] another unchecked\n"
+	output, _ := renderMarkdownWithTaskList(t, input)
+
+	stripped := ansi.Strip(output)
+	assert.Contains(t, stripped, "☐ unchecked item")
+	assert.Contains(t, stripped, "✓ checked item")
+	assert.Contains(t, stripped, "☐ another unchecked")
+
+	// The checkbox stands in for the bullet, so no "- " marker should
+	// precede the checkbox glyph.
+	assert.NotContains(t, stripped, "- ☐")
+	assert.NotContains(t, stripped, "- ✓")
+}
+
+func TestOrderedTaskList(t *testing.T) {
+	// Pure ordered task list: every marker is a checkbox; no "1." / "2."
+	// numbers should leak through.
+	output, _ := renderMarkdownWithTaskList(t, "1. [ ] first\n2. [x] second\n")
+	stripped := ansi.Strip(output)
+	assert.Contains(t, stripped, "☐ first")
+	assert.Contains(t, stripped, "✓ second")
+	assert.NotContains(t, stripped, "1.")
+	assert.NotContains(t, stripped, "2.")
+
+	// Mixed ordered list: a task item consumes the slot but writes the
+	// checkbox in place of the number, so the regular item that follows
+	// reflects its own ordinal position. This locks in the "always
+	// advance state.index" choice in RenderListItem.
+	output, _ = renderMarkdownWithTaskList(t, "1. regular one\n2. [ ] task two\n3. regular three\n")
+	stripped = ansi.Strip(output)
+	assert.Contains(t, stripped, "1. regular one")
+	assert.Contains(t, stripped, "☐ task two")
+	assert.Contains(t, stripped, "3. regular three")
+	assert.NotContains(t, stripped, "2. ☐")
+}
+
+func TestTaskListWrappedIndent(t *testing.T) {
+	// A task item whose body is wider than the wrap width must continue
+	// on the next line at column 2 (the same column the body starts on),
+	// matching how a regular bullet item indents its continuation.
+	input := "- [ ] this is a task whose body is long enough to wrap onto a continuation line\n"
+	output, _ := renderMarkdownWithTaskList(t, input, WithWordWrap(40), WithSoftBreak(true))
+
+	stripped := ansi.Strip(output)
+	lines := strings.Split(strings.TrimRight(stripped, "\n"), "\n")
+	require.GreaterOrEqual(t, len(lines), 2, "wrap should produce at least two lines: %q", stripped)
+
+	first := strings.TrimRight(lines[0], " ")
+	assert.True(t, strings.HasPrefix(first, "☐ "),
+		"first line should open with the checkbox glyph: %q", first)
+
+	second := strings.TrimRight(lines[1], " ")
+	assert.True(t, strings.HasPrefix(second, "  ") && !strings.HasPrefix(second, "   "),
+		"continuation line should be indented exactly two spaces: %q", second)
+	assert.False(t, strings.HasPrefix(strings.TrimLeft(second, " "), "☐"),
+		"continuation should not repeat the checkbox glyph: %q", second)
+}
+
+func TestTaskListMixedWithRegularItems(t *testing.T) {
+	input := "- [ ] task item\n- regular item\n- [x] done item\n"
+	output, _ := renderMarkdownWithTaskList(t, input)
+
+	stripped := ansi.Strip(output)
+	assert.Contains(t, stripped, "☐ task item")
+	assert.Contains(t, stripped, "- regular item")
+	assert.Contains(t, stripped, "✓ done item")
+	// Task lines must not carry a redundant bullet; regular lines must.
+	lines := strings.Split(stripped, "\n")
+	for _, line := range lines {
+		switch {
+		case strings.Contains(line, "task item"), strings.Contains(line, "done item"):
+			assert.NotContains(t, line, "- ", "task line should not have a bullet: %q", line)
+		case strings.Contains(line, "regular item"):
+			assert.NotContains(t, line, "☐")
+			assert.NotContains(t, line, "✓")
+		}
+	}
+}

@@ -184,6 +184,7 @@ func FromMarkdown(w io.Writer, markdown []byte, renderOptions ...RenderOption) e
 		),
 		parser.WithInlineParsers(
 			util.Prioritized(extension.NewFootnoteParser(), 101),
+			util.Prioritized(extension.NewTaskCheckBoxParser(), 0),
 		),
 		parser.WithASTTransformers(
 			util.Prioritized(extension.NewFootnoteASTTransformer(), 999),
