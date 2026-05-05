@@ -246,6 +246,27 @@ clipboard automatically. Requires `gh` to be installed and authenticated.
 Reloads the current document from disk or re-fetches the URL. Useful when a
 file has been edited externally.
 
+## Edit
+
+| Key | Action |
+|-----|--------|
+| {{.Edit}} | Open the current document in `$EDITOR` |
+
+Suspends the reader and opens the current file in your editor with the cursor
+near the line you were reading. `$VISUAL` is preferred over `$EDITOR`; `vi` is
+used as a fallback. When you exit the editor, the reader reloads the file and
+restores your reading position.
+
+Recognized editors: vi, vim, nvim, nano, emacs, jed, joe, kak, kakoune
+(launched as `<editor> +<line> <file>`); VS Code, Cursor, VSCodium
+(`<editor> -g <file>:<line>`); Sublime, Zed, Helix, micro
+(`<editor> <file>:<line>`); JetBrains IDEs (`<editor> --line <line> <file>`).
+For forking GUI editors (VS Code, Cursor, Sublime, Zed, VSCodium), `--wait` is
+added automatically if your `$EDITOR` doesn't already include `-w`, `--wait`,
+or `-n`.
+
+Editing is only available for local Markdown files.
+
 ## Help
 
 | Key | Action |
