@@ -176,6 +176,36 @@ func TestFullHelp(t *testing.T) {
 	}
 }
 
+func TestDefaultReaderKeyMap_HasEdit(t *testing.T) {
+	km := defaultReaderKeyMap()
+	if !km.Edit.Enabled() {
+		t.Fatal("Edit binding should be enabled by default")
+	}
+	keys := km.Edit.Keys()
+	found := false
+	for _, k := range keys {
+		if k == "E" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Edit binding should include E, got %v", keys)
+	}
+}
+
+func TestFullHelp_IncludesEdit(t *testing.T) {
+	km := defaultReaderKeyMap()
+	rows := km.FullHelp()
+	for _, row := range rows {
+		for _, b := range row {
+			if b.Help().Key == "E" && b.Help().Desc == "edit" {
+				return
+			}
+		}
+	}
+	t.Fatal("FullHelp should include the Edit binding (E -> edit)")
+}
+
 // --- renderHelpPage ---
 
 func TestRenderHelpPage(t *testing.T) {

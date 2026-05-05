@@ -45,6 +45,7 @@ type readerKeyMap struct {
 	FindSimilar             key.Binding
 	UserGuide               key.Binding
 	BugReport               key.Binding
+	Edit                    key.Binding
 	ExportGist              key.Binding
 	ToggleInteractiveTables key.Binding
 	Help                    key.Binding
@@ -123,6 +124,10 @@ func defaultReaderKeyMap() readerKeyMap {
 			key.WithKeys("ctrl+b"),
 			key.WithHelp("ctrl+b", "bug report"),
 		),
+		Edit: key.NewBinding(
+			key.WithKeys("E"),
+			key.WithHelp("E", "edit"),
+		),
 		ExportGist: key.NewBinding(
 			key.WithKeys("ctrl+g"),
 			key.WithHelp("ctrl+g", "export gist"),
@@ -157,7 +162,7 @@ func (km readerKeyMap) FullHelp() [][]key.Binding {
 		// Navigation
 		{km.Home, km.End, km.NextItem, km.PrevItem, km.NextHeading, km.PrevHeading, km.ToggleTOC},
 		// Actions
-		{km.FollowLink, km.GoBack, km.History, km.Reload, km.CopySelection, km.CopySource, km.OpenFile, km.OpenURL, km.OpenBrowser, km.DecreaseWidth, km.IncreaseWidth},
+		{km.FollowLink, km.GoBack, km.History, km.Reload, km.CopySelection, km.CopySource, km.OpenFile, km.OpenURL, km.OpenBrowser, km.Edit, km.DecreaseWidth, km.IncreaseWidth},
 		// Search & View
 		{km.Search, km.NextMatch, km.PrevMatch, km.ClearSearch, km.SearchDocuments, km.FindSimilar, km.ToggleSource, km.ToggleInteractiveTables},
 		// Tabs & General
