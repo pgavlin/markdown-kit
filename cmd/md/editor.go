@@ -4,11 +4,40 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"mvdan.cc/sh/v3/shell"
 )
+
+// editorRunner abstracts launching the user's editor so tests can
+// substitute a fake. The production implementation suspends the TUI
+// via tea.ExecProcess; tests synthesize editorDoneMsg directly.
+type editorRunner interface {
+	Run(args []string) tea.Cmd
+}
+
+// osEditorRunner runs the editor as a subprocess wired to the
+// terminal via tea.ExecProcess. Returns a tea.Cmd that, when the
+// process exits, dispatches editorDoneMsg.
+type osEditorRunner struct{}
+
+func (osEditorRunner) Run(args []string) tea.Cmd {
+	if len(args) == 0 {
+		return func() tea.Msg { return editorDoneMsg{err: fmt.Errorf("empty editor command")} }
+	}
+	cmd := exec.Command(args[0], args[1:]...)
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		return editorDoneMsg{err: err}
+	})
+}
+
+// editorDoneMsg is dispatched when the editor subprocess exits.
+type editorDoneMsg struct {
+	err error
+}
 
 type editorFamily int
 

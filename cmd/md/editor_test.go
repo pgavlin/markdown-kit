@@ -3,9 +3,26 @@ package main
 import (
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type fakeEditorRunner struct {
+	calls [][]string
+	err   error
+	onRun func(args []string)
+}
+
+func (f *fakeEditorRunner) Run(args []string) tea.Cmd {
+	cp := append([]string(nil), args...)
+	f.calls = append(f.calls, cp)
+	if f.onRun != nil {
+		f.onRun(cp)
+	}
+	err := f.err
+	return func() tea.Msg { return editorDoneMsg{err: err} }
+}
 
 func envFromMap(m map[string]string) func(string) string {
 	return func(name string) string { return m[name] }
@@ -146,6 +163,23 @@ func TestFindSourceLine_EmptySnippetReturnsOne(t *testing.T) {
 func TestFindSourceLine_TrimsWhitespaceForComparison(t *testing.T) {
 	src := "# Top\n\n   indented body   \n"
 	assert.Equal(t, 3, findSourceLine([]byte(src), "indented body", 0))
+}
+
+func TestFakeEditorRunner_RecordsCallAndEmitsDoneMsg(t *testing.T) {
+	r := &fakeEditorRunner{}
+	cmd := r.Run([]string{"vi", "+3", "/x.md"})
+	require.Len(t, r.calls, 1)
+	assert.Equal(t, []string{"vi", "+3", "/x.md"}, r.calls[0])
+
+	msg := cmd()
+	done, ok := msg.(editorDoneMsg)
+	require.True(t, ok)
+	require.NoError(t, done.err)
+}
+
+func TestEditorRunnerInterface(t *testing.T) {
+	var _ editorRunner = osEditorRunner{}
+	var _ editorRunner = (*fakeEditorRunner)(nil)
 }
 
 func TestCanEditSource(t *testing.T) {
