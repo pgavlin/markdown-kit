@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -120,4 +122,45 @@ func editorCommand(env func(name string) string, file string, line int) ([]strin
 		out = append(out, fmt.Sprintf("+%d", line), file)
 	}
 	return out, nil
+}
+
+// findSourceLine returns the 1-based line in source whose trimmed
+// content equals snippet, taking the occurrence-th match. If the
+// requested occurrence is past the last match, falls back to the
+// first match. If snippet is empty or never matches, returns 1.
+func findSourceLine(source []byte, snippet string, occurrence int) int {
+	if snippet == "" {
+		return 1
+	}
+	scanner := bufio.NewScanner(bytes.NewReader(source))
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	var matches []int
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		if strings.TrimSpace(scanner.Text()) == snippet {
+			matches = append(matches, lineNum)
+		}
+	}
+	if len(matches) == 0 {
+		return 1
+	}
+	if occurrence >= 0 && occurrence < len(matches) {
+		return matches[occurrence]
+	}
+	return matches[0]
+}
+
+// canEditSource reports whether the given source path can be edited
+// via $EDITOR. True only for non-empty, non-URL local markdown files.
+// Convertible non-markdown files (.docx, .html, ...) are excluded
+// because their on-disk form doesn't round-trip through markdown.
+func canEditSource(source string) bool {
+	if source == "" {
+		return false
+	}
+	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
+		return false
+	}
+	return isMarkdownFile(source)
 }

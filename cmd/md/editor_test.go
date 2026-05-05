@@ -117,3 +117,54 @@ func TestEditorCommand_BasenameDetection(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"/usr/local/bin/code", "--wait", "-g", "/x.md:3"}, args)
 }
+
+func TestFindSourceLine_FirstOccurrence(t *testing.T) {
+	src := "# Top\n\nfirst line\n\nrepeat\n\nrepeat\n"
+	assert.Equal(t, 3, findSourceLine([]byte(src), "first line", 0))
+}
+
+func TestFindSourceLine_NthOccurrence(t *testing.T) {
+	src := "# Top\n\nrepeat\n\nrepeat\n"
+	assert.Equal(t, 5, findSourceLine([]byte(src), "repeat", 1))
+}
+
+func TestFindSourceLine_OvershotOccurrenceFallsBackToFirst(t *testing.T) {
+	src := "# Top\n\nrepeat\n"
+	assert.Equal(t, 3, findSourceLine([]byte(src), "repeat", 5))
+}
+
+func TestFindSourceLine_NotFoundReturnsOne(t *testing.T) {
+	src := "# Top\n\nbody\n"
+	assert.Equal(t, 1, findSourceLine([]byte(src), "missing", 0))
+}
+
+func TestFindSourceLine_EmptySnippetReturnsOne(t *testing.T) {
+	src := "# Top\n"
+	assert.Equal(t, 1, findSourceLine([]byte(src), "", 0))
+}
+
+func TestFindSourceLine_TrimsWhitespaceForComparison(t *testing.T) {
+	src := "# Top\n\n   indented body   \n"
+	assert.Equal(t, 3, findSourceLine([]byte(src), "indented body", 0))
+}
+
+func TestCanEditSource(t *testing.T) {
+	cases := []struct {
+		name   string
+		source string
+		want   bool
+	}{
+		{"empty", "", false},
+		{"http", "http://example.com/x.md", false},
+		{"https", "https://example.com/x.md", false},
+		{"markdown ext", "/tmp/doc.md", true},
+		{"markdown alt ext", "/tmp/doc.markdown", true},
+		{"convertible docx", "/tmp/doc.docx", false},
+		{"unknown ext", "/tmp/doc.txt", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, canEditSource(tc.source))
+		})
+	}
+}
