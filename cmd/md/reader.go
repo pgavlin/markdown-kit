@@ -302,6 +302,15 @@ type markdownReader struct {
 
 	// Pending initial document index (deferred to Init for non-blocking startup).
 	pendingIndex *pendingIndexEntry
+
+	// Editor runner for $EDITOR integration. Set by main; tests
+	// substitute a fake.
+	editorRunner editorRunner
+	// preEditPosition / preEditSource carry the user's reading
+	// location across the suspend/edit/resume cycle so the post-exit
+	// reload can restore it.
+	preEditPosition mdk.Position
+	preEditSource   string
 }
 
 // pendingIndexEntry holds data for a document that should be indexed at Init time.
@@ -373,6 +382,7 @@ func newMarkdownReader(name, markdown, source string, theme *chroma.Style, viewO
 		spinner:           spinner.New(spinner.WithSpinner(spinner.Dot)),
 		picker:            fp,
 		searchIndex:       searchIndex,
+		editorRunner:      osEditorRunner{},
 	}
 }
 
@@ -737,6 +747,27 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.popPage()
 		return r, nil
 
+	case editorDoneMsg:
+		if msg.err != nil {
+			r.logger.Error("editor_error", "error", msg.err)
+			r.showError = true
+			r.errorText = fmt.Sprintf("Editor exited with error: %v", msg.err)
+			r.preEditSource = ""
+			return r, nil
+		}
+		source := r.preEditSource
+		pos := r.preEditPosition
+		r.preEditSource = ""
+		if source == "" {
+			return r, nil
+		}
+		r.loading = true
+		r.loadingURL = source
+		return r, tea.Batch(
+			reloadFilePage(source, pos, r.fsys, r.logger),
+			r.spinner.Tick,
+		)
+
 	case pageLoadedMsg:
 		if msg.newTab {
 			r.openNewTab(msg.name, msg.markdown, msg.source)
@@ -999,6 +1030,30 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "M":
 			r.openNewTab("User Guide", renderHelpPage(r.keys), "")
 			return r, nil
+		case "E":
+			at := r.active()
+			if !canEditSource(at.currentSource) {
+				at.view.SetStatusMessage("Cannot edit this source")
+				return r, tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
+			}
+			data, err := r.fsys.ReadFile(at.currentSource)
+			if err != nil {
+				r.showError = true
+				r.errorText = fmt.Sprintf("Error reading %s: %v", at.currentSource, err)
+				return r, nil
+			}
+			snippet, occ := at.view.TopLine()
+			line := findSourceLine(data, snippet, occ)
+			args, err := editorCommand(os.Getenv, at.currentSource, line)
+			if err != nil {
+				r.showError = true
+				r.errorText = fmt.Sprintf("Error resolving editor: %v", err)
+				return r, nil
+			}
+			r.preEditPosition = at.view.Position()
+			r.preEditSource = at.currentSource
+			r.logger.Info("editor_launch", "source", at.currentSource, "line", line, "binary", args[0])
+			return r, r.editorRunner.Run(args)
 		case "?":
 			r.showHelp = true
 			return r, nil

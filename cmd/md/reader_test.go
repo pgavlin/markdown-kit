@@ -1853,3 +1853,162 @@ func TestUpdate_FreshLoadDoesNotRestorePosition(t *testing.T) {
 		t.Errorf("fresh load should leave view at line 0, got %d", reader.active().view.LineOffset())
 	}
 }
+
+// drainBatch invokes a tea.Cmd, and if its result is a tea.BatchMsg
+// (a slice of Cmds), drains each child. Returns the leaf messages
+// produced. Test helper for editorDoneMsg -> reloadFilePage chains.
+func drainBatch(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		var out []tea.Msg
+		for _, c := range batch {
+			out = append(out, drainBatch(c)...)
+		}
+		return out
+	}
+	return []tea.Msg{msg}
+}
+
+func TestUpdate_Edit_LocalMarkdownFile(t *testing.T) {
+	fs := newMemFS()
+	fs.files["/doc.md"] = []byte("# Top\n\nUnique body.\n")
+
+	r := testReader("", "# Top\n\nUnique body.\n", "/doc.md")
+	r.fsys = fs
+	fakeEd := &fakeEditorRunner{}
+	r.editorRunner = fakeEd
+	m, _ := r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	r = m.(markdownReader)
+
+	fakeEd.onRun = func(args []string) {
+		fs.files["/doc.md"] = []byte("# Top\n\nUnique body.\n\nAdded by editor.\n")
+	}
+
+	m, cmd := r.Update(keyMsg("E"))
+	r = m.(markdownReader)
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd from E keypress")
+	}
+	if len(fakeEd.calls) != 1 {
+		t.Fatalf("expected 1 editor call, got %d", len(fakeEd.calls))
+	}
+	args := fakeEd.calls[0]
+	var fileArg string
+	for _, a := range args {
+		if a == "/doc.md" || strings.HasPrefix(a, "/doc.md:") {
+			fileArg = a
+			break
+		}
+	}
+	if fileArg == "" {
+		t.Fatalf("expected /doc.md in argv, got %v", args)
+	}
+
+	doneMsg := cmd()
+	if _, ok := doneMsg.(editorDoneMsg); !ok {
+		t.Fatalf("expected editorDoneMsg, got %T", doneMsg)
+	}
+	m, cmd = r.Update(doneMsg)
+	r = m.(markdownReader)
+	if cmd == nil {
+		t.Fatal("expected reload cmd after editorDoneMsg")
+	}
+
+	for _, leaf := range drainBatch(cmd) {
+		m, _ = r.Update(leaf)
+		r = m.(markdownReader)
+	}
+
+	got := string(r.active().view.GetMarkdown())
+	if !strings.Contains(got, "Added by editor.") {
+		t.Errorf("reloaded content should contain editor-added text, got: %q", got)
+	}
+}
+
+func TestUpdate_Edit_LocalMarkdownFile_ShowSourceMode(t *testing.T) {
+	fs := newMemFS()
+	fs.files["/doc.md"] = []byte("# Top\n\nUnique body.\n")
+
+	r := testReader("", "# Top\n\nUnique body.\n", "/doc.md")
+	r.fsys = fs
+	r.editorRunner = &fakeEditorRunner{
+		onRun: func(args []string) {
+			fs.files["/doc.md"] = []byte("# Top\n\nUnique body.\n\nFrom editor.\n")
+		},
+	}
+	m, _ := r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	r = m.(markdownReader)
+
+	m, _ = r.Update(keyMsg("ctrl+u"))
+	r = m.(markdownReader)
+	if !r.active().showSource {
+		t.Fatal("expected showSource=true after ctrl+u")
+	}
+
+	m, cmd := r.Update(keyMsg("E"))
+	r = m.(markdownReader)
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd from E keypress in show-source mode")
+	}
+	if calls := r.editorRunner.(*fakeEditorRunner).calls; len(calls) != 1 {
+		t.Fatalf("expected 1 editor call in show-source mode, got %d", len(calls))
+	}
+
+	doneMsg := cmd()
+	m, cmd = r.Update(doneMsg)
+	r = m.(markdownReader)
+	if cmd == nil {
+		t.Fatal("expected reload cmd after editorDoneMsg")
+	}
+	for _, leaf := range drainBatch(cmd) {
+		m, _ = r.Update(leaf)
+		r = m.(markdownReader)
+	}
+
+	got := string(r.active().view.GetMarkdown())
+	if !strings.Contains(got, "From editor.") {
+		t.Errorf("reloaded content should contain editor-added text, got: %q", got)
+	}
+}
+
+func TestUpdate_Edit_NonFileSourceIsNoOp(t *testing.T) {
+	r := testReader("", "# Doc", "https://example.com/doc.md")
+	fakeEd := &fakeEditorRunner{}
+	r.editorRunner = fakeEd
+	m, _ := r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	r = m.(markdownReader)
+
+	m, _ = r.Update(keyMsg("E"))
+	r = m.(markdownReader)
+	if len(fakeEd.calls) != 0 {
+		t.Errorf("expected no editor calls for URL source, got %d", len(fakeEd.calls))
+	}
+}
+
+func TestUpdate_EditorDoneMsg_ErrorShowsDialog(t *testing.T) {
+	fs := newMemFS()
+	fs.files["/doc.md"] = []byte("# Top\n")
+	r := testReader("", "# Top\n", "/doc.md")
+	r.fsys = fs
+	r.editorRunner = &fakeEditorRunner{err: fmt.Errorf("editor crashed")}
+	m, _ := r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	r = m.(markdownReader)
+
+	m, cmd := r.Update(keyMsg("E"))
+	r = m.(markdownReader)
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd from E keypress")
+	}
+
+	m, _ = r.Update(cmd())
+	r = m.(markdownReader)
+	if !r.showError {
+		t.Error("expected showError=true after editor error")
+	}
+	if !strings.Contains(strings.ToLower(r.errorText), "editor") {
+		t.Errorf("expected error text to mention editor, got %q", r.errorText)
+	}
+}
