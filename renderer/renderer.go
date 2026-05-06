@@ -1372,8 +1372,11 @@ func (r *Renderer) RenderListItem(w util.BufWriter, source []byte, node ast.Node
 		// A task list item starts with a TaskCheckBox; the checkbox glyph
 		// stands in for the bullet/number marker. We emit the glyph here
 		// (in the marker slot) and rely on RenderTaskCheckBox being a
-		// no-op so the same character isn't written twice.
-		taskGlyph, isTask := taskListMarker(node)
+		// no-op so the same character isn't written twice. The glyph is
+		// wrapped in a span on the TaskCheckBox node so the view can
+		// select and toggle it.
+		taskGlyph, taskBox := taskListMarker(node)
+		isTask := taskBox != nil
 
 		markerWidth := 2
 		state := &r.listStack[len(r.listStack)-1]
@@ -1388,9 +1391,11 @@ func (r *Renderer) RenderListItem(w util.BufWriter, source []byte, node ast.Node
 			state.index++
 		}
 		if isTask {
+			r.OpenSpan(taskBox)
 			if _, err := r.WriteString(w, taskGlyph); err != nil {
 				return ast.WalkStop, err
 			}
+			r.CloseSpan()
 		} else {
 			if _, err := r.Write(w, []byte{state.marker, ' '}); err != nil {
 				return ast.WalkStop, err
@@ -1422,25 +1427,26 @@ func (r *Renderer) RenderListItem(w util.BufWriter, source []byte, node ast.Node
 }
 
 // taskListMarker returns the checkbox glyph that should stand in for a task
-// list item's bullet/number marker. The second return is false when node is
-// not a task list item.
-func taskListMarker(node ast.Node) (string, bool) {
+// list item's bullet/number marker, along with the TaskCheckBox AST node so
+// callers can attach a selection span to it. The second return is nil when
+// node is not a task list item.
+func taskListMarker(node ast.Node) (string, *xast.TaskCheckBox) {
 	li, ok := node.(*ast.ListItem)
 	if !ok {
-		return "", false
+		return "", nil
 	}
 	first := li.FirstChild()
 	if first == nil {
-		return "", false
+		return "", nil
 	}
 	cb, ok := first.FirstChild().(*xast.TaskCheckBox)
 	if !ok {
-		return "", false
+		return "", nil
 	}
 	if cb.IsChecked {
-		return "✓ ", true
+		return "✓ ", cb
 	}
-	return "☐ ", true
+	return "☐ ", cb
 }
 
 // RenderTaskCheckBox is a no-op: the checkbox glyph is emitted by

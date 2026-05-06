@@ -11,6 +11,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
+	xast "github.com/pgavlin/goldmark/extension/ast"
 	mdk "github.com/pgavlin/markdown-kit/view"
 
 	"github.com/pgavlin/markdown-kit/styles"
@@ -1985,6 +1986,90 @@ func TestUpdate_Edit_NonFileSourceIsNoOp(t *testing.T) {
 	r = m.(markdownReader)
 	if len(fakeEd.calls) != 0 {
 		t.Errorf("expected no editor calls for URL source, got %d", len(fakeEd.calls))
+	}
+}
+
+func TestUpdate_ToggleTask_EnterFlipsCheckboxAndPersists(t *testing.T) {
+	fs := newMemFS()
+	src := "- [ ] write tests\n- [x] ship feature\n"
+	fs.files["/tasks.md"] = []byte(src)
+
+	r := testReader("", src, "/tasks.md")
+	r.fsys = fs
+	m, _ := r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	r = m.(markdownReader)
+
+	// Press "]" to navigate to the first navigable element (the first
+	// task checkbox), then "enter" to toggle it.
+	m, _ = r.Update(keyMsg("]"))
+	r = m.(markdownReader)
+	m, _ = r.Update(keyMsg("enter"))
+	r = m.(markdownReader)
+
+	want := "- [x] write tests\n- [x] ship feature\n"
+	if got := string(fs.files["/tasks.md"]); got != want {
+		t.Errorf("file on disk after toggle: want %q, got %q", want, got)
+	}
+	if got := string(r.active().view.GetMarkdown()); got != want {
+		t.Errorf("model markdown after toggle: want %q, got %q", want, got)
+	}
+}
+
+func TestUpdate_ToggleTask_EnterOnLinkStillFollows(t *testing.T) {
+	// Enter on a link must keep its FollowLink semantics — the toggle
+	// intercept only fires when the selection is a TaskCheckBox.
+	fs := newMemFS()
+	src := "- [ ] task\n\nSee [example](https://example.com).\n"
+	fs.files["/tasks.md"] = []byte(src)
+
+	r := testReader("", src, "/tasks.md")
+	r.fsys = fs
+	m, _ := r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	r = m.(markdownReader)
+
+	// Walk navigable items until selection is on the link.
+	for range 5 {
+		m, _ = r.Update(keyMsg("]"))
+		r = m.(markdownReader)
+		sel := r.active().view.Selection()
+		if sel == nil {
+			continue
+		}
+		// Stop once we land on something that isn't the task checkbox
+		// (the link is the next navigable after it).
+		if _, ok := sel.Node.(*xast.TaskCheckBox); !ok {
+			break
+		}
+	}
+
+	m, _ = r.Update(keyMsg("enter"))
+	r = m.(markdownReader)
+
+	// File on disk must not have been toggled — Enter on a link is
+	// FollowLink, not toggle.
+	if got := string(fs.files["/tasks.md"]); got != src {
+		t.Errorf("file on disk should be unchanged when selection is a link, got %q", got)
+	}
+}
+
+func TestUpdate_ToggleTask_NonDiskSourceShowsStatus(t *testing.T) {
+	fs := newMemFS()
+	src := "- [ ] write tests\n"
+
+	// Empty source path means stdin/URL — Enter on the checkbox must not
+	// modify anything and must surface a status message.
+	r := testReader("", src, "")
+	r.fsys = fs
+	m, _ := r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	r = m.(markdownReader)
+
+	m, _ = r.Update(keyMsg("]"))
+	r = m.(markdownReader)
+	m, _ = r.Update(keyMsg("enter"))
+	r = m.(markdownReader)
+
+	if got := string(r.active().view.GetMarkdown()); got != src {
+		t.Errorf("model markdown should be unchanged for non-disk source, got %q", got)
 	}
 }
 

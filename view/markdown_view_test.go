@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/pgavlin/goldmark/ast"
 	xast "github.com/pgavlin/goldmark/extension/ast"
 	"github.com/pgavlin/markdown-kit/styles"
 	"github.com/stretchr/testify/assert"
@@ -144,6 +145,84 @@ func TestModel_TaskList(t *testing.T) {
 	assert.Contains(t, stripped, "- regular item")
 	assert.NotContains(t, stripped, "- ☐")
 	assert.NotContains(t, stripped, "- ✓")
+}
+
+func TestModel_TaskCheckBoxNavigable(t *testing.T) {
+	// The checkbox glyph has its own span so PrevItem/NextItem can land
+	// on it during normal navigation.
+	m := NewModel(WithTheme(styles.Pulumi))
+	m.SetText("tasks.md", "- [ ] write tests\n- [x] ship feature\n")
+	m.SetSize(80, 24)
+	_ = m.View()
+
+	require.True(t, m.SelectNext(m.isNavigable),
+		"first SelectNext should land on the first task checkbox")
+	cb, ok := m.Selection().Node.(*xast.TaskCheckBox)
+	require.True(t, ok, "selection should be a TaskCheckBox, got %T", m.Selection().Node)
+	assert.False(t, cb.IsChecked, "first checkbox is unchecked")
+
+	require.True(t, m.SelectNext(m.isNavigable),
+		"second SelectNext should land on the second task checkbox")
+	cb, ok = m.Selection().Node.(*xast.TaskCheckBox)
+	require.True(t, ok)
+	assert.True(t, cb.IsChecked, "second checkbox is checked")
+}
+
+func TestModel_ToggleSelectedTask(t *testing.T) {
+	src := "- [ ] write tests\n- [x] ship feature\n"
+	m := NewModel(WithTheme(styles.Pulumi))
+	m.SetText("tasks.md", src)
+	m.SetSize(80, 24)
+	_ = m.View()
+
+	// No selection — toggle is a no-op.
+	out, ok := m.ToggleSelectedTask()
+	assert.False(t, ok, "toggle without selection should fail")
+	assert.Nil(t, out)
+
+	// Select the first checkbox and flip it.
+	require.True(t, m.SelectNext(m.isNavigable))
+	out, ok = m.ToggleSelectedTask()
+	require.True(t, ok, "toggle should succeed for a selected task")
+	assert.Equal(t, "- [x] write tests\n- [x] ship feature\n", string(out),
+		"first checkbox flipped to checked")
+	assert.Equal(t, string(out), string(m.GetMarkdown()),
+		"model's markdown reflects the toggle")
+
+	// Selection should restore to the same (now-checked) checkbox.
+	stripped := ansi.Strip(m.View())
+	assert.Contains(t, stripped, "✓ write tests")
+	cb, isCB := m.Selection().Node.(*xast.TaskCheckBox)
+	require.True(t, isCB, "selection should still be on a TaskCheckBox after reparse")
+	assert.True(t, cb.IsChecked, "post-toggle selection points to the now-checked box")
+
+	// Flip it back.
+	out, ok = m.ToggleSelectedTask()
+	require.True(t, ok)
+	assert.Equal(t, "- [ ] write tests\n- [x] ship feature\n", string(out),
+		"second toggle restores the original")
+}
+
+func TestModel_ToggleSelectedTask_NonTaskSelection(t *testing.T) {
+	// A selected non-task node (a link) must not produce a mutation.
+	m := NewModel(WithTheme(styles.Pulumi))
+	m.SetText("tasks.md", "- [ ] task\n\nSee [example](https://example.com).\n")
+	m.SetSize(80, 24)
+	_ = m.View()
+
+	// Walk past the task to the link.
+	for {
+		if !m.SelectNext(m.isNavigable) {
+			t.Fatal("ran out of navigable items before finding a link")
+		}
+		if _, isLink := m.Selection().Node.(*ast.Link); isLink {
+			break
+		}
+	}
+
+	out, ok := m.ToggleSelectedTask()
+	assert.False(t, ok, "toggle should fail when selection is not a task")
+	assert.Nil(t, out)
 }
 
 func TestView_NoLineExceedsTerminalWidth(t *testing.T) {

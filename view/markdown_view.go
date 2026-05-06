@@ -294,7 +294,7 @@ func (m *Model) isHeadingOrAnchor(n ast.Node) (bool, bool) {
 }
 
 // isNavigable matches all navigable elements: links, code blocks, headings,
-// HTML anchor nodes, and footnote references.
+// HTML anchor nodes, footnote references, and task checkboxes.
 func (m *Model) isNavigable(n ast.Node) (bool, bool) {
 	switch n.Kind() {
 	case ast.KindAutoLink, ast.KindLink:
@@ -306,6 +306,8 @@ func (m *Model) isNavigable(n ast.Node) (bool, bool) {
 	case xast.KindTable:
 		return true, true
 	case xast.KindFootnoteLink:
+		return true, true
+	case xast.KindTaskCheckBox:
 		return true, true
 	}
 	if m.anchorNodes[n] {
@@ -1943,6 +1945,134 @@ func (m *Model) SelectSpan(span *renderer.NodeSpan, highlight bool) {
 	m.selection = span
 	m.calculateSelectionSpan(span)
 	m.ensureOffsetVisible(span.Start)
+}
+
+// ToggleSelectedTask flips the GFM task list checkbox under the current
+// selection and reparses the document against the updated source. It returns
+// the new source bytes so the caller can persist them. If the current
+// selection is not a task checkbox, or the checkbox cannot be located in the
+// source, ToggleSelectedTask returns nil, false and the model is unchanged.
+//
+// The model's editability is the caller's concern: ToggleSelectedTask only
+// requires that something be selected. Wire it behind the same disk-backed
+// gate used for other inline-edit features.
+func (m *Model) ToggleSelectedTask() ([]byte, bool) {
+	if m.selection == nil {
+		return nil, false
+	}
+	cb, ok := m.selection.Node.(*xast.TaskCheckBox)
+	if !ok {
+		return nil, false
+	}
+
+	var li *ast.ListItem
+	for p := cb.Parent(); p != nil; p = p.Parent() {
+		if l, ok := p.(*ast.ListItem); ok {
+			li = l
+			break
+		}
+	}
+	if li == nil {
+		return nil, false
+	}
+
+	offset, ok := taskCheckBoxSourceOffset(m.markdown, li)
+	if !ok {
+		return nil, false
+	}
+
+	ord := taskCheckBoxOrdinal(m.document, cb)
+
+	newSource := append([]byte(nil), m.markdown...)
+	switch newSource[offset] {
+	case ' ':
+		newSource[offset] = 'x'
+	case 'x', 'X':
+		newSource[offset] = ' '
+	default:
+		return nil, false
+	}
+
+	m.SetText(m.name, string(newSource))
+
+	// SetText already re-rendered, so the span tree is populated and the
+	// new checkbox span can be selected directly.
+	if newCB := taskCheckBoxByOrdinal(m.document, ord); newCB != nil {
+		if span := m.findSpanForNode(newCB); span != nil {
+			m.SelectSpan(span, true)
+		}
+	}
+
+	return newSource, true
+}
+
+// taskCheckBoxSourceOffset returns the byte offset in source of the character
+// that holds a task checkbox's state (' ', 'x', or 'X'), given the enclosing
+// list item. The block-level parse anchors the item's first content segment
+// at the `[` of the checkbox, so the state character sits one byte to the
+// right.
+func taskCheckBoxSourceOffset(source []byte, li *ast.ListItem) (int, bool) {
+	first := li.FirstChild()
+	if first == nil {
+		return 0, false
+	}
+	lines := first.Lines()
+	if lines == nil || lines.Len() == 0 {
+		return 0, false
+	}
+	start := lines.At(0).Start
+	if start+2 >= len(source) || source[start] != '[' || source[start+2] != ']' {
+		return 0, false
+	}
+	return start + 1, true
+}
+
+// taskCheckBoxOrdinal returns the zero-based document-order index of cb
+// among the task checkboxes in doc, or -1 if cb is not present.
+func taskCheckBoxOrdinal(doc ast.Node, cb *xast.TaskCheckBox) int {
+	if doc == nil {
+		return -1
+	}
+	n := -1
+	found := -1
+	_ = ast.Walk(doc, func(node ast.Node, enter bool) (ast.WalkStatus, error) {
+		if !enter {
+			return ast.WalkContinue, nil
+		}
+		if box, ok := node.(*xast.TaskCheckBox); ok {
+			n++
+			if box == cb {
+				found = n
+				return ast.WalkStop, nil
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	return found
+}
+
+// taskCheckBoxByOrdinal returns the i-th TaskCheckBox in doc in document
+// order, or nil if i is out of range.
+func taskCheckBoxByOrdinal(doc ast.Node, i int) *xast.TaskCheckBox {
+	if doc == nil || i < 0 {
+		return nil
+	}
+	n := -1
+	var found *xast.TaskCheckBox
+	_ = ast.Walk(doc, func(node ast.Node, enter bool) (ast.WalkStatus, error) {
+		if !enter {
+			return ast.WalkContinue, nil
+		}
+		if box, ok := node.(*xast.TaskCheckBox); ok {
+			n++
+			if n == i {
+				found = box
+				return ast.WalkStop, nil
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	return found
 }
 
 // ensureOffsetVisible scrolls the viewport only if the given byte offset is

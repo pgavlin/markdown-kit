@@ -75,6 +75,7 @@ func renderHelpPage(km readerKeyMap) string {
 		"FindSimilar":     fmtKey(km.FindSimilar),
 		"UserGuide":       fmtKey(km.UserGuide),
 		"BugReport":       fmtKey(km.BugReport),
+		"Edit":            fmtKey(km.Edit),
 		"ExportGist":      fmtKey(km.ExportGist),
 		"Help":            fmtKey(km.Help),
 		"Quit":            fmtKey(km.Quit),
@@ -167,6 +168,7 @@ func renderHelpOverlay(km readerKeyMap) string {
 	lines = append(lines, binding(km.DecreaseWidth, "Decrease width"))
 	lines = append(lines, binding(km.IncreaseWidth, "Increase width"))
 	lines = append(lines, binding(km.Reload, "Reload page"))
+	lines = append(lines, binding(km.Edit, "Edit"))
 	lines = append(lines, binding(km.ExportGist, "Export as gist"))
 
 	lines = append(lines, sectionStyle.Render("General"))

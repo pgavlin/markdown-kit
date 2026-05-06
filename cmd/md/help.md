@@ -267,6 +267,20 @@ or `-n`.
 
 Editing is only available for local Markdown files.
 
+## Toggle Task
+
+| Key | Action |
+|-----|--------|
+| {{.FollowLink}} | Toggle the selected GFM task list checkbox |
+
+Navigate to a checkbox with `]` / `[` (next / previous item), then press
+`enter` to flip its state between `[ ]` and `[x]`. The change is written
+back to the file on disk and the document is re-rendered with the new
+state. Like Edit, this is only available for local Markdown files.
+
+`enter` is contextual: on a link it follows the link; on a table it
+enters the grid; on a task checkbox it toggles.
+
 ## Help
 
 | Key | Action |

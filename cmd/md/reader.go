@@ -18,6 +18,7 @@ import (
 	"github.com/alecthomas/chroma"
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/x/ansi"
+	xast "github.com/pgavlin/goldmark/extension/ast"
 	"github.com/pgavlin/markdown-kit/docsearch"
 	mdk "github.com/pgavlin/markdown-kit/view"
 	"github.com/pgavlin/picky"
@@ -1072,6 +1073,31 @@ func (r markdownReader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.bugReportInput.SetWidth(innerW - lipgloss.Width(r.bugReportInput.Prompt) - 1)
 			r.showBugReport = true
 			return r, r.bugReportInput.Focus()
+		}
+
+		// Enter on a selected task checkbox toggles its state. The view
+		// would otherwise treat Enter as FollowLink, which is a no-op for
+		// a TaskCheckBox.
+		if key.Matches(msg, r.keys.FollowLink) {
+			if sel := at.view.Selection(); sel != nil {
+				if _, isTask := sel.Node.(*xast.TaskCheckBox); isTask {
+					if !canEditSource(at.currentSource) {
+						at.view.SetStatusMessage("Cannot edit this source")
+						return r, tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
+					}
+					newSource, toggled := at.view.ToggleSelectedTask()
+					if !toggled {
+						return r, nil
+					}
+					if err := r.fsys.WriteFile(at.currentSource, newSource, 0o644); err != nil {
+						r.showError = true
+						r.errorText = fmt.Sprintf("Error writing %s: %v", at.currentSource, err)
+						return r, nil
+					}
+					r.logger.Info("task_toggled", "source", at.currentSource)
+					return r, nil
+				}
+			}
 		}
 
 		if key.Matches(msg, r.keys.ExportGist) && !r.exportingGist {
