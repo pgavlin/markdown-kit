@@ -115,8 +115,8 @@ github.com/pgavlin/goldmark v1.1.33-0.20210916052350-16f491902b32 h1:6dWdvpLPcMW
 github.com/pgavlin/goldmark v1.1.33-0.20210916052350-16f491902b32/go.mod h1:MRxHTJrf9FhdfNQ8Hdeh9gmHevC9RJE/fu8M3JIGjoE=
 github.com/pgavlin/mermaid-ascii v0.0.0-20260322123205-ab8074a98bef h1:ahwKSUVBI7VmbTMvbS7IAD69srIeuT4aluyF69QqSRU=
 github.com/pgavlin/mermaid-ascii v0.0.0-20260322123205-ab8074a98bef/go.mod h1:k0/VCoO+6S9CkqpfQA04++cjZkWLidbyW+ZgRfCGNJY=
-github.com/pgavlin/picky v0.0.0-20260307030235-a0dfa1421619 h1:NuCFWgfJSRN2SxiPkAGgfmjb/44UDpzbwU1woMF04Jc=
-github.com/pgavlin/picky v0.0.0-20260307030235-a0dfa1421619/go.mod h1:ydJM+XTvjyZavkhxT1IxiXKvsTHzjDaqiLkuBnk09RE=
+github.com/pgavlin/picky v0.0.0-20260512143253-8d4cf90d74f3 h1:JtUPTlqn2M6EmdEr7CS+X24nOtT8jNjsL2MlOagaVVA=
+github.com/pgavlin/picky v0.0.0-20260512143253-8d4cf90d74f3/go.mod h1:ydJM+XTvjyZavkhxT1IxiXKvsTHzjDaqiLkuBnk09RE=
 github.com/pgavlin/svg2 v0.0.0-20210919231505-4ace7308edc1 h1:pZyspNrqK1cqSk3oIUYgwE2/Si20ZYSGypML1Br3zEU=
 github.com/pgavlin/svg2 v0.0.0-20210919231505-4ace7308edc1/go.mod h1:/bl9WWdq/0JAXp6wvglMkCf9fcBPhT2SoxG7jP+hYqc=
 github.com/pgavlin/tea-grid v0.0.0-20260327125714-60d3add40bbd h1:Go47J4PX7be3mZS4+zBCVU+Kna+2wzIJ83Ksod3XP+g=

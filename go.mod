@@ -18,7 +18,7 @@ require (
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/pgavlin/goldmark v1.1.33-0.20210916052350-16f491902b32
 	github.com/pgavlin/mermaid-ascii v0.0.0-20260322123205-ab8074a98bef
-	github.com/pgavlin/picky v0.0.0-20260307030235-a0dfa1421619
+	github.com/pgavlin/picky v0.0.0-20260512143253-8d4cf90d74f3
 	github.com/pgavlin/svg2 v0.0.0-20210919231505-4ace7308edc1
 	github.com/pgavlin/tea-grid v0.0.0-20260327125714-60d3add40bbd
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
